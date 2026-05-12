@@ -1,8 +1,9 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import type {
   ServerMessage,
   ClientMessage,
 } from "@shared/protocol";
+import { useAppStore } from "./store";
 
 /**
  * Minimal WebSocket client with auto-reconnect and an external-store API
@@ -61,6 +62,24 @@ class WsStore {
     for (const l of this.listeners) l();
   }
 
+  private handleMessage(msg: ServerMessage) {
+    switch (msg.type) {
+      case "hello":
+        this.setState({ lastServerHello: msg });
+        break;
+      case "ping": {
+        const pong: ClientMessage = { type: "pong", t: msg.t };
+        this.ws?.send(JSON.stringify(pong));
+        this.setState({ latencyMs: Date.now() - msg.t });
+        break;
+      }
+      case "session_created":
+      case "session_updated":
+        useAppStore.getState().upsertSession(msg.session);
+        break;
+    }
+  }
+
   private connect() {
     this.setState({
       connection:
@@ -87,18 +106,7 @@ class WsStore {
         console.warn("[ws] non-JSON message:", event.data);
         return;
       }
-      switch (msg.type) {
-        case "hello":
-          this.setState({ lastServerHello: msg });
-          break;
-        case "ping": {
-          const pong: ClientMessage = { type: "pong", t: msg.t };
-          ws.send(JSON.stringify(pong));
-          // Latency = time the ping took to roundtrip with us (approx).
-          this.setState({ latencyMs: Date.now() - msg.t });
-          break;
-        }
-      }
+      this.handleMessage(msg);
     };
 
     ws.onclose = (event) => {
@@ -116,10 +124,7 @@ class WsStore {
 
   private scheduleReconnect() {
     if (this.reconnectTimer) return;
-    const delay = Math.min(
-      1000 * 2 ** this.reconnectAttempts,
-      15_000,
-    );
+    const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 15_000);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.reconnectAttempts += 1;
@@ -139,12 +144,4 @@ export function useWsSend(): (msg: ClientMessage) => void {
   return (msg) => store.send(msg);
 }
 
-// Re-export the snapshot type for convenience.
 export type { StoreState as WsState };
-
-// Eagerly read the store once during module init so SSR or hot-reload
-// don't see an undefined state.
-export const _initialSnapshot = store.getSnapshot();
-
-// Suppress unused-import-style warnings during scaffold.
-void useEffect;
