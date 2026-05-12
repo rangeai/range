@@ -126,13 +126,99 @@ Range's evidence-backed PRs are designed to be reviewable by people who didn't a
 
 ---
 
-## 4. Product
+## 4. Competitive landscape
 
-### 4.1 One-line
+Range sits in a clear gap between three categories of existing tooling. Understanding the boundaries matters because it determines what we build, what we integrate with, and what we don't compete on.
+
+### 4.1 The map
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  WHERE RANGE LIVES                                                   │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │  Agentic dev loop for robot sim                                │  │
+│  │  · sessions · attempts · multi-seed verification               │  │
+│  │  · evidence-backed PRs · cross-team handoff                    │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│                                                                      │
+│  ADJACENT (we complement, don't replace)                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌──────────┐    │
+│  │ Cursor /    │  │  Foxglove   │  │ W&B /       │  │ GitHub / │    │
+│  │ VSCode      │  │             │  │ tensorboard │  │ Linear   │    │
+│  │ (editor)    │  │ (data viz)  │  │ (metrics)   │  │ (tasks)  │    │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └──────────┘    │
+│                                                                      │
+│  SUBSTRATE (we orchestrate, don't replace)                           │
+│  ┌────────────┐  ┌────────────┐  ┌─────────────┐  ┌────────────┐    │
+│  │  MuJoCo    │  │  ROS 2 +   │  │  Isaac Lab  │  │  Drake     │    │
+│  │            │  │  Gazebo    │  │             │  │            │    │
+│  └────────────┘  └────────────┘  └─────────────┘  └────────────┘    │
+│                                                                      │
+│  DIRECT COMPETITION (today's de-facto solution)                      │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │  Internal tools at every robotics company:                     │  │
+│  │  hand-rolled bash scripts + spreadsheets + Slack threads       │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 Per-competitor read
+
+**Cursor / VSCode / Claude Code (agentic IDEs)**
+- *Where they're strong:* code editing, autocomplete, generic agent loops on a codebase
+- *Where they're weak:* no robot-sim awareness, no verification primitives, no multi-seed eval semantics, no evidence model
+- *Range's relationship:* complementary. We expect users to keep their editor. A Range VSCode/Cursor extension is on the Year-1 roadmap. The agentic loop in Range is *about* domain depth, not editor breadth.
+
+**Foxglove (robotics data viz, ~$300M-ish valuation)**
+- *Where they're strong:* multi-stream playback, time-aligned data viz, rosbag inspection, large robotics installed base
+- *Where they're weak:* viewing, not iteration. No code, no agent, no PR. They sit at the *output* end of the loop, not the *driving* end.
+- *Range's relationship:* adjacent / potentially partner. Their rosbag viz capability is excellent and we'd ingest their data model rather than rebuild it.
+
+**Weights & Biases / TensorBoard (training metrics)**
+- *Where they're strong:* training curves, experiment tracking, hyperparam sweeps
+- *Where they're weak:* generic ML training; no understanding of robot scenarios, no PR integration, no verification gating
+- *Range's relationship:* adjacent. A Range run's metric events should export to W&B if the user wants. We don't compete on training visualization.
+
+**GitHub / Linear / Jira (code + task management)**
+- *Where they're strong:* code review, issue tracking, PR workflows
+- *Where they're weak:* generic; no verification primitives, no evidence model, no domain awareness
+- *Range's relationship:* downstream integration. Range produces PRs to GitHub and updates tasks in Linear/Jira. We never replace these.
+
+**Isaac Sim / Isaac Lab (NVIDIA sim platforms)**
+- *Where they're strong:* deep simulation capability, RTX rendering, GPU acceleration
+- *Where they're weak:* they're substrates, not dev tools. Users still need editors, eval harnesses, evidence trails.
+- *Range's relationship:* supported user stack, not Range core dependency (per the positioning policy). Users who pick Isaac Lab can declare it in their profile.
+
+**Hand-rolled internal tools (the real competition)**
+- *Where they're strong:* tailored to one team's exact needs; team owns the code
+- *Where they're weak:* costly to build (months of engineering per team), bus-factor-of-one, no shared evidence model across teams or companies, no inflow of community improvements
+- *Range's relationship:* this is who we *displace*. Every robotics startup pays a 10-person-week tax on this every year. We offer the same workflow with no build cost and continual improvement.
+
+### 4.3 Where Range wins
+
+- **Domain depth** vs. Cursor's generic agent
+- **Iteration ownership** vs. Foxglove's viewing-only stance
+- **Robot-scenario awareness** vs. W&B's generic ML training framing
+- **Verification primitives** vs. GitHub's "trust the developer" model
+- **Out-of-the-box velocity** vs. building it yourself
+
+### 4.4 Where Range doesn't compete (and shouldn't)
+
+- We don't build an editor (Cursor wins)
+- We don't build a simulator (MuJoCo/Gazebo win)
+- We don't build a viz library (Foxglove wins)
+- We don't build a training framework (PyTorch/JAX win)
+- We don't build a task tracker (GitHub/Linear/Jira win)
+
+---
+
+## 5. Product
+
+### 5.1 One-line
 
 > Range is the agentic IDE for robot simulation — a workspace where an AI agent works alongside you on simulated robots, with structured evidence and verification baked into every PR.
 
-### 4.2 The proving ground metaphor
+### 5.2 The proving ground metaphor
 
 Range is a **proving ground**: a place you take an attempt at solving a robot-sim problem before it becomes a commitment to ship. Multiple attempts can coexist. Each attempt produces evidence. The evidence becomes the PR.
 
@@ -141,7 +227,31 @@ The metaphor matters because it sets expectations:
 - An attempt is a hypothesis, not a commitment
 - The artifact that leaves Range is *evidence* (a PR, a finding, a comparison), not a build
 
-### 4.3 What Range is
+### 5.3 Design principles
+
+Ten commitments that guide every product decision. When a feature request collides with one of these, the principle wins unless a clear, named exception is documented.
+
+1. **Evidence first.** Everything Range does produces structured evidence. Logs are streams, not blobs. Metrics are events, not lines. Frames are checksummed, not summarized. A claim without evidence is not a claim.
+
+2. **Composability over prescription.** Range provides the loop; users bring the stack. We don't dictate the simulator, training framework, or runner. The profile is the contract.
+
+3. **Local-first, remote-aware.** Range runs entirely on the user's machine by default. Remote runners are a capability, not a requirement. Network access is opt-in.
+
+4. **Vendor-neutral.** No required vendor dependencies. Any integration with vendor tech is via public surfaces only (see `range_positioning_v0_1.md`).
+
+5. **Friction in the right places.** Cheap things stay cheap (creating sessions, opening attempts). Expensive things gate explicitly (remote GPU spend, pushing to remote, broad network access). Approval is discoverable, never silent.
+
+6. **Conversation forward, structure behind.** The user interacts conversationally. Structured state (sessions, attempts, profiles, records) is maintained quietly. Users don't fill out forms — they talk and Range translates.
+
+7. **Reproducibility as a feature, not a virtue.** Every run is reproducible from a single command. Reproducibility is enforced by the system, not by developer discipline.
+
+8. **Agent as collaborator, not authority.** Codex narrates findings, makes proposals, drafts code. Codex never declares correctness; the system or human does.
+
+9. **Failure is data.** When something breaks, evidence persists. The next attempt can read what failed before. No "rerun from scratch" mentality.
+
+10. **Trust transfers, not just code.** A PR from Range carries the evidence its reviewer needs to trust without re-running. The unit of work shared is "evidence + diff," not just "diff."
+
+### 5.4 What Range is
 
 - An agentic workspace for robot simulation work
 - A session/attempt/run/evidence model with first-class verification
@@ -149,17 +259,17 @@ The metaphor matters because it sets expectations:
 - A local-first product that scales to remote runners (GPU clusters, SSH hosts)
 - An open, MIT-licensed, vendor-neutral platform
 
-### 4.4 What Range is not
+### 5.5 What Range is not
 
 - Not a code editor — we don't compete with Cursor / VSCode
 - Not a simulator — we orchestrate MuJoCo / Gazebo / Drake / Isaac Lab / custom
-- Not a data viz tool — Foxglove owns that surface; we integrate, don't replace
+- Not a data viz tool — Foxglove owns that surface; we complement it
 - Not a fleet manager or hardware-deployment tool *yet* (future expansion)
 - Not a closed or vendor-bound ecosystem
 
 ---
 
-## 5. Core concepts
+## 6. Core concepts
 
 A small, deliberate vocabulary. Every user-facing concept maps to a backend entity.
 
@@ -176,13 +286,79 @@ A small, deliberate vocabulary. Every user-facing concept maps to a backend enti
 
 The terminology rule (per earlier decision): **sessions** is the top-level umbrella in the UI; **attempts** is internal to the session. Users say "I'm working on the SIM-1842 session"; inside it they may have three attempts.
 
+### 6.1 Verification record — concrete shape
+
+A verification record is the structured judgment Range produces when an attempt's verification commands complete. It's the entity that gates PR push and gets serialized into the PR body. Below is a real-shape example for a passing multi-seed eval:
+
+```json
+{
+  "id": "ver_3kf9q2",
+  "attempt_id": "att_codex_fix_minimal",
+  "session_id": "ssn_mp2wdpmuql2uqj",
+  "status": "passed",
+  "kind": "multi_seed",
+  "created_at": "2026-05-12T17:21:28Z",
+  "completed_at": "2026-05-12T17:24:12Z",
+  "scenario": "warehouse_a",
+  "n_seeds": 5,
+  "checks": [
+    {
+      "name": "success_rate",
+      "kind": "metric_threshold",
+      "predicate": ">=0.92",
+      "aggregate": "mean_across_seeds",
+      "observed": {
+        "value": 0.94,
+        "stddev": 0.02,
+        "n_seeds": 5,
+        "per_seed": [
+          {"seed": 42, "value": 0.96},
+          {"seed": 43, "value": 0.93},
+          {"seed": 44, "value": 0.94},
+          {"seed": 45, "value": 0.91},
+          {"seed": 46, "value": 0.96}
+        ]
+      },
+      "status": "passed"
+    },
+    {
+      "name": "collisions",
+      "kind": "metric_threshold",
+      "predicate": "==0",
+      "aggregate": "sum_across_seeds",
+      "observed": { "value": 0, "n_seeds": 5 },
+      "status": "passed"
+    },
+    {
+      "name": "video_artifact_present",
+      "kind": "artifact_exists",
+      "predicate": "runs/${run_id}/replay.mp4",
+      "status": "passed",
+      "artifact_refs": ["run_a3:replay.mp4", "..."]
+    },
+    {
+      "name": "diff_scope",
+      "kind": "diff_scope",
+      "predicate": "src/nav/",
+      "observed": { "files_changed": 2, "all_inside_scope": true },
+      "status": "passed"
+    }
+  ],
+  "runs": ["run_a1", "run_a2", "run_a3", "run_a4", "run_a5"],
+  "overrides": [],
+  "concerns_pinned": []
+}
+```
+
+The `status` field is one of `passed` · `passed-with-concerns` · `failed` · `overridden`. `passed-with-concerns` is a first-class state, not a footnote. An `override` carries a logged reason and signer.
+
 ---
 
-## 6. User stories
+## 7. User stories
 
 Twelve stories spanning the canonical loop. Each: `As a [persona], I want [capability] so that [outcome]`, plus acceptance criteria.
 
-### 6.1 Bring work into Range
+### 7.1 Bring work into Range
 
 **As a** robot ML engineer
 **I want to** start a session from a Jira task, a freeform description, or a PR URL
@@ -194,7 +370,7 @@ Twelve stories spanning the canonical loop. Each: `As a [persona], I want [capab
 - Nothing irreversible (worktree, GPU spend) happens before I confirm
 - For PRs, Range fetches the branch and enters verification mode
 
-### 6.2 Reproduce a known failure
+### 7.2 Reproduce a known failure
 
 **As a** robot ML engineer
 **I want** Range to spin up a baseline attempt and run the profile's reproduce command
@@ -207,7 +383,7 @@ Twelve stories spanning the canonical loop. Each: `As a [persona], I want [capab
 - Expensive runs (remote GPU) prompt for confirmation with cost estimate
 - All evidence is checksum-pinned and linked to the attempt
 
-### 6.3 Investigate with Codex in read-only mode
+### 7.3 Investigate with Codex in read-only mode
 
 **As a** robot ML engineer
 **I want to** send Codex into the repo with no write access and see its reasoning
@@ -219,9 +395,9 @@ Twelve stories spanning the canonical loop. Each: `As a [persona], I want [capab
 - Codex's command activity streams live with structured events (`item/started` → `item/completed`)
 - Hypotheses surface as structured artifacts, each linked to the evidence it rests on
 
-### 6.4 Implement a fix with guardrails
+### 7.4 Implement a fix with guardrails
 
-**As a** robotics ML engineer
+**As a** robot ML engineer
 **I want to** declare constraints conversationally before Codex acts
 **So that** Codex stays inside the bounds I trust
 
@@ -231,7 +407,7 @@ Twelve stories spanning the canonical loop. Each: `As a [persona], I want [capab
 - Guardrail violations trigger an approval gate, not silent block
 - Guardrails appear in the eventual PR's evidence section
 
-### 6.5 Run parallel attempts
+### 7.5 Run parallel attempts
 
 **As a** robot ML engineer
 **I want to** spin up two implementation attempts from the same base
@@ -243,7 +419,7 @@ Twelve stories spanning the canonical loop. Each: `As a [persona], I want [capab
 - One-writer-per-worktree enforced
 - Compare-attempts view shows diff, runs, and verification side-by-side
 
-### 6.6 Multi-seed verify a candidate
+### 7.6 Multi-seed verify a candidate
 
 **As a** robot ML engineer
 **I want** the verification command to run across N seeds by default
@@ -255,7 +431,7 @@ Twelve stories spanning the canonical loop. Each: `As a [persona], I want [capab
 - Aggregate result: pass rate, metric distribution, outliers flagged
 - Verification record reflects statistical shape, not a single number
 
-### 6.7 Catch "looks wrong" even when "passes the metric"
+### 7.7 Catch "looks wrong" even when "passes the metric"
 
 **As a** simulation developer
 **I want to** scrub trajectory videos and pin step ranges as concerns
@@ -267,7 +443,7 @@ Twelve stories spanning the canonical loop. Each: `As a [persona], I want [capab
 - A pinned concern attaches to the verification record as `passed-with-concerns`
 - Codex describes visible differences but never declares them authoritative
 
-### 6.8 Cross-layer debugging
+### 7.8 Cross-layer debugging
 
 **As a** simulation platform developer
 **I want to** pin the version of an upstream dependency and re-run to isolate cause
@@ -279,7 +455,7 @@ Twelve stories spanning the canonical loop. Each: `As a [persona], I want [capab
 - Comparing pinned attempts shows which version exhibits the bug
 - The bisect-style result becomes evidence for the upstream filing
 
-### 6.9 Hand off across team boundaries
+### 7.9 Hand off across team boundaries
 
 **As a** simulation platform developer
 **I want to** file a downstream-found bug back to the upstream team with full evidence
@@ -291,7 +467,7 @@ Twelve stories spanning the canonical loop. Each: `As a [persona], I want [capab
 - Source-side ticket is automatically marked `upstream-pending`
 - Upstream-pending status is reflected when the target ticket changes
 
-### 6.10 Ship an evidence-backed PR
+### 7.10 Ship an evidence-backed PR
 
 **As a** robot ML engineer
 **I want** Range to draft a PR body from the verification record, attempt history, and diff
@@ -303,7 +479,7 @@ Twelve stories spanning the canonical loop. Each: `As a [persona], I want [capab
 - Reproduction command is exact and runnable, pinned to commit SHA + runner profile
 - Push is an explicit action, never silent
 
-### 6.11 Verify someone else's PR
+### 7.11 Verify someone else's PR
 
 **As a** tech lead
 **I want to** drop a PR URL into Range and have it run the full verification suite
@@ -315,7 +491,7 @@ Twelve stories spanning the canonical loop. Each: `As a [persona], I want [capab
 - Cleanroom verification available with one request
 - Findings can be posted as a PR comment (with my approval)
 
-### 6.12 Resume yesterday's work
+### 7.12 Resume yesterday's work
 
 **As a** robot ML engineer
 **I want to** resume a session from yesterday with full context intact
@@ -331,9 +507,9 @@ Twelve stories spanning the canonical loop. Each: `As a [persona], I want [capab
 
 ---
 
-## 7. UX overview
+## 8. UX overview
 
-### 7.1 Information architecture
+### 8.1 Information architecture
 
 Range has four top-level surfaces:
 
@@ -360,7 +536,7 @@ Range has four top-level surfaces:
 
 The **Auth flow** sits before any of these on first launch.
 
-### 7.2 The Home surface
+### 8.2 The Home surface
 
 The conversational entry point. A composer that accepts any input shape (task ID, freeform prompt, PR URL), with quick-action chips for explicit kinds.
 
@@ -398,7 +574,7 @@ The conversational entry point. A composer that accepts any input shape (task ID
 Authoritative reference: mockups/mockup-home.html
 ```
 
-### 7.3 The Live Session surface
+### 8.3 The Live Session surface
 
 Where most of the work happens. A 3-column layout: attempts on the left, conversation/agent stream in the center, evidence on the right.
 
@@ -426,7 +602,7 @@ Where most of the work happens. A 3-column layout: attempts on the left, convers
 │  ● investig  │  _advance_pointer as likely site.   │ Verification       │
 │    summary   │                                     │  ○ success_rate    │
 │  ● failing   │  $ rg "advance_pointer" src/nav/    │    ≥ 0.92          │
-│    log       │   3 matches in 1 file                │    pending         │
+│    log       │   3 matches in 1 file               │    pending         │
 │              │                                     │  ○ collisions = 0  │
 │  GPU 3.2/12h │  codex (2m):                        │    pending         │
 │  rg-h100-12  │  confirmed. the pointer is advanced │  ✓ no unintended   │
@@ -444,7 +620,79 @@ Authoritative reference: mockups/mockup-implementation.html
 
 The live run cell — with streaming metrics, frame thumbnails, and sparklines — is the most novel element. It's where "agentic IDE for robot sim" feels real.
 
-### 7.4 The Plan surface
+### 8.4 The Episode Viewer (post-run drill-in)
+
+When a run completes, clicking it opens the episode viewer — a time-aligned multi-stream playback that lets the developer review what actually happened. This is the most demo-worthy surface in the product.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ codex-fix-minimal › run_a3 · warehouse_a · seed 44 · 12.3s · ✓ passed │
+├────────────────────────────────────────────────────────────────────────┤
+│ ┌──────────────────────────────────────────────────────────────────┐  │
+│ │                                                                  │  │
+│ │           [rendered viewport video — scrubbable]                 │  │
+│ │                                                                  │  │
+│ │                          ● step 1207 / 1500                      │  │
+│ └──────────────────────────────────────────────────────────────────┘  │
+│  [◀◀] [◀] [▶] [▶▶]  ●━━━━━━━━━━●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━●     │
+│   0:00            scrub                                         0:12  │
+├────────────────────────────────────────────────────────────────────────┤
+│ ┌─────────────────┐  ┌──────────────────────┐  ┌──────────────────┐  │
+│ │ Trajectory      │  │ Reward / metrics     │  │ Sensor sample    │  │
+│ │ (top-down)      │  │ success_rate: 0.94   │  │ depth · t=1207   │  │
+│ │   [grid]        │  │ reward  ━━━━━╱━━━━   │  │  [depth frame    │  │
+│ │     ◉ start     │  │ collide ━━━━━━━━━━   │  │   rendered]      │  │
+│ │      ╲          │  │ jerk    ━━╱╲━━━━━━   │  │                  │  │
+│ │       ╲    ◯    │  │                      │  │ camera_front     │  │
+│ │       step 1207 │  │ [pin step range as   │  │  [rgb frame]     │  │
+│ │        ▼ goal   │  │  concern]            │  │                  │  │
+│ └─────────────────┘  └──────────────────────┘  └──────────────────┘  │
+│                                                                        │
+│ Compare to: [baseline-main · run_b3 ▾]  [overlay ▾]  [side-by-side ▾]│
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+Behavior:
+- All four panes (video, trajectory, metrics, sensor) scrub together on the timeline
+- Click any point on a metric line → snap the rest of the panes to that timestep
+- Pin a step range → adds a `concerns_pinned` entry to the verification record
+- Compare-to dropdown → flip to the comparison view (next section)
+- Codex can be asked "describe what's happening at step 1207" — narration only, never authoritative
+
+### 8.5 The Comparison View (two attempts side by side)
+
+When the developer wants to see the difference two attempts make on the same scenario.
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Compare: baseline-main  vs  codex-fix-minimal      ⊕ add third  ✕     │
+├─────────────────────────────────┬───────────────────────────────────────┤
+│  baseline-main                  │  codex-fix-minimal                    │
+│  warehouse_a · 5 seeds          │  warehouse_a · 5 seeds                │
+│                                 │                                       │
+│  success_rate   0.62 ± 0.08     │  success_rate   0.94 ± 0.02   +0.32 ↑│
+│  collisions     0.4  ± 0.5      │  collisions     0.0           −0.4 ↓ │
+│  time_to_goal   14.2s ± 1.8     │  time_to_goal   11.9s ± 0.8   −2.3 ↓ │
+│                                 │                                       │
+│  ┌──── replay · seed 44 ─────┐  │  ┌──── replay · seed 44 ─────┐       │
+│  │                            │  │  │                            │       │
+│  │   [video, t=12.3]          │  │  │   [video, t=11.9]          │       │
+│  │                            │  │  │                            │       │
+│  └────────────────────────────┘  │  └────────────────────────────┘       │
+│  [◀ ◀ ▶ ▶] sync scrub: on       │  [◀ ◀ ▶ ▶]                            │
+│                                 │                                       │
+│  per-seed [42][43][44*][45][46] │  per-seed [42][43][44][45][46]       │
+│  * outlier — 0.34 success       │  no outliers                          │
+│                                 │                                       │
+│  [open run] [open attempt]      │  [open run] [open attempt]            │
+└─────────────────────────────────┴───────────────────────────────────────┘
+                                                                          │
+                       [save as comparison report] [export to PR body]    │
+```
+
+Sync-scrub means dragging the timeline on either side scrubs the other. Per-seed dots reveal outliers at a glance. "Save as comparison report" produces a portable artifact that can attach to the PR.
+
+### 8.6 The Plan surface
 
 Bird's-eye view of every PR being verified, drafted, opened, in review, merged, or failed.
 
@@ -475,73 +723,15 @@ Authoritative reference: mockups/mockup-plan.html
 
 The check-dot pattern (4 small circles per row) is the differentiator from a normal GitHub PR list — it surfaces verification at a glance.
 
-### 7.5 The Freeform Session surface
+### 8.7 The Freeform Session surface
 
-For when work doesn't have a tracker entry yet. Same shape as a tracked-task session, but with a `freeform` indicator, an "inferred context" panel, and a "promote to tracked task" affordance.
+For when work doesn't have a tracker entry yet. Same shape as a tracked-task session, but with a `freeform` indicator, an "inferred context" panel, and a "promote to tracked task" affordance. See `mockups/mockup-session-freeform.html` for the high-fidelity reference.
 
-```
-┌────────────────────────────────────────────────────────────────────┐
-│ Range │ freeform › untitled — warehouse weirdness │ ⌘K  ◐  DP      │
-├──────────────┬──────────────────────────────────────┬──────────────┤
-│ freeform     │ freeform session · no task · repo:   │ Evidence  0  │
-│ session      │ robot-nav-sim                        │              │
-│              │                                      │ ─ nothing    │
-│ ssn_a92f     │  you: i want to debug the warehouse  │   captured   │
-│              │  scenario in robot-nav-sim.          │   yet ─      │
-│ no tracked   │  the navigation is acting weird.     │              │
-│ task         │                                      │ this panel   │
-│ [file SIM]   │  range: good — i'll set up a free-   │ fills as     │
-│              │  form session.  three angles:        │ soon as work │
-│ Inferred     │   1. reproduce on a few seeds        │ happens.     │
-│ ● robot-nav  │   2. look at planner history (free)  │              │
-│ ● planner    │   3. codex reads planner read-only   │ [files]      │
-│ ● warehouse  │      [RECOMMENDED]                   │ [metrics]    │
-│ ● ~10% coll  │                                      │ [verification│
-│              │  you: go with 2 + 3.                 │   awaits     │
-│ promote:     │                                      │   criteria]  │
-│ [jira] [gh]  │  range: done. starting freeform-     │              │
-│ [just PR]    │  investigate read-only and pulling   │ [+ attach    │
-│              │  planner history.                    │   existing   │
-│              │                                      │   evidence]  │
-└──────────────┴──────────────────────────────────────┴──────────────┘
+### 8.8 Auth & onboarding surface
 
-Authoritative reference: mockups/mockup-session-freeform.html
-```
+Two-step: sign in (GitHub OAuth), then connect optional services (Jira via API token, Slack optional). None of it gates getting to work — Range works with just GitHub connected. See `mockups/mockup-auth.html`.
 
-### 7.6 Auth & onboarding
-
-Two-step: sign in (GitHub OAuth), then connect optional services (Jira via API token, Slack optional). None of it gates getting to work — Range works with just GitHub connected.
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                                                                 │
-│   ┌─────────────────┐  │  step 2 of 3                          │
-│   │                 │  │                                       │
-│   │     RANGE       │  │  Connect the things                   │
-│   │                 │  │  Codex will need.                     │
-│   │  a proving      │  │                                       │
-│   │  ground for     │  │  ● github   connected                 │
-│   │  codex.         │  │    nvidia-isaac · 14 repos            │
-│   │                 │  │                                       │
-│   │                 │  │  ◐ jira     fetching projects…        │
-│   │  codex-first ·  │  │    nvidia.atlassian.net               │
-│   │  sim-aware ·    │  │    SIM 142 · RENDER 38 · TRAIN 61     │
-│   │  evidence-      │  │                                       │
-│   │  backed         │  │  ◯ slack    optional         [connect]│
-│   │                 │  │                                       │
-│   │                 │  │  + linear, gitlab, sentry, w&b later  │
-│   │                 │  │                                       │
-│   │                 │  │  [continue to range →]                │
-│   │                 │  │   or skip jira for now                │
-│   │   SOC 2 · SSO   │  │                                       │
-│   └─────────────────┘  │                                       │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-
-Authoritative reference: mockups/mockup-auth.html
-```
-
-### 7.7 Theme system
+### 8.9 Theme system
 
 Range ships with both dark (default) and light themes. Phosphor-yellow accent for "live" states (CRT phosphor reference). Toggle in every top bar, preference persisted in `localStorage`, first-launch reads `prefers-color-scheme`.
 
@@ -549,9 +739,9 @@ Typography: Bricolage Grotesque (display), Geist (UI), JetBrains Mono (data/code
 
 ---
 
-## 8. Technical architecture
+## 9. Technical architecture
 
-### 8.1 Components
+### 9.1 Components
 
 ```
                   ┌──────────────────────────────────────────┐
@@ -586,7 +776,7 @@ Typography: Bricolage Grotesque (display), Geist (UI), JetBrains Mono (data/code
                                              └──────────────────┘
 ```
 
-### 8.2 Stack
+### 9.2 Stack
 
 **Frontend:** React 19, Vite, Tailwind v4, Zustand for high-frequency state, `@tanstack/react-virtual` for long lists, `useSyncExternalStore` for the WebSocket subscription (avoids unnecessary re-renders).
 
@@ -600,7 +790,7 @@ Typography: Bricolage Grotesque (display), Geist (UI), JetBrains Mono (data/code
 
 **Build / packaging:** Distributed as an npm package, runnable via `bunx the-range` (subject to availability of the name). Single-binary distribution post-MVP.
 
-### 8.3 Data model
+### 9.3 Data model
 
 ```
 User ──< Repo ──< Session ──< Attempt ──< Run ──< Artifact
@@ -621,7 +811,67 @@ VerificationRecord aggregates 1+ runs into a structured judgment
 
 Eight core entities. Simpler than the v0.4 spec's 13. SQLite tables map cleanly.
 
-### 8.4 Wire protocol
+### 9.4 State machines
+
+Each first-class entity has a defined state machine. Invalid transitions are blocked at the domain layer and logged.
+
+**Session lifecycle:**
+
+```
+   created ──→ active ⇄ parked ──→ archived
+                  │
+                  └──→ resolved (terminal when linked to a merged PR)
+```
+
+**Attempt lifecycle:**
+
+```
+   created
+      │
+      ▼
+   context_ready
+      │
+      ▼
+   worktree_ready
+      │
+      ▼
+   agent_running ⇄ waiting_for_user
+      │              │
+      └──→ running_command ⇄ paused
+              │
+              ▼
+        verification_pending
+              │
+       ┌──────┴──────┐
+       ▼             ▼
+   passed       failed
+       │             │
+       ▼             └──→ (back to agent_running, or discarded)
+   review_ready
+       │
+       ▼
+   pr_opened
+       │
+       ▼
+   archived
+```
+
+**Run lifecycle:**
+
+```
+   queued ──→ starting ──→ running ⇄ paused
+                  │           │
+                  ▼           ├──→ succeeded
+              failed_start    ├──→ failed
+                              ├──→ aborted
+                              │
+                              ▼
+                         archived (after configurable retention)
+```
+
+These are enforced by a `SessionStateMachine` class (and equivalents for Attempt and Run) borrowed in shape from Companion's `session-state-machine.ts`.
+
+### 9.5 Wire protocol
 
 REST for state-changing operations (POST/PUT/DELETE) and one-shot reads. WebSocket for streaming events and live updates.
 
@@ -653,7 +903,7 @@ REST for state-changing operations (POST/PUT/DELETE) and one-shot reads. WebSock
 
 A full protocol contract document (`docs/range_protocol_v0_1.md`) gets written before Phase 2 implementation.
 
-### 8.5 Codex integration
+### 9.6 Codex integration
 
 Per `companion_learnings_v0_1.md`, we use the same path Companion uses for Codex:
 
@@ -667,7 +917,7 @@ Per `companion_learnings_v0_1.md`, we use the same path Companion uses for Codex
 
 Adapter is the most complex single component. Plan to vendor Companion's adapter pattern with MIT attribution and adapt to Range-specific event names.
 
-### 8.6 Runner model
+### 9.7 Runner model
 
 Two runner kinds in MVP:
 
@@ -677,19 +927,54 @@ Two runner kinds in MVP:
 
 Both runners share a common interface: `runCommand(command, profile, cwd) → Stream<RunEvent>`. Adding a third runner kind (container, Kubernetes) is a future addition that doesn't change the interface.
 
+### 9.8 Performance budget
+
+Concrete numbers Range commits to in the MVP:
+
+| Metric | Budget |
+|---|---|
+| Cold start (`bunx range`) | < 2s to ready |
+| WebSocket round-trip latency | p50 < 10ms, p99 < 50ms (loopback) |
+| Codex event → UI display | < 100ms end-to-end |
+| SQLite query for session list | < 10ms |
+| Frame thumbnail render | < 50ms |
+| Session creation API | < 100ms |
+| Concurrent active sessions | up to 10 with no perceived degradation |
+| Memory resident (typical) | < 500MB |
+| Memory resident (heavy eval) | < 2GB |
+| Disk per session (worktree + evidence) | < 500MB typical, configurable cap |
+
+These are budgets, not aspirations. CI surfaces violations.
+
+### 9.9 Failure handling philosophy
+
+Six principles for how Range behaves under failure. The point is **failure is data**, not silent loss.
+
+1. **Codex disconnects.** Session pauses in `agent_running → reconnecting`. Last good state preserved. On resume, attempt to reconnect via `thread/resume` first; if that fails, surface clearly that the thread is lost and offer to start fresh with the prior context pack as input.
+
+2. **Runner dies mid-run.** Run is marked `failed` with `partial_evidence: true`. Everything captured up to the point of failure is preserved and labeled. The next attempt can read what failed before.
+
+3. **Profile invalid.** Reject at session creation, before any side effects (no worktree, no GPU spend). Error message is concrete: which key is wrong, on which line.
+
+4. **Network split (remote runner).** Buffer output locally on the runner side, retry transmission with exponential backoff, surface clearly to the user that buffering is happening. Never drop evidence silently.
+
+5. **Disk full.** Fail loudly. Refuse to truncate evidence. Surface the disk-usage forecast in the lifecycle UI so users see it coming.
+
+6. **Codex makes a bad edit.** Range never reverts edits silently. The diff stays in the worktree until the user explicitly discards or commits. The user can undo individual edits granularly.
+
 ---
 
-## 9. Target stacks + plugin model
+## 10. Target stacks + plugin model
 
-### 9.1 Officially supported in MVP
+### 10.1 Officially supported in MVP
 
 **MuJoCo (Apache 2.0)** — primary, where the agentic wedge lands hardest. Yard ships as the canonical MuJoCo demo project.
 
 **ROS 2 + Gazebo (Apache 2.0)** — secondary, the production-robotics standard. A turtlebot navigation scene ships as the canonical Gazebo demo.
 
-Both are vendor-neutral and align with our positioning policy.
+Both run natively on macOS Apple Silicon as of 2026 (see `range_sim_stack_support_v0_1.md`), so development against either stack is unblocked on a Mac dev machine — no remote-runner gating.
 
-### 9.2 Pluggable later
+### 10.2 Pluggable later
 
 Other stacks integrate via the **profile model**: a user's `range.yaml` declares the commands, artifacts, metrics, and scenarios for their stack. Range orchestrates against this contract. No core code change needed.
 
@@ -707,16 +992,176 @@ interface StackAdapter {
 
 Honorable mention for future first-party support: **Drake** (BSD, ~3.9K stars, Toyota Research). Add when adoption justifies.
 
-### 9.3 What "officially supported" means
+### 10.3 Sample `range.yaml` — MuJoCo (Yard profile)
+
+This is the actual profile shape Yard ships with. Every Range concept (scenarios, runs, metrics, verification, approvals) maps to a section.
+
+```yaml
+# range.yaml — Yard project profile
+version: 1
+
+project:
+  name: yard
+  description: "Minimum viable robotics sim for dogfooding Range"
+  stack: mujoco
+  language: python
+
+runners:
+  - name: local
+    kind: local
+    default: true
+  - name: rg-h100-12
+    kind: ssh
+    host: rg-h100-12.example.com
+    user: dhavalp
+    workdir: ~/range-runs
+    gpu_hours_per_run_max: 2
+    cost_estimate_per_hour: 2.50
+
+scenarios:
+  - name: warehouse_a
+    description: "warehouse navigation, dense obstacles, seed-stable"
+    artifacts:
+      logs: runs/${run_id}/*.log
+      metrics: runs/${run_id}/metrics.json
+      frames: runs/${run_id}/depth_frames/*.png
+      video: runs/${run_id}/replay.mp4
+      trajectory: runs/${run_id}/trajectory.npz
+  - name: warehouse_b
+    description: "warehouse navigation, sparse obstacles"
+    artifacts:
+      logs: runs/${run_id}/*.log
+      metrics: runs/${run_id}/metrics.json
+
+commands:
+  setup:
+    - python -m pip install -e .
+  reproduce:
+    args: ["yard", "run", "--scenario", "${scenario}", "--seed", "${seed}"]
+    default_seed: 42
+  evaluate:
+    args: ["yard", "eval", "--scenario", "${scenario}", "--seeds", "${seeds}"]
+    default_seeds: 5
+  verify:
+    args: ["yard", "regress", "--suite", "default"]
+
+metrics:
+  success_rate:
+    source: runs/${run_id}/metrics.json
+    path: $.success_rate
+    threshold: ">=0.8"
+    aggregate: mean_across_seeds
+  collisions:
+    source: runs/${run_id}/metrics.json
+    path: $.collision_count
+    threshold: "==0"
+  time_to_goal_ms:
+    source: runs/${run_id}/metrics.json
+    path: $.time_to_goal_ms
+    threshold: "<=15000"
+    aggregate: median_across_seeds
+
+verification:
+  default_seeds: 5
+  pass_criteria:
+    - metric: success_rate
+    - metric: collisions
+    - artifact_exists: runs/${run_id}/replay.mp4
+    - diff_scope: src/
+  warn_criteria:
+    - metric: time_to_goal_ms   # warn, do not fail
+
+approvals:
+  remote_runner_cost_estimate_gt: 5.00
+  network_egress_allowlist:
+    - github.com
+    - api.openai.com
+```
+
+### 10.4 Sample `range.yaml` — ROS 2 + Gazebo (turtlebot demo)
+
+```yaml
+# range.yaml — turtlebot navigation demo profile
+version: 1
+
+project:
+  name: turtlebot-nav-demo
+  description: "Turtlebot navigation in Gazebo, demonstrating ROS 2 stack"
+  stack: ros2
+  language: python
+
+runners:
+  - name: local
+    kind: local
+    default: true
+    # Mac users: install via IOES-Lab ROS 2 Kilted installer; no remote needed
+
+scenarios:
+  - name: empty_world
+    description: "Turtlebot in an empty world, baseline behavior"
+    artifacts:
+      bag_files: bags/${run_id}/*.mcap
+      metrics:   bags/${run_id}/metrics.json
+      video:     bags/${run_id}/replay.mp4
+  - name: obstacles_v1
+    description: "Turtlebot navigation around obstacles"
+    artifacts:
+      bag_files: bags/${run_id}/*.mcap
+      metrics:   bags/${run_id}/metrics.json
+      video:     bags/${run_id}/replay.mp4
+
+commands:
+  setup:
+    - colcon build --packages-select turtlebot_nav_demo
+  reproduce:
+    args: ["ros2", "launch", "turtlebot_nav_demo", "demo.launch.py",
+           "scenario:=${scenario}", "seed:=${seed}"]
+    default_seed: 42
+  evaluate:
+    args: ["python", "scripts/eval.py",
+           "--scenario", "${scenario}", "--seeds", "${seeds}"]
+    default_seeds: 3
+  verify:
+    args: ["python", "scripts/regress.py"]
+
+metrics:
+  reach_goal:
+    source: bags/${run_id}/metrics.json
+    path: $.reach_goal_rate
+    threshold: ">=0.9"
+    aggregate: mean_across_seeds
+  min_clearance_m:
+    source: bags/${run_id}/metrics.json
+    path: $.min_obstacle_clearance_m
+    threshold: ">=0.2"
+    aggregate: min_across_seeds
+  cmd_vel_smoothness:
+    source: bags/${run_id}/metrics.json
+    path: $.cmd_vel_jerk_rms
+    threshold: "<=0.5"
+
+verification:
+  default_seeds: 3
+  pass_criteria:
+    - metric: reach_goal
+    - metric: min_clearance_m
+    - artifact_exists: bags/${run_id}/replay.mp4
+  warn_criteria:
+    - metric: cmd_vel_smoothness
+```
+
+The two profiles share the same schema. A user moving between stacks doesn't relearn Range — they relearn their commands.
+
+### 10.5 What "officially supported" means
 
 For each top-2 stack, MVP ships:
 
-- A known-good `range.yaml` template
+- A known-good `range.yaml` template (above)
 - A 15-minute quickstart guide
 - An evidence parser tuned for the stack's log format
 - One canonical demo scenario
 
-### 9.4 What we explicitly don't anchor on
+### 10.6 What we explicitly don't anchor on
 
 Per `range_positioning_v0_1.md`:
 
@@ -726,9 +1171,9 @@ Per `range_positioning_v0_1.md`:
 
 ---
 
-## 10. Roadmap
+## 11. Roadmap
 
-### 10.1 MVP — Phase 1 to Phase 3 (8-10 weeks part-time)
+### 11.1 MVP — Phase 1 to Phase 3 (8-10 weeks part-time)
 
 Paired phase-by-phase with the Yard dogfood sim. See `range_mvp_spec_v0_1.md` and `yard_product_spec_v0_1.md` for detail.
 
@@ -744,23 +1189,66 @@ Paired phase-by-phase with the Yard dogfood sim. See `range_mvp_spec_v0_1.md` an
 - ⏳ Verification engine: rules → records, gating PR
 - ⏳ PR drafting: structured body + push via `gh`
 - ⏳ Approval gates for sensitive actions
+- ⏳ ROS 2 + Gazebo demo profile (Mac-native via IOES-Lab installer)
 
 **Phase 3: Remote + cross-layer (3-4 weeks)**
 - ⏳ SSH remote runner: worktree sync, command exec, artifact retrieval
 - ⏳ Multi-seed eval orchestration (MuJoCo)
 - ⏳ Cross-layer evidence handoff (file back to upstream tracker)
-- ⏳ ROS 2 + Gazebo demo profile ships
+- ⏳ Episode viewer (the most demo-worthy feature)
 
-### 10.2 Year 1 (post-MVP)
+### 11.2 First-15-minutes onboarding (target experience)
 
-- Episode replay player (the most demoable feature for this audience)
+The MVP succeeds when a new user can go from `bunx the-range` to a shipped evidence-backed PR in 15 minutes. Here is the target sequence:
+
+```
+t=0      User runs `bunx the-range`
+         Server boots, browser opens to home.
+         "What are we working on, today?" composer is focused.
+
+t=10s    User types a freeform description or pastes a GitHub/Jira URL.
+
+t=30s    Session is created. Session view opens.
+         Empty state: "No attempt yet — create baseline?"
+
+t=1m     User clicks "create baseline attempt."
+         Worktree created in `~/.range/wt/...`.
+         Codex starts in read-only sandbox.
+         Sees Codex's reasoning stream in real time.
+
+t=3m     Codex finishes initial investigation.
+         User reads the structured hypothesis card on the right.
+
+t=4m     User clicks "promote to implementation."
+         New attempt created, workspace-write sandbox.
+         Codex starts making changes; user sees file edits stream.
+
+t=8m     Codex finishes implementation.
+         User clicks "verify."
+         Multi-seed eval (5 seeds, local) starts.
+         Evidence streams in: logs, metrics, frames, video.
+
+t=13m    Verification record posts. Status: passed.
+         User reviews PR draft (already populated).
+         Clicks "open PR with evidence."
+         PR opens on GitHub with structured body.
+
+t=15m    First evidence-backed PR shipped.
+         Total cost: $0 (all local) or ~$0.10 (a few Codex API calls).
+```
+
+This sequence is the activation funnel we instrument against.
+
+### 11.3 Year 1 (post-MVP)
+
+- Episode replay player (sketched above; ships fully in Year 1)
 - Multi-runner orchestration (parallel attempts on different GPUs)
 - Drake support
 - Better cleanroom verification (containerized reruns)
 - VSCode/Cursor extension that surfaces Range sessions from the editor
 - Real-robot telemetry ingestion (rosbag → evidence)
 
-### 10.3 Year 2+
+### 11.4 Year 2+
 
 - Real-hardware deployment connector (push policy to robot, monitor)
 - Fleet view (multiple robots in the field)
@@ -768,35 +1256,35 @@ Paired phase-by-phase with the Yard dogfood sim. See `range_mvp_spec_v0_1.md` an
 - Team policies / audit / governance
 - Cloud-hosted multi-user version (current MVP is local-first)
 
-### 10.4 The north star
+### 11.5 The north star
 
 By 2028, Range is the unified workspace for the loop from sim through deployment for the robotics industry. Each year's roadmap earns the next year's expansion.
 
 ---
 
-## 11. Success metrics
+## 12. Success metrics
 
-### 11.1 Activation (week 1 of a new user)
+### 12.1 Activation (week 1 of a new user)
 
-- Time from first launch to first session created
-- Time from first session to first run completing
-- Time from first session to first evidence-backed PR drafted
-- Target: all three under 30 minutes for the canonical MuJoCo path
+- Time from first launch to first session created (target: < 30 seconds)
+- Time from first session to first run completing (target: < 5 minutes)
+- Time from first session to first evidence-backed PR drafted (target: < 30 minutes for the canonical MuJoCo path)
+- % of new users who reach a shipped PR in week 1 (target: > 50%)
 
-### 11.2 Engagement (steady state)
+### 12.2 Engagement (steady state)
 
 - Sessions per developer per week (target: 5+)
 - Attempts per session (target: 1.5-3, indicating real iteration without sprawl)
 - % of weekly sessions that culminate in a PR (target: 60%+ for tracked-task sessions)
-- WAU / MAU ratio (target: >50%)
+- WAU / MAU ratio (target: > 50%)
 
-### 11.3 Wedge metrics
+### 12.3 Wedge metrics
 
 - % of PRs produced through Range that have a complete evidence package (target: 80%+)
 - % of verification records that *gate* a PR push (target: high — the gate is doing its job)
 - Reviewer acceptance rate for Range PRs vs. team average (target: equal or better)
 
-### 11.4 Trust signals
+### 12.4 Trust signals
 
 - Multi-seed eval as default behavior, not opt-in
 - Approval-gate denial rate (low rate suggests gates are well-tuned; high rate suggests over-gating)
@@ -804,9 +1292,9 @@ By 2028, Range is the unified workspace for the loop from sim through deployment
 
 ---
 
-## 12. Non-goals & risks
+## 13. Non-goals & risks
 
-### 12.1 Non-goals (deliberately not building)
+### 13.1 Non-goals (deliberately not building)
 
 - A code editor (Cursor / VSCode own this)
 - A simulator (MuJoCo / Gazebo / Drake own this)
@@ -817,7 +1305,7 @@ By 2028, Range is the unified workspace for the loop from sim through deployment
 - Mobile UI in MVP (Companion has one; we don't need it)
 - A general-purpose dev tool — we are domain-deep, not domain-shallow
 
-### 12.2 Risks
+### 13.2 Risks
 
 - **Cursor adds robot-sim awareness.** Mitigation: deeper domain depth, evidence model, multi-runner orchestration are non-trivial to clone. Build moat through specificity.
 - **Foxglove adds an agentic layer.** Mitigation: they're viz-first, we're loop-first. Different surface. Could be partner more than competitor.
@@ -827,7 +1315,7 @@ By 2028, Range is the unified workspace for the loop from sim through deployment
 - **MVP scope creeps.** Mitigation: paired phases with Yard force discipline; each phase has explicit exit criteria.
 - **First user research never happens.** Mitigation: the founder is at NVIDIA with privileged access to real Isaac Lab / sim users. Schedule conversations early, not after MVP ships.
 
-### 12.3 Open questions
+### 13.3 Open questions
 
 These don't block MVP but should be resolved before public launch:
 
@@ -839,9 +1327,15 @@ These don't block MVP but should be resolved before public launch:
 
 ---
 
-## 13. Appendices
+## 14. Authority
 
-### A. Persona vignettes (condensed)
+This PRD is the canonical product reference. When it conflicts with an earlier document, this one wins. When this one is ambiguous, the supporting documents named in §0 fill in detail. When all of them are silent, the founder decides and the next revision captures the decision.
+
+Next review trigger: shipping MVP Phase 3, or any major strategic event (acquisition offer, market shift, vendor terms change).
+
+---
+
+## Appendix A. Persona vignettes (condensed)
 
 Three condensed personas tied to specific real public stacks. Full versions in `docs/range_scenarios_v0_1.md`.
 
@@ -851,7 +1345,9 @@ Three condensed personas tied to specific real public stacks. Full versions in `
 
 **Karthik — AV sensor-sim engineer.** Builds proprietary synthetic data pipeline on ovrtx. Day: defend his work against blame from the perception team's regressions. Range scenario: perception team flags 3% mAP drop; Karthik re-verifies his old PR with their new eval dataset, proves his change wasn't the cause, shares the evidence record with the perception team.
 
-### B. Companion borrowing summary
+---
+
+## Appendix B. Companion borrowing summary
 
 Per `companion_learnings_v0_1.md`, we vendor specific patterns from The-Vibe-Company/companion (MIT):
 
@@ -866,7 +1362,9 @@ Per `companion_learnings_v0_1.md`, we vendor specific patterns from The-Vibe-Com
 
 We do *not* vendor: their mobile UI, Linear-specific integration, deep generic chat surface. License attribution required where we copy code substantively.
 
-### C. Mockup reference
+---
+
+## Appendix C. Mockup reference
 
 Six self-contained HTML mockups serve as authoritative visual references:
 
@@ -879,7 +1377,9 @@ Six self-contained HTML mockups serve as authoritative visual references:
 
 Each has dark/light theme support and renders without a build step.
 
-### D. Yard — the dogfood sim
+---
+
+## Appendix D. Yard — the dogfood sim
 
 A deliberately minimal robotics simulator built on MuJoCo + USD + Python that Range uses to dogfood itself. One robot, one warehouse scene, one depth camera, one navigation task, multi-seed eval. Codebase capped at 2,000 lines as a forcing function. Full spec in `yard_product_spec_v0_1.md`.
 
@@ -887,8 +1387,196 @@ Yard is not the product. Range is. Yard exists so Range stays honest.
 
 ---
 
-## 14. Authority
+## Appendix E. Sample evidence-backed PR (full body)
 
-This PRD is the canonical product reference. When it conflicts with an earlier document, this one wins. When this one is ambiguous, the supporting documents named in §0 fill in detail. When all of them are silent, the founder decides and the next revision captures the decision.
+This is what Range produces at the end of a successful session. The structured sections are template-rendered from the verification record and run data — they are not editable as free text. The narrative section (Summary, Known risks) is Codex-drafted and developer-editable.
 
-Next review trigger: shipping MVP Phase 3, or any major strategic event (acquisition offer, market shift, vendor terms change).
+```markdown
+# Fix replay buffer ordering in warehouse_dense_v3 navigation
+
+## Summary
+Fixes a frame-ordering bug in `_advance_pointer` that caused stale
+obstacle state during warehouse_dense_v3 rollouts. The pointer was
+advancing before the timestamp was stamped onto the frame, causing
+consumers to read a frame labeled with the next pointer's timestamp.
+
+## Task
+- Source:     SIM-1842
+- Repo:       robot-nav-sim
+- Base:       main@abc123def
+- Session:    ssn_mp2wdpmuql2uqj
+- Candidate:  codex-fix-minimal
+
+## Files changed
+- src/nav/replay_buffer.py            (+12 / -2)
+- tests/nav/test_replay_buffer.py     (+38 / new file)
+
+## Guardrails respected
+- ✓ scope: src/nav/ only
+- ✓ no planner public API changes
+- ✓ ≤2GB GPU per run
+
+## Verification — status: passed
+
+All checks across 5 seeds.
+
+| Check                    | Threshold     | Result                   |
+|--------------------------|---------------|--------------------------|
+| success_rate             | ≥ 0.92        | 0.94 ± 0.02 (n=5)        |
+| collision_count          | = 0           | 0 across all seeds       |
+| time_to_goal_ms          | ≤ 15000       | 11890 median             |
+| diff scope (src/nav/)    | satisfied     | passed                   |
+| Cleanroom verification   | passed        | re-applied to base SHA   |
+
+## Metric deltas (vs. baseline-main)
+
+| Metric          | Baseline (n=5)  | Candidate (n=5)  | Δ        |
+|-----------------|-----------------|------------------|----------|
+| success_rate    | 0.62 ± 0.08     | 0.94 ± 0.02      | +0.32 ↑  |
+| collisions      | 0.4  ± 0.5      | 0.0              | -0.4  ↓  |
+| time_to_goal_ms | 14200 ± 1800    | 11890 ± 800      | -2310 ↓  |
+
+## Evidence
+- Trajectory video (candidate): runs/SIM-1842/codex-fix-minimal/warehouse_a_seed42.mp4
+- Depth frame sequence:         runs/SIM-1842/codex-fix-minimal/depth_frames/
+- Per-seed metrics:             runs/SIM-1842/codex-fix-minimal/per_seed/
+- Baseline trajectory:          runs/SIM-1842/baseline-main/warehouse_a_seed42.mp4
+- Verification record:          range://verifications/ver_3kf9q2
+
+## Reproduce
+```bash
+range verify --session ssn_mp2wdpmuql2uqj \
+             --attempt codex-fix-minimal \
+             --clean
+```
+
+This will check out the candidate commit, apply the cleanroom verification
+flow, and produce the same metric outcomes within statistical variance.
+
+## Known risks
+- Only validated on warehouse_dense_v3 and seeds 42–46. Behavior on other
+  scenarios was not verified in this session.
+- The frame-timestamp invariant was previously implicit; this PR makes it
+  explicit via a unit test. If other code paths rely on the old ordering,
+  they may need updating.
+
+---
+Generated by Range v0.1.0 · Codex (gpt-5 via codex app-server) ·
+session ssn_mp2wdpmuql2uqj · 2026-05-12T17:24:12Z
+```
+
+The reviewer's job changes shape with a PR like this. They are not re-verifying claims; they are reviewing **reasoning** and **risk** while trusting the structured evidence.
+
+---
+
+## Appendix F. Sample verification record (full JSON)
+
+The on-disk shape of the verification record referenced in §6.1 and serialized into the PR template in Appendix E.
+
+```json
+{
+  "id": "ver_3kf9q2",
+  "attempt_id": "att_codex_fix_minimal",
+  "session_id": "ssn_mp2wdpmuql2uqj",
+  "status": "passed",
+  "kind": "multi_seed",
+  "scenario": "warehouse_a",
+  "created_at": "2026-05-12T17:21:28Z",
+  "completed_at": "2026-05-12T17:24:12Z",
+  "n_seeds": 5,
+  "runner": "local",
+  "checks": [
+    {
+      "name": "success_rate",
+      "kind": "metric_threshold",
+      "predicate": ">=0.92",
+      "aggregate": "mean_across_seeds",
+      "observed": {
+        "value": 0.94,
+        "stddev": 0.02,
+        "n_seeds": 5,
+        "per_seed": [
+          {"seed": 42, "value": 0.96, "run_id": "run_a1"},
+          {"seed": 43, "value": 0.93, "run_id": "run_a2"},
+          {"seed": 44, "value": 0.94, "run_id": "run_a3"},
+          {"seed": 45, "value": 0.91, "run_id": "run_a4"},
+          {"seed": 46, "value": 0.96, "run_id": "run_a5"}
+        ]
+      },
+      "status": "passed"
+    },
+    {
+      "name": "collisions",
+      "kind": "metric_threshold",
+      "predicate": "==0",
+      "aggregate": "sum_across_seeds",
+      "observed": { "value": 0, "n_seeds": 5 },
+      "status": "passed"
+    },
+    {
+      "name": "time_to_goal_ms",
+      "kind": "metric_threshold",
+      "predicate": "<=15000",
+      "aggregate": "median_across_seeds",
+      "observed": {
+        "value": 11890,
+        "stddev": 800,
+        "n_seeds": 5
+      },
+      "status": "passed"
+    },
+    {
+      "name": "video_artifact_present",
+      "kind": "artifact_exists",
+      "predicate": "runs/${run_id}/replay.mp4",
+      "status": "passed",
+      "artifact_refs": [
+        "run_a1:replay.mp4",
+        "run_a2:replay.mp4",
+        "run_a3:replay.mp4",
+        "run_a4:replay.mp4",
+        "run_a5:replay.mp4"
+      ]
+    },
+    {
+      "name": "diff_scope",
+      "kind": "diff_scope",
+      "predicate": "src/nav/",
+      "observed": {
+        "files_changed": 2,
+        "all_inside_scope": true,
+        "files": [
+          "src/nav/replay_buffer.py",
+          "tests/nav/test_replay_buffer.py"
+        ]
+      },
+      "status": "passed"
+    },
+    {
+      "name": "cleanroom_verified",
+      "kind": "cleanroom_rerun",
+      "predicate": "all_metrics_match_within_tolerance",
+      "observed": { "matched": true, "tolerance": 0.05 },
+      "status": "passed"
+    }
+  ],
+  "runs": [
+    "run_a1",
+    "run_a2",
+    "run_a3",
+    "run_a4",
+    "run_a5",
+    "run_cleanroom_a1"
+  ],
+  "overrides": [],
+  "concerns_pinned": [],
+  "metadata": {
+    "codex_thread_id": "thr_zb9k1p",
+    "code_sha": "f8a9b2c4",
+    "profile_version": "v1",
+    "range_version": "0.1.0"
+  }
+}
+```
+
+A `passed-with-concerns` record carries the same shape plus a non-empty `concerns_pinned` array (each entry a step range with a note). A `failed` record has at least one check with status `failed`. An `overridden` record has a non-empty `overrides` array, each entry with `reason`, `signer`, and `timestamp`.
