@@ -16,12 +16,15 @@ This repository holds the product specifications, scenario walkthroughs, and UX 
 
 | Type | File | What it is |
 |---|---|---|
-| Intro | [`ELI_5.md`](ELI_5.md) | What Yard is and the components used to build it, explained for engineers new to robotics simulation |
-| Full spec | [`docs/range_product_spec_v0_4_codex_sim_streaming.md`](docs/range_product_spec_v0_4_codex_sim_streaming.md) | The comprehensive Range product specification — vision, principles, V1 scope, simulation streaming model, integration strategy, risks |
-| MVP spec | [`docs/range_mvp_spec_v0_1.md`](docs/range_mvp_spec_v0_1.md) | The scoped MVP cut — smallest credible version that can drive Yard end-to-end |
-| Sim project | [`docs/yard_product_spec_v0_1.md`](docs/yard_product_spec_v0_1.md) | Yard — a deliberately tiny robotics simulator we'll build alongside Range to dogfood it |
-| Scenarios | [`docs/range_scenarios_v0_1.md`](docs/range_scenarios_v0_1.md) | Three first-walkthrough scenarios across personas (Priya / Anika / Karthik), anchored on `ovrtx` and Isaac Lab |
-| Learnings | [`docs/companion_learnings_v0_1.md`](docs/companion_learnings_v0_1.md) | What we borrow, build, and avoid from The-Vibe-Company/companion (MIT-licensed Codex/Claude Code orchestration UI); explains the Codex transport decision |
+| **★ Canonical PRD** | [`docs/range_prd_v1_0.md`](docs/range_prd_v1_0.md) | **The authoritative product reference.** Vision, problem, users, user stories, UX wireframes, architecture, target stacks, roadmap. Start here. |
+| Positioning | [`docs/range_positioning_v0_1.md`](docs/range_positioning_v0_1.md) | NVIDIA-independence policy, audience commitments, allowed/forbidden dependencies |
+| Stack support | [`docs/range_sim_stack_support_v0_1.md`](docs/range_sim_stack_support_v0_1.md) | Top-2 stacks officially supported (MuJoCo, ROS 2 + Gazebo) with reasoning |
+| Intro | [`ELI_5.md`](ELI_5.md) | What Yard is and the components used to build it, for engineers new to robotics simulation |
+| MVP spec | [`docs/range_mvp_spec_v0_1.md`](docs/range_mvp_spec_v0_1.md) | The scoped MVP build plan — phases paired with Yard |
+| Sim project | [`docs/yard_product_spec_v0_1.md`](docs/yard_product_spec_v0_1.md) | Yard — the deliberately tiny robotics simulator we use to dogfood Range |
+| Scenarios | [`docs/range_scenarios_v0_1.md`](docs/range_scenarios_v0_1.md) | Three first-walkthrough scenarios across personas (Priya / Anika / Karthik) |
+| Learnings | [`docs/companion_learnings_v0_1.md`](docs/companion_learnings_v0_1.md) | What we borrow, build, and avoid from The-Vibe-Company/companion (MIT-licensed Codex/Claude Code orchestration UI) |
+| Earlier spec | [`docs/range_product_spec_v0_4_codex_sim_streaming.md`](docs/range_product_spec_v0_4_codex_sim_streaming.md) | Original v0.4 product spec — kept as historical reference; superseded by the PRD |
 | Mockups | [`mockups/`](mockups/) | Six self-contained HTML mockups covering the app's main surfaces |
 
 ---
@@ -30,23 +33,20 @@ This repository holds the product specifications, scenario walkthroughs, and UX 
 
 Different reading paths depending on what brought you here.
 
+**You want the canonical product picture.**
+1. Read [`docs/range_prd_v1_0.md`](docs/range_prd_v1_0.md) — vision, users, user stories, UX wireframes, architecture, roadmap. Self-contained.
+
 **You want to *see* what we're building.**
 1. Open [`mockups/mockup-index.html`](mockups/mockup-index.html) in a browser.
 2. Click through the five linked screens (auth → home → live session → freeform → plan).
 
 **You're new to robotics simulation.**
 1. Read [`ELI_5.md`](ELI_5.md).
-2. Then [`docs/yard_product_spec_v0_1.md`](docs/yard_product_spec_v0_1.md) to see the smallest version of the field.
-3. Then the Range docs.
-
-**You want the full strategic picture.**
-1. [`docs/range_product_spec_v0_4_codex_sim_streaming.md`](docs/range_product_spec_v0_4_codex_sim_streaming.md) — vision, V1 scope, why simulation-aware
-2. [`docs/range_scenarios_v0_1.md`](docs/range_scenarios_v0_1.md) — three personas through one walkthrough each
-3. [`docs/range_mvp_spec_v0_1.md`](docs/range_mvp_spec_v0_1.md) — the cut-down version we'll actually build first
-4. [`docs/yard_product_spec_v0_1.md`](docs/yard_product_spec_v0_1.md) — the paired dogfood sim
+2. Then [`docs/range_prd_v1_0.md`](docs/range_prd_v1_0.md) for the product picture.
 
 **You're planning to implement.**
-Start with [`docs/range_mvp_spec_v0_1.md`](docs/range_mvp_spec_v0_1.md). It's the most concrete and scoped, with phases, P0/P1 cuts, and the decisions already resolved from earlier work.
+1. Start with [`docs/range_prd_v1_0.md`](docs/range_prd_v1_0.md) for product context.
+2. Then [`docs/range_mvp_spec_v0_1.md`](docs/range_mvp_spec_v0_1.md) for the phased build plan with P0/P1 cuts and resolved decisions.
 
 ---
 
@@ -58,11 +58,14 @@ range/
 ├── ELI_5.md                                                    # Robotics sim explained for engineers new to it
 ├── .gitignore
 ├── docs/
-│   ├── range_product_spec_v0_4_codex_sim_streaming.md          # Full Range product spec
-│   ├── range_mvp_spec_v0_1.md                                  # Scoped MVP for Range
+│   ├── range_prd_v1_0.md                                       # ★ Canonical PRD — start here
+│   ├── range_positioning_v0_1.md                               # NVIDIA-independence policy
+│   ├── range_sim_stack_support_v0_1.md                         # Top-2 stacks (MuJoCo, ROS 2 + Gazebo)
+│   ├── range_mvp_spec_v0_1.md                                  # Phased MVP build plan
 │   ├── range_scenarios_v0_1.md                                 # Three persona-anchored walkthrough candidates
 │   ├── yard_product_spec_v0_1.md                               # The paired dogfood sim project
-│   └── companion_learnings_v0_1.md                             # What we borrow vs build from The-Vibe-Company/companion
+│   ├── companion_learnings_v0_1.md                             # What we borrow from Companion (MIT)
+│   └── range_product_spec_v0_4_codex_sim_streaming.md          # Original v0.4 — historical reference
 └── mockups/
     ├── mockup-index.html                                       # Launcher — start here, links the rest
     ├── mockup-auth.html                                        # Connect GitHub / Jira / Slack flow
