@@ -21,6 +21,7 @@ This repository holds the product specifications, scenario walkthroughs, and UX 
 | MVP spec | [`docs/range_mvp_spec_v0_1.md`](docs/range_mvp_spec_v0_1.md) | The scoped MVP cut — smallest credible version that can drive Yard end-to-end |
 | Sim project | [`docs/yard_product_spec_v0_1.md`](docs/yard_product_spec_v0_1.md) | Yard — a deliberately tiny robotics simulator we'll build alongside Range to dogfood it |
 | Scenarios | [`docs/range_scenarios_v0_1.md`](docs/range_scenarios_v0_1.md) | Three first-walkthrough scenarios across personas (Priya / Anika / Karthik), anchored on `ovrtx` and Isaac Lab |
+| Learnings | [`docs/companion_learnings_v0_1.md`](docs/companion_learnings_v0_1.md) | What we borrow, build, and avoid from The-Vibe-Company/companion (MIT-licensed Codex/Claude Code orchestration UI); explains the Codex transport decision |
 | Mockups | [`mockups/`](mockups/) | Six self-contained HTML mockups covering the app's main surfaces |
 
 ---
@@ -60,7 +61,8 @@ range/
 │   ├── range_product_spec_v0_4_codex_sim_streaming.md          # Full Range product spec
 │   ├── range_mvp_spec_v0_1.md                                  # Scoped MVP for Range
 │   ├── range_scenarios_v0_1.md                                 # Three persona-anchored walkthrough candidates
-│   └── yard_product_spec_v0_1.md                               # The paired dogfood sim project
+│   ├── yard_product_spec_v0_1.md                               # The paired dogfood sim project
+│   └── companion_learnings_v0_1.md                             # What we borrow vs build from The-Vibe-Company/companion
 └── mockups/
     ├── mockup-index.html                                       # Launcher — start here, links the rest
     ├── mockup-auth.html                                        # Connect GitHub / Jira / Slack flow

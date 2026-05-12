@@ -27,13 +27,13 @@ Five layers, each at minimum complexity:
 
 | Layer | MVP form | Purpose | Cut from v0.4 |
 |---|---|---|---|
-| **UI** | Single-page web app served locally | Conversation, sessions, attempts, evidence panels | No multi-user, no SSO, no team policies, no mobile |
-| **Orchestration** | Local Node or Python server | Maps user intent to actions; manages sessions and attempts | No multi-tenant, no third-party API |
-| **Codex adapter** | `codex exec --json` subprocess | Spawns Codex non-interactively, captures JSONL events, returns diffs | No SDK integration, no app-server, no interactive TUI bridging |
+| **UI** | Single-page web app (React + Vite + Tailwind) served locally | Conversation, sessions, attempts, evidence panels | No multi-user, no SSO, no team policies, no mobile |
+| **Orchestration** | Bun + Hono server (matching Companion's stack to maximize borrow) | Maps user intent to actions; manages sessions and attempts | No multi-tenant, no third-party API |
+| **Codex adapter** | `codex app-server` subprocess + JSON-RPC 2.0 over stdio (Companion-style) | Persistent thread per attempt; structured event lifecycle (`item/started` → `item/updated` → `item/completed`); native tool-approval flow via JSON-RPC requests | No WebSocket transport (P1); `codex exec --json` retained as fallback for non-interactive batch jobs only |
 | **Runner** | Local shell + SSH-backed remote | Runs commands, captures stdout/stderr/exit code, streams artifacts back | No Kubernetes, no Docker, no auto-provisioning |
 | **Storage** | Local SQLite + filesystem | Sessions, attempts, runs, artifacts, verification records | No cloud storage, no signed URLs, no replication |
 
-Five components. One developer can build them. No infrastructure dependencies beyond a Mac with optionally one Linux+GPU box reachable over SSH.
+Five components. One developer can build them. No infrastructure dependencies beyond a Mac with optionally one Linux+GPU box reachable over SSH. Stack alignment with The-Vibe-Company/companion (MIT) lets us vendor specific files (session state machine, stdio transport patterns) with attribution and skip several weeks of scaffolding — see `companion_learnings_v0_1.md`.
 
 ---
 
@@ -51,11 +51,14 @@ Five components. One developer can build them. No infrastructure dependencies be
 - Discard an attempt with worktree cleanup
 
 ### Codex integration
-- Spawn Codex in an attempt worktree via `codex exec --json`
-- Capture and stream Codex events to the UI
-- Detect file edits and command executions made by Codex
-- Two sandbox modes: read-only (investigation) and workspace-write (implementation)
-- Approval gates: pushing, expensive runs, network access beyond an allowlist
+- Spawn `codex app-server` per attempt with `cwd` set to the attempt's worktree
+- Talk JSON-RPC 2.0 newline-delimited over stdio; handshake is `initialize` → `initialized` → `thread/start`
+- Persistent thread per attempt; use `thread/resume` to reconnect after process restarts
+- Capture the full Codex item lifecycle (`item/started` / `item/updated` / `item/completed`) and translate to a backend-agnostic browser event stream
+- Three sandbox modes mapped to Codex enums: `read-only`, `workspace-write`, `danger-full-access` (last requires explicit approval)
+- Approval policy: `untrusted` by default; `never` for "bypass" mode
+- Tool-approval flow: `item/commandExecution/requestApproval` and `item/fileChange/requestApproval` surface to the UI as permission requests; UI response becomes the JSON-RPC response
+- Approval gates above and beyond Codex's own: pushing, expensive runs, network access beyond an allowlist
 
 ### Run management
 - Run a profile-defined command locally
@@ -119,7 +122,7 @@ These are flagged so we don't accidentally build them. They're real features for
 - Docker-based runner
 - Cloud-hosted multi-user version
 - A third-party API
-- Multiple Codex adapter paths (SDK, app-server) — `codex exec` is the only path
+- Multiple Codex transports — stdio JSON-RPC (Companion-style) is the only path; WebSocket transport for Codex is feature-flag P1; `codex exec --json` retained only as a fallback for non-interactive batch jobs
 - Mobile or responsive UI (desktop browser only)
 - Plan view's advanced filtering, search, sorting
 
@@ -130,7 +133,7 @@ These are flagged so we don't accidentally build them. They're real features for
 ### MVP Phase 1 — Local harness (2 weeks)
 - The existing HTML mockups wired up to a real backend
 - SQLite + filesystem storage
-- Codex CLI integration via `codex exec --json`
+- Codex integration via `codex app-server` over JSON-RPC stdio (Companion-style adapter)
 - Local runner only
 - Session + attempt creation works
 - Basic evidence panel: live logs + artifact list + frame preview
@@ -170,12 +173,14 @@ These were resolved in prior sessions and don't need re-litigating:
 6. **Codex describing visuals = narrator only.** Plain-language description, not authoritative judgment.
 7. **PR body = hybrid structured backbone + Codex narrative.** Evidence sections are template-rendered from data and not editable as text; narrative is Codex-drafted, developer-editable.
 8. **Top-level term = "sessions"; "attempts" only inside the session view.** Sessions are the umbrella; attempts are an internal mechanism for parallel branches.
+9. **Codex transport = `codex app-server` over JSON-RPC stdio,** modeled on The-Vibe-Company/companion's `codex-adapter.ts`. Persistent thread per attempt, resumed via `thread/resume`. WebSocket transport for Codex is post-MVP. `codex exec --json` retained only for non-interactive batch jobs.
+10. **Backend stack = Bun + Hono.** Frontend = React + Vite + Tailwind (matching the existing mockups). Decision driven by maximizing borrow-compatibility with Companion under MIT license.
 
 ---
 
 ## 7. Open decisions to make in Phase 1 (don't block, but commit before Phase 2)
 
-- **Backend language:** Node vs Python. Probably Python — closer to the sim/ML ecosystem; Codex CLI is happy either way; SQLite has good Python bindings.
+- ~~**Backend language:** Node vs Python.~~ **Decided: Bun + Hono.** Aligns with Companion's stack to maximize code borrowing under MIT; fast startup; bundled tooling. Range itself doesn't need Python in-process — Yard runs as a subprocess via the runner abstraction. See `companion_learnings_v0_1.md`.
 - **Codex thread durability:** what happens to a Codex session when Range restarts? For MVP, restart = new thread, with the prior context pack re-passed. Defensible.
 - **Frame rendering pipeline:** does Range process video/frame artifacts at all (thumbnailing, scaling), or just serve them raw? Serve raw for MVP; optimize if it bites.
 - **Profile vs CLI args:** does the user specify reproduce commands in `range.yaml` or in the conversation? Profile-first, override in conversation if needed.
@@ -198,7 +203,7 @@ The right answer depends on how strongly the MVP demos generate external pull. W
 
 To make this honest, the cuts from v0.4 are large:
 
-- **Adapter A, B, C model** → only Adapter A (file + command globs). No SDK emitter, no native simulator adapters.
+- **Adapter A, B, C model** → only Adapter A (file + command globs). No SDK emitter, no native simulator adapters. (Note: this refers to the v0.4 spec's *simulation streaming adapter* taxonomy, not the Codex transport choice — Codex itself now uses the app-server stdio path per Companion's pattern.)
 - **Multi-seed and cleanroom as verification primitives** → out of MVP; user invokes them manually if needed via the profile's eval command.
 - **Investigation mode and implementation mode as distinct UI** → same panel, just different sandbox flag.
 - **Profile-defined trajectory metrics** → point metrics only.
