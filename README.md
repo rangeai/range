@@ -110,4 +110,4 @@ This pattern — dogfooding through a paired minimal product — is the strategy
 
 ## License
 
-Not yet licensed. Treat as proprietary while we figure out the path.
+MIT — see [LICENSE](LICENSE).

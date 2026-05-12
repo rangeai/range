@@ -1,1 +1,22 @@
 .DS_Store
+
+# Node / Bun
+node_modules/
+.bun/
+*.tsbuildinfo
+
+# Build output
+dist/
+.vite/
+
+# Logs
+*.log
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+
+# Local config
+.env
+.env.local
