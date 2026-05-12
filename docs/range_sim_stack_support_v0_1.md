@@ -105,6 +105,19 @@ Top 2 today satisfy all 4. Drake satisfies 1, 2, 3 (waiting on 4). Isaac Lab fai
 
 ---
 
+## Mac dev viability (2026)
+
+Both stacks run natively on macOS Apple Silicon in 2026, which means **Range development and demo work can proceed entirely on a Mac** before any remote-runner infrastructure exists.
+
+| Stack | Mac status | Install path |
+|---|---|---|
+| MuJoCo | First-class native, Apple Silicon | `pip install mujoco`; MJX uses Metal. Yard's existing path. |
+| ROS 2 + Gazebo | Community-native (IOES-Lab installers); not Tier 1 official | ~30 min one-time install via `github.com/IOES-Lab/ROS2_Jazzy_MacOS_Native_AppleSilicon`. Avoids Docker / Rosetta overhead. ROS 2 Kilted has demoed natively on Apple Silicon with Gazebo Ionic + MoveIt 2 + Navigation 2. |
+
+**Implication for the MVP phasing:** the Gazebo demo is no longer gated on remote-runner work. We can build and verify the turtlebot navigation profile on the Mac during Phase 2, alongside the MuJoCo profile. Phase 3's SSH-remote runner becomes a "scales up" feature for heavy training workloads, not a prerequisite for shipping Gazebo support.
+
+---
+
 ## Sources
 
 - Black Coffee Robotics — Robot Simulation Software: A 2026 Perspective (https://www.blackcoffeerobotics.com/blog/which-robot-simulation-software-to-use)
