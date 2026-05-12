@@ -22,7 +22,19 @@ import type {
 } from "../shared/protocol.ts";
 import "./db.ts";
 import { createSession, getSession, listSessions } from "./sessions.ts";
+import {
+  createAttempt,
+  getAttempt,
+  listAttempts,
+  setCandidate,
+} from "./attempts.ts";
 import { broadcast, registerSender } from "./hub.ts";
+import type {
+  CreateAttemptRequest,
+  CreateAttemptResponse,
+  GetAttemptResponse,
+  ListAttemptsResponse,
+} from "../shared/protocol.ts";
 
 const VERSION = "0.1.0";
 const PORT = Number(Bun.env.RANGE_PORT ?? 3457);
@@ -79,6 +91,87 @@ app.get("/api/sessions/:id", (c) => {
   if (!session) return c.json({ error: "session not found" }, 404);
   const response: GetSessionResponse = { session };
   return c.json(response);
+});
+
+// ─── Attempts ──────────────────────────────────────────────────────────────
+
+const VALID_ATTEMPT_KINDS = new Set([
+  "baseline",
+  "investigation",
+  "implementation",
+  "verification",
+  "freeform",
+]);
+
+const VALID_SANDBOXES = new Set([
+  "read-only",
+  "workspace-write",
+  "danger-full-access",
+]);
+
+app.get("/api/sessions/:id/attempts", (c) => {
+  const sessionId = c.req.param("id");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  const attempts = listAttempts(sessionId);
+  const response: ListAttemptsResponse = { attempts };
+  return c.json(response);
+});
+
+app.post("/api/sessions/:id/attempts", async (c) => {
+  const sessionId = c.req.param("id");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
+
+  let body: CreateAttemptRequest;
+  try {
+    body = (await c.req.json().catch(() => ({}))) as CreateAttemptRequest;
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+
+  if (body.kind && !VALID_ATTEMPT_KINDS.has(body.kind)) {
+    return c.json({ error: `kind must be one of: ${[...VALID_ATTEMPT_KINDS].join(" | ")}` }, 400);
+  }
+  if (body.sandbox && !VALID_SANDBOXES.has(body.sandbox)) {
+    return c.json({ error: `sandbox must be one of: ${[...VALID_SANDBOXES].join(" | ")}` }, 400);
+  }
+
+  try {
+    const attempt = await createAttempt({
+      sessionId,
+      name: body.name,
+      kind: body.kind,
+      sandbox: body.sandbox,
+      baseBranch: body.baseBranch,
+    });
+    broadcast({ type: "attempt_created", attempt });
+    log.info("api", "attempt created", { id: attempt.id, sessionId });
+    const response: CreateAttemptResponse = { attempt };
+    return c.json(response, 201);
+  } catch (err) {
+    log.error("api", "attempt create failed", {
+      sessionId,
+      err: String(err),
+    });
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.get("/api/attempts/:id", (c) => {
+  const id = c.req.param("id");
+  const attempt = getAttempt(id);
+  if (!attempt) return c.json({ error: "attempt not found" }, 404);
+  const response: GetAttemptResponse = { attempt };
+  return c.json(response);
+});
+
+app.post("/api/attempts/:id/promote", (c) => {
+  const id = c.req.param("id");
+  const attempt = setCandidate(id, true);
+  if (!attempt) return c.json({ error: "attempt not found" }, 404);
+  broadcast({ type: "attempt_updated", attempt });
+  return c.json({ attempt });
 });
 
 // ─── WebSocket ─────────────────────────────────────────────────────────────

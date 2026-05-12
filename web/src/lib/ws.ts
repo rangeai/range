@@ -77,6 +77,10 @@ class WsStore {
       case "session_updated":
         useAppStore.getState().upsertSession(msg.session);
         break;
+      case "attempt_created":
+      case "attempt_updated":
+        useAppStore.getState().upsertAttempt(msg.attempt);
+        break;
     }
   }
 

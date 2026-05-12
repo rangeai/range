@@ -19,6 +19,7 @@ interface SessionRow {
   title: string;
   prompt: string | null;
   repo: string | null;
+  repo_path: string | null;
   task_ref: string | null;
   status: string;
   created_at: number;
@@ -32,6 +33,7 @@ function rowToSession(row: SessionRow): Session {
     title: row.title,
     prompt: row.prompt,
     repo: row.repo,
+    repoPath: row.repo_path,
     taskRef: row.task_ref,
     status: row.status as Session["status"],
     createdAt: row.created_at,
@@ -61,8 +63,9 @@ function defaultTitle(kind: SessionKind, prompt: string | null): string {
 
 const insertStmt = db.prepare(`
   INSERT INTO sessions (
-    id, kind, title, prompt, repo, task_ref, status, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    id, kind, title, prompt, repo, repo_path, task_ref,
+    status, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
 `);
 
 const selectByIdStmt = db.prepare<SessionRow, [string]>(
@@ -76,13 +79,15 @@ const selectListStmt = db.prepare<SessionRow, [number]>(
 export function createSession(req: CreateSessionRequest): Session {
   const id = newSessionId();
   const now = Date.now();
-  const title = req.title?.trim() || defaultTitle(req.kind, req.prompt ?? null);
+  const title =
+    req.title?.trim() || defaultTitle(req.kind, req.prompt ?? null);
   insertStmt.run(
     id,
     req.kind,
     title,
     req.prompt ?? null,
     req.repo ?? null,
+    req.repoPath ?? null,
     req.taskRef ?? null,
     now,
     now,
@@ -93,6 +98,7 @@ export function createSession(req: CreateSessionRequest): Session {
     title,
     prompt: req.prompt ?? null,
     repo: req.repo ?? null,
+    repoPath: req.repoPath ?? null,
     taskRef: req.taskRef ?? null,
     status: "active",
     createdAt: now,

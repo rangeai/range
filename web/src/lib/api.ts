@@ -1,7 +1,11 @@
 import type {
+  CreateAttemptRequest,
+  CreateAttemptResponse,
   CreateSessionRequest,
   CreateSessionResponse,
+  GetAttemptResponse,
   GetSessionResponse,
+  ListAttemptsResponse,
   ListSessionsResponse,
 } from "@shared/protocol";
 
@@ -23,6 +27,8 @@ async function jsonRequest<T>(
   return (await res.json()) as T;
 }
 
+// ─── Sessions ─────────────────────────────────────────────────────────────
+
 export function createSession(
   body: CreateSessionRequest,
 ): Promise<CreateSessionResponse> {
@@ -40,4 +46,41 @@ export function getSession(id: string): Promise<GetSessionResponse> {
   return jsonRequest<GetSessionResponse>(
     `/api/sessions/${encodeURIComponent(id)}`,
   );
+}
+
+// ─── Attempts ─────────────────────────────────────────────────────────────
+
+export function listAttempts(
+  sessionId: string,
+): Promise<ListAttemptsResponse> {
+  return jsonRequest<ListAttemptsResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/attempts`,
+  );
+}
+
+export function createAttempt(
+  sessionId: string,
+  body: CreateAttemptRequest,
+): Promise<CreateAttemptResponse> {
+  return jsonRequest<CreateAttemptResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/attempts`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export function getAttempt(id: string): Promise<GetAttemptResponse> {
+  return jsonRequest<GetAttemptResponse>(
+    `/api/attempts/${encodeURIComponent(id)}`,
+  );
+}
+
+export function promoteAttempt(
+  id: string,
+): Promise<{ attempt: GetAttemptResponse["attempt"] }> {
+  return jsonRequest(`/api/attempts/${encodeURIComponent(id)}/promote`, {
+    method: "POST",
+  });
 }

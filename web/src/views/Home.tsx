@@ -5,15 +5,15 @@ import type { Session, SessionKind } from "@shared/protocol";
 
 export function Home() {
   const sessions = useAppStore((s) => s.sessions);
-  const upsertMany = useAppStore((s) => s.upsertMany);
+  const upsertManySessions = useAppStore((s) => s.upsertManySessions);
   const openSession = useAppStore((s) => s.openSession);
 
   useEffect(() => {
     api
       .listSessions()
-      .then((res) => upsertMany(res.sessions))
+      .then((res) => upsertManySessions(res.sessions))
       .catch((err) => console.error("listSessions failed", err));
-  }, [upsertMany]);
+  }, [upsertManySessions]);
 
   return (
     <div className="flex-1 overflow-y-auto">

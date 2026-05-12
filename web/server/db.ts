@@ -52,6 +52,44 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_sessions_status_updated ON sessions(status, updated_at DESC);
     `,
   },
+  {
+    id: 2,
+    name: "sessions_add_repo_path",
+    up: `
+      ALTER TABLE sessions ADD COLUMN repo_path TEXT;
+    `,
+  },
+  {
+    id: 3,
+    name: "init_attempts",
+    up: `
+      CREATE TABLE attempts (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN (
+          'baseline', 'investigation', 'implementation', 'verification', 'freeform'
+        )),
+        state TEXT NOT NULL DEFAULT 'created' CHECK (state IN (
+          'created', 'worktree_ready', 'agent_running', 'waiting_for_user',
+          'running_command', 'paused', 'verification_pending',
+          'verification_passed', 'verification_failed', 'review_ready',
+          'pr_opened', 'archived'
+        )),
+        sandbox TEXT NOT NULL DEFAULT 'read-only' CHECK (sandbox IN (
+          'read-only', 'workspace-write', 'danger-full-access'
+        )),
+        worktree_path TEXT,
+        branch TEXT,
+        base_sha TEXT,
+        is_candidate INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE (session_id, name)
+      );
+      CREATE INDEX idx_attempts_session ON attempts(session_id, created_at DESC);
+    `,
+  },
 ];
 
 function applyMigrations() {
