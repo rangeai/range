@@ -6,6 +6,7 @@ import type {
   CreateSessionRequest,
   CreateSessionResponse,
   GetAttemptResponse,
+  GetProfileResponse,
   GetRunResponse,
   GetSessionResponse,
   ListAttemptsResponse,
@@ -49,6 +50,12 @@ export function listSessions(): Promise<ListSessionsResponse> {
 export function getSession(id: string): Promise<GetSessionResponse> {
   return jsonRequest<GetSessionResponse>(
     `/api/sessions/${encodeURIComponent(id)}`,
+  );
+}
+
+export function getProfile(sessionId: string): Promise<GetProfileResponse> {
+  return jsonRequest<GetProfileResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/profile`,
   );
 }
 

@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import type { Attempt, Run, RunLogEntry, Session } from "@shared/protocol";
+import type {
+  Attempt,
+  ProfileLoadResult,
+  Run,
+  RunLogEntry,
+  Session,
+} from "@shared/protocol";
 
 export type View =
   | { kind: "home" }
@@ -13,6 +19,7 @@ interface AppState {
   runsByAttempt: Map<string, Map<string, Run>>;
   // Cap each run's logs at LOG_CAP entries to avoid unbounded growth.
   logsByRun: Map<string, RunLogEntry[]>;
+  profilesBySession: Map<string, ProfileLoadResult>;
 
   // Navigation
   goHome: () => void;
@@ -31,6 +38,9 @@ interface AppState {
   upsertManyRuns: (r: Run[]) => void;
   appendLog: (entry: RunLogEntry) => void;
   appendManyLogs: (entries: RunLogEntry[]) => void;
+
+  // Profile
+  setProfile: (sessionId: string, result: ProfileLoadResult) => void;
 }
 
 const LOG_CAP = 5_000;
@@ -41,6 +51,7 @@ export const useAppStore = create<AppState>((set) => ({
   attemptsBySession: new Map(),
   runsByAttempt: new Map(),
   logsByRun: new Map(),
+  profilesBySession: new Map(),
 
   goHome: () => set({ view: { kind: "home" } }),
   openSession: (id) => set({ view: { kind: "session", id } }),
@@ -122,6 +133,13 @@ export const useAppStore = create<AppState>((set) => ({
         next.set(runId, updated);
       }
       return { logsByRun: next };
+    }),
+
+  setProfile: (sessionId, result) =>
+    set((state) => {
+      const next = new Map(state.profilesBySession);
+      next.set(sessionId, result);
+      return { profilesBySession: next };
     }),
 }));
 

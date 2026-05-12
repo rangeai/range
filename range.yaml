@@ -1,0 +1,44 @@
+# Range — dogfood profile for the Range repository itself.
+#
+# When Range opens a session anchored at this repo path, the commands
+# below appear as one-click run launchers inside the attempt detail.
+#
+# Three command forms are supported (string / array / object); see
+# docs/range_prd_v1_0.md §10 for the full schema.
+
+version: 1
+
+project:
+  name: range
+  description: "Range — the agentic IDE for robot simulation"
+  stack: bun + hono + react
+  language: typescript
+
+commands:
+  install:
+    args: ["bun", "install"]
+    description: "install web/ dependencies"
+
+  typecheck:
+    args: ["bun", "run", "--cwd", "web", "typecheck"]
+    description: "tsc -b --noEmit across app + server + node configs"
+
+  build:
+    args: ["bun", "run", "--cwd", "web", "build"]
+    description: "vite production build of the frontend"
+
+  build-server:
+    args: ["bun", "run", "--cwd", "web", "build:server"]
+    description: "bun build of the server bundle"
+
+  git-status:
+    args: ["git", "status", "--short"]
+    description: "quick status check inside the worktree"
+
+  git-log:
+    args: ["git", "log", "--oneline", "-10"]
+    description: "last 10 commits"
+
+  smoke-health:
+    args: ["curl", "-sS", "http://127.0.0.1:3457/api/health"]
+    description: "hit the local server's /api/health from inside the worktree"

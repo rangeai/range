@@ -112,6 +112,47 @@ export interface RunLogEntry {
   message: string;
 }
 
+// ─── Profile (range.yaml) ──────────────────────────────────────────────────
+
+/**
+ * A profile is the project's declaration of how Range orchestrates its
+ * stack. Loaded from <repo_path>/range.yaml.
+ *
+ * MVP scope: project metadata + named commands. Scenarios, metrics,
+ * verification rules, runners, and approvals are reserved for Phase 2.
+ */
+
+export interface ProfileCommand {
+  name: string;
+  args: string[]; // executable + args, e.g. ["pytest", "tests/"]
+  description?: string;
+}
+
+export interface Profile {
+  version: number;
+  project: {
+    name: string;
+    description?: string;
+    stack?: string;
+    language?: string;
+  };
+  commands: ProfileCommand[];
+}
+
+export interface ProfileLoadResult {
+  profile: Profile | null;
+  /** Absolute path of the range.yaml we tried to read. */
+  path: string;
+  /** True if range.yaml existed at all. */
+  found: boolean;
+  /** Parse / validation error, if any. */
+  error: string | null;
+}
+
+export interface GetProfileResponse {
+  result: ProfileLoadResult;
+}
+
 // ─── Server → Browser ──────────────────────────────────────────────────────
 
 export interface ServerHello {

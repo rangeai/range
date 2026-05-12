@@ -38,6 +38,7 @@ import {
   listRunsByAttempt,
 } from "./runs.ts";
 import { abortRun, readRunEvents, startRun } from "./runner.ts";
+import { loadProfile } from "./profile.ts";
 import { broadcast, registerSender } from "./hub.ts";
 import type {
   CreateAttemptRequest,
@@ -45,6 +46,7 @@ import type {
   CreateRunRequest,
   CreateRunResponse,
   GetAttemptResponse,
+  GetProfileResponse,
   GetRunResponse,
   ListAttemptsResponse,
   ListRunsResponse,
@@ -113,6 +115,26 @@ app.get("/api/sessions/:id", (c) => {
   const session = getSession(id);
   if (!session) return c.json({ error: "session not found" }, 404);
   const response: GetSessionResponse = { session };
+  return c.json(response);
+});
+
+app.get("/api/sessions/:id/profile", async (c) => {
+  const id = c.req.param("id");
+  const session = getSession(id);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  if (!session.repoPath) {
+    const response: GetProfileResponse = {
+      result: {
+        profile: null,
+        path: "",
+        found: false,
+        error: "session has no repoPath",
+      },
+    };
+    return c.json(response);
+  }
+  const result = await loadProfile(session.repoPath);
+  const response: GetProfileResponse = { result };
   return c.json(response);
 });
 

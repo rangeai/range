@@ -8,6 +8,8 @@ import {
 import type {
   Attempt,
   AttemptState,
+  ProfileCommand,
+  ProfileLoadResult,
   Run,
   RunLogEntry,
   RunState,
@@ -17,8 +19,10 @@ import type {
 export function SessionView({ sessionId }: { sessionId: string }) {
   const session = useAppStore((s) => s.sessions.get(sessionId));
   const attempts = useAppStore((s) => attemptsForSession(s, sessionId));
+  const profile = useAppStore((s) => s.profilesBySession.get(sessionId));
   const upsertSession = useAppStore((s) => s.upsertSession);
   const upsertManyAttempts = useAppStore((s) => s.upsertManyAttempts);
+  const setProfile = useAppStore((s) => s.setProfile);
   const goHome = useAppStore((s) => s.goHome);
 
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(
@@ -36,7 +40,17 @@ export function SessionView({ sessionId }: { sessionId: string }) {
       .listAttempts(sessionId)
       .then((res) => upsertManyAttempts(res.attempts))
       .catch((err) => console.error("listAttempts failed", err));
-  }, [sessionId, session, upsertSession, upsertManyAttempts]);
+    api
+      .getProfile(sessionId)
+      .then((res) => setProfile(sessionId, res.result))
+      .catch((err) => console.error("getProfile failed", err));
+  }, [
+    sessionId,
+    session,
+    upsertSession,
+    upsertManyAttempts,
+    setProfile,
+  ]);
 
   useEffect(() => {
     if (selectedAttemptId) return;
@@ -62,13 +76,14 @@ export function SessionView({ sessionId }: { sessionId: string }) {
       <AttemptsSidebar
         session={session}
         attempts={attempts}
+        profile={profile}
         selectedAttemptId={selectedAttemptId}
         onSelect={setSelectedAttemptId}
         onBack={goHome}
       />
       <main className="flex-1 overflow-y-auto">
         {selectedAttempt ? (
-          <AttemptDetail attempt={selectedAttempt} />
+          <AttemptDetail attempt={selectedAttempt} profile={profile} />
         ) : (
           <EmptyAttempts session={session} />
         )}
@@ -82,12 +97,14 @@ export function SessionView({ sessionId }: { sessionId: string }) {
 function AttemptsSidebar({
   session,
   attempts,
+  profile,
   selectedAttemptId,
   onSelect,
   onBack,
 }: {
   session: Session;
   attempts: Attempt[];
+  profile: ProfileLoadResult | undefined;
   selectedAttemptId: string | null;
   onSelect: (id: string) => void;
   onBack: () => void;
@@ -131,6 +148,7 @@ function AttemptsSidebar({
             no repo attached
           </div>
         )}
+        <ProfileBadge profile={profile} />
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -165,6 +183,34 @@ function AttemptsSidebar({
         </div>
       </div>
     </aside>
+  );
+}
+
+function ProfileBadge({
+  profile,
+}: {
+  profile: ProfileLoadResult | undefined;
+}) {
+  if (!profile) return null;
+  if (profile.error) {
+    return (
+      <div className="mt-2 text-[10.5px] text-[var(--err)]" title={profile.error}>
+        profile parse error
+      </div>
+    );
+  }
+  if (!profile.found) return null;
+  const count = profile.profile?.commands.length ?? 0;
+  return (
+    <div className="mt-2 flex items-center gap-1.5 text-[10.5px] text-fg-2">
+      <span
+        className="w-1.5 h-1.5 rounded-full"
+        style={{ background: "var(--ok)" }}
+      />
+      <span>range.yaml</span>
+      <span className="text-fg-3">·</span>
+      <span className="font-mono">{count} commands</span>
+    </div>
   );
 }
 
@@ -256,7 +302,13 @@ function CreateAttemptButton({ sessionId }: { sessionId: string }) {
 
 // ─── Detail pane ────────────────────────────────────────────────────────────
 
-function AttemptDetail({ attempt }: { attempt: Attempt }) {
+function AttemptDetail({
+  attempt,
+  profile,
+}: {
+  attempt: Attempt;
+  profile: ProfileLoadResult | undefined;
+}) {
   const runs = useAppStore((s) => runsForAttempt(s, attempt.id));
   const upsertManyRuns = useAppStore((s) => s.upsertManyRuns);
   const appendManyLogs = useAppStore((s) => s.appendManyLogs);
@@ -363,6 +415,7 @@ function AttemptDetail({ attempt }: { attempt: Attempt }) {
       <RunsPanel
         attempt={attempt}
         runs={runs}
+        profile={profile}
         selectedRunId={selectedRunId}
         onSelectRun={setSelectedRunId}
       />
@@ -375,14 +428,17 @@ function AttemptDetail({ attempt }: { attempt: Attempt }) {
 function RunsPanel({
   attempt,
   runs,
+  profile,
   selectedRunId,
   onSelectRun,
 }: {
   attempt: Attempt;
   runs: Run[];
+  profile: ProfileLoadResult | undefined;
   selectedRunId: string | null;
   onSelectRun: (id: string) => void;
 }) {
+  const profileCommands = profile?.profile?.commands ?? [];
   return (
     <div className="mb-8">
       <div className="flex items-baseline justify-between mb-3">
@@ -391,6 +447,13 @@ function RunsPanel({
         </div>
         <span className="text-[10.5px] font-mono text-fg-3">{runs.length}</span>
       </div>
+
+      {profileCommands.length > 0 && (
+        <ProfileCommandStrip
+          attempt={attempt}
+          commands={profileCommands}
+        />
+      )}
 
       <RunLauncher attempt={attempt} />
 
@@ -404,6 +467,74 @@ function RunsPanel({
               onClick={() => onSelectRun(r.id)}
             />
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProfileCommandStrip({
+  attempt,
+  commands,
+}: {
+  attempt: Attempt;
+  commands: ProfileCommand[];
+}) {
+  const [busyName, setBusyName] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const launch = async (cmd: ProfileCommand) => {
+    if (!attempt.worktreePath) return;
+    setBusyName(cmd.name);
+    setErr(null);
+    try {
+      await api.createRun(attempt.id, {
+        command: cmd.args,
+        kind: "shell",
+      });
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusyName(null);
+    }
+  };
+
+  const disabled = !attempt.worktreePath;
+
+  return (
+    <div className="mb-3">
+      <div className="text-[9.5px] tracking-[0.16em] uppercase text-fg-3 mb-2">
+        from range.yaml
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {commands.map((c) => (
+          <button
+            key={c.name}
+            onClick={() => launch(c)}
+            disabled={disabled || busyName !== null}
+            title={c.description || c.args.join(" ")}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 border border-[var(--br-1)] hover:border-[var(--br-2)] hover:bg-[var(--bg-2)] disabled:opacity-50 disabled:cursor-not-allowed bg-[var(--bg-1)] rounded text-[11.5px] text-fg-1 font-mono transition"
+          >
+            <svg
+              className="w-2.5 h-2.5 text-[var(--accent)]"
+              viewBox="0 0 12 12"
+              fill="none"
+            >
+              <path
+                d="M3 2v8l7-4-7-4z"
+                fill="currentColor"
+                stroke="currentColor"
+                strokeWidth="0.5"
+                strokeLinejoin="round"
+              />
+            </svg>
+            {busyName === c.name ? `${c.name}…` : c.name}
+          </button>
+        ))}
+      </div>
+      {err && (
+        <div className="mt-1.5 text-[10.5px] text-[var(--err)] break-words">
+          {err}
         </div>
       )}
     </div>
