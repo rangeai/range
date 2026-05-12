@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Range — SIM-1842 · codex-fix-minimal</title>
+<script>
+  (function(){var K='range-theme',r=document.documentElement,s;try{s=localStorage.getItem(K)}catch(e){}var p=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';r.setAttribute('data-theme',s||p);addEventListener('click',function(e){var b=e.target.closest('[data-theme-toggle]');if(!b)return;var n=r.getAttribute('data-theme')==='light'?'dark':'light';r.setAttribute('data-theme',n);try{localStorage.setItem(K,n)}catch(e){}});})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Geist:wght@300..700&family=JetBrains+Mono:wght@400..700&display=swap"
+  rel="stylesheet"
+/>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['"Bricolage Grotesque"', 'sans-serif'],
+          sans: ['Geist', 'system-ui', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'monospace']
+        }
+      }
+    }
+  };
+</script>
+<style>
+  :root {
+    --bg: oklch(0.165 0.006 70);
+    --bg-1: oklch(0.195 0.006 70);
+    --bg-2: oklch(0.225 0.006 70);
+    --bg-3: oklch(0.26 0.006 70);
+    --br-1: oklch(0.28 0.006 70);
+    --br-2: oklch(0.36 0.006 70);
+    --br-3: oklch(0.46 0.006 70);
+    --fg: oklch(0.96 0.005 80);
+    --fg-1: oklch(0.8 0.005 80);
+    --fg-2: oklch(0.62 0.005 80);
+    --fg-3: oklch(0.46 0.005 80);
+    --accent: oklch(0.9 0.18 110);
+    --accent-2: oklch(0.78 0.18 110);
+    --accent-soft: oklch(0.9 0.18 110 / 0.13);
+    --accent-border: oklch(0.9 0.18 110 / 0.35);
+    --warn: oklch(0.82 0.14 70);
+    --warn-soft: oklch(0.82 0.14 70 / 0.13);
+    --err: oklch(0.72 0.18 25);
+    --err-soft: oklch(0.72 0.18 25 / 0.13);
+    --ok: oklch(0.78 0.13 155);
+    --ok-soft: oklch(0.78 0.13 155 / 0.12);
+    --info: oklch(0.74 0.08 230);
+    --grid-color: oklch(0.28 0.006 70 / 0.6);
+    --diff-add-bg: oklch(0.78 0.13 155 / 0.10);
+    --diff-del-bg: oklch(0.72 0.18 25 / 0.10);
+    color-scheme: dark;
+  }
+  [data-theme="light"] {
+    --bg: oklch(0.985 0.005 80);
+    --bg-1: oklch(0.97 0.005 80);
+    --bg-2: oklch(0.945 0.005 80);
+    --bg-3: oklch(0.915 0.005 80);
+    --br-1: oklch(0.9 0.005 80);
+    --br-2: oklch(0.82 0.005 80);
+    --br-3: oklch(0.68 0.005 80);
+    --fg: oklch(0.18 0.006 70);
+    --fg-1: oklch(0.34 0.006 70);
+    --fg-2: oklch(0.48 0.006 70);
+    --fg-3: oklch(0.62 0.006 70);
+    --accent: oklch(0.55 0.17 105);
+    --accent-2: oklch(0.46 0.17 105);
+    --accent-soft: oklch(0.55 0.17 105 / 0.1);
+    --accent-border: oklch(0.55 0.17 105 / 0.4);
+    --warn: oklch(0.55 0.16 60);
+    --warn-soft: oklch(0.55 0.16 60 / 0.1);
+    --err: oklch(0.5 0.2 25);
+    --err-soft: oklch(0.5 0.2 25 / 0.08);
+    --ok: oklch(0.5 0.15 155);
+    --ok-soft: oklch(0.5 0.15 155 / 0.1);
+    --info: oklch(0.5 0.14 230);
+    --grid-color: oklch(0.82 0.006 70 / 0.6);
+    --diff-add-bg: oklch(0.5 0.15 155 / 0.13);
+    --diff-del-bg: oklch(0.5 0.2 25 / 0.12);
+    color-scheme: light;
+  }
+  [data-theme="dark"] .theme-moon, [data-theme="light"] .theme-sun { display: none; }
+
+  html, body { background: var(--bg); color: var(--fg); height: 100%; }
+  body { font-feature-settings: "ss01", "cv11"; -webkit-font-smoothing: antialiased; }
+
+  .font-display { font-family: 'Bricolage Grotesque', sans-serif; font-optical-sizing: auto; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; font-feature-settings: "calt", "liga"; }
+
+  .surface   { background: var(--bg-1); }
+  .surface-2 { background: var(--bg-2); }
+  .surface-3 { background: var(--bg-3); }
+  .border-subtle { border-color: var(--br-1); }
+  .border-medium { border-color: var(--br-2); }
+  .border-strong { border-color: var(--br-3); }
+  .text-fg   { color: var(--fg); }
+  .text-fg-1 { color: var(--fg-1); }
+  .text-fg-2 { color: var(--fg-2); }
+  .text-fg-3 { color: var(--fg-3); }
+  .text-accent { color: var(--accent); }
+  .text-warn  { color: var(--warn); }
+  .text-err   { color: var(--err); }
+  .text-ok    { color: var(--ok); }
+  .text-info  { color: var(--info); }
+  .bg-accent-soft { background: var(--accent-soft); }
+  .bg-warn-soft   { background: var(--warn-soft); }
+  .bg-err-soft    { background: var(--err-soft); }
+  .bg-ok-soft     { background: var(--ok-soft); }
+  .border-accent  { border-color: var(--accent-border); }
+
+  .tracking-tightest { letter-spacing: -0.04em; }
+
+  /* live pulse */
+  @keyframes pulse-live {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.55; transform: scale(0.88); }
+  }
+  .pulse-live { animation: pulse-live 1.5s cubic-bezier(0.4,0,0.6,1) infinite; }
+
+  @keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 var(--accent-soft); }
+    100% { box-shadow: 0 0 0 7px transparent; }
+  }
+  .pulse-ring { animation: pulse-ring 1.6s ease-out infinite; }
+
+  /* thinking */
+  @keyframes thinking {
+    0%, 80%, 100% { opacity: 0.18; }
+    40%           { opacity: 1; }
+  }
+  .thinking-dot { animation: thinking 1.4s ease-in-out infinite; }
+  .thinking-dot:nth-child(2) { animation-delay: 0.18s; }
+  .thinking-dot:nth-child(3) { animation-delay: 0.36s; }
+
+  /* spinner for live row */
+  @keyframes spin-slow { to { transform: rotate(360deg); } }
+  .spin-slow { animation: spin-slow 2.4s linear infinite; }
+
+  /* metric tick */
+  @keyframes ticker {
+    0%   { transform: translateY(6px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  .ticker { animation: ticker 0.5s ease-out; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--br-2); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--br-3); }
+
+  /* faint grid */
+  .grid-faint {
+    background-image:
+      linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
+    background-size: 14px 14px;
+  }
+
+  /* diff */
+  .diff-add { background: var(--diff-add-bg); }
+  .diff-del { background: var(--diff-del-bg); }
+  .diff-add::before { content: "+"; color: var(--ok); width: 12px; display: inline-block; }
+  .diff-del::before { content: "−"; color: var(--err); width: 12px; display: inline-block; }
+  .diff-ctx::before { content: " "; width: 12px; display: inline-block; }
+
+  /* kbd */
+  .kbd {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    line-height: 1;
+    padding: 2px 5px;
+    border: 1px solid var(--br-2);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    color: var(--fg-1);
+    background: var(--bg-2);
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  /* chip */
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; line-height: 1; font-weight: 500;
+    padding: 4px 8px; border-radius: 4px;
+    border: 1px solid var(--br-2);
+    color: var(--fg-1);
+    background: var(--bg-2);
+    letter-spacing: 0.01em;
+  }
+  .chip.tiny { font-size: 10px; padding: 3px 6px; }
+  .chip-live { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
+  .chip-ok   { color: var(--ok);     border-color: oklch(0.78 0.13 155 / 0.35); background: var(--ok-soft); }
+  .chip-warn { color: var(--warn);   border-color: oklch(0.82 0.14 70 / 0.35); background: var(--warn-soft); }
+  .chip-err  { color: var(--err);    border-color: oklch(0.72 0.18 25 / 0.35); background: var(--err-soft); }
+
+  /* faint wordmark fan */
+  .fanmark {
+    width: 14px; height: 14px;
+    background:
+      conic-gradient(from 0deg at 50% 100%,
+        var(--accent) 0deg 30deg,
+        transparent 30deg 360deg);
+    mask: radial-gradient(circle at 50% 100%, transparent 0, transparent 2px, black 2.5px);
+    -webkit-mask: radial-gradient(circle at 50% 100%, transparent 0, transparent 2px, black 2.5px);
+  }
+
+  /* hover */
+  .row-hover { transition: background 120ms; }
+  .row-hover:hover { background: var(--bg-2); }
+
+  /* sparkline gradient */
+  .sparkline-fill { fill: url(#sparkGrad); }
+
+  /* divider with label */
+  .divider-label {
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    font-weight: 500;
+  }
+
+  /* attempt row indicator */
+  .attempt-bar {
+    width: 2px; align-self: stretch; border-radius: 2px;
+    background: var(--br-1);
+  }
+  .attempt-bar.active { background: var(--accent); }
+  .attempt-bar.queued { background: var(--warn); }
+  .attempt-bar.done   { background: var(--ok); }
+
+  /* code mini */
+  .code-cell {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--fg-1);
+  }
+
+  /* mask gradient bottom of live stream */
+  .fade-bottom {
+    mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  }
+</style>
+</head>
+<body class="font-sans h-screen w-screen overflow-hidden">
+
+<!-- ============= TOP BAR ============= -->
+<header class="h-12 border-b border-subtle flex items-center px-4 gap-4 surface relative z-10">
+  <!-- wordmark -->
+  <div class="flex items-center gap-2 pr-4 mr-2 border-r border-subtle h-full">
+    <div class="fanmark"></div>
+    <span class="font-display tracking-tightest text-[18px] font-light">range</span>
+  </div>
+
+  <!-- breadcrumb -->
+  <div class="flex items-center gap-2 text-[13px]">
+    <span class="text-fg-2">robot-nav-sim</span>
+    <svg class="w-3 h-3 text-fg-3" viewBox="0 0 12 12" fill="none"><path d="M4 2l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span class="text-fg-1 font-medium">SIM-1842</span>
+    <svg class="w-3 h-3 text-fg-3" viewBox="0 0 12 12" fill="none"><path d="M4 2l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span class="text-fg font-medium font-mono text-[12px]">codex-fix-minimal</span>
+    <span class="chip chip-live tiny ml-2">
+      <span class="w-1.5 h-1.5 rounded-full bg-current pulse-live"></span>
+      live
+    </span>
+  </div>
+
+  <!-- spacer -->
+  <div class="flex-1"></div>
+
+  <!-- right cluster -->
+  <div class="flex items-center gap-2 text-[12px] text-fg-2">
+    <div class="flex items-center gap-1.5 px-2.5 py-1 border border-subtle rounded">
+      <svg class="w-3 h-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/></svg>
+      <span class="font-mono">rg-h100-12</span>
+    </div>
+    <div class="flex items-center gap-1.5 px-2.5 py-1 border border-subtle rounded">
+      <span class="text-fg-3">gpu</span>
+      <span class="font-mono text-fg-1">3.2</span>
+      <span class="text-fg-3">/</span>
+      <span class="font-mono">12h</span>
+    </div>
+    <button class="kbd">⌘K</button>
+    <button data-theme-toggle class="w-7 h-7 rounded border border-subtle hover:border-medium hover:bg-[var(--bg-2)] flex items-center justify-center text-fg-2 hover:text-fg transition" aria-label="Toggle theme">
+      <svg class="theme-sun w-3.5 h-3.5" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3" fill="currentColor"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      <svg class="theme-moon w-3.5 h-3.5" viewBox="0 0 16 16" fill="none"><path d="M13 9.5A5.5 5.5 0 1 1 6.5 3a4.5 4.5 0 0 0 6.5 6.5z" fill="currentColor"/></svg>
+    </button>
+    <div class="w-7 h-7 rounded-full bg-[var(--bg-3)] border border-medium text-[11px] flex items-center justify-center font-medium text-fg-1">DP</div>
+  </div>
+</header>
+
+<!-- ============= MAIN 3-COLUMN ============= -->
+<div class="flex h-[calc(100vh-3rem)]">
+
+  <!-- ============ LEFT ============ -->
+  <aside class="w-[300px] border-r border-subtle flex flex-col surface flex-shrink-0">
+
+    <!-- task header -->
+    <div class="p-4 border-b border-subtle">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="chip tiny">
+          <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><rect x="1.5" y="1.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.2"/></svg>
+          jira
+        </span>
+        <span class="text-fg-3 text-[11px]">·</span>
+        <span class="text-fg-3 text-[11px]">bug</span>
+        <span class="text-fg-3 text-[11px]">·</span>
+        <span class="text-fg-2 text-[11px]">assigned to you</span>
+      </div>
+      <div class="font-mono text-[11px] text-fg-3 mb-2">SIM-1842</div>
+      <h1 class="font-display font-light text-[19px] leading-tight tracking-tightest text-fg mb-3 selectable">
+        Navigation regression in warehouse_dense_v3
+      </h1>
+      <div class="flex flex-wrap gap-1.5">
+        <span class="chip tiny">
+          <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M6 2v8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          robot-nav-sim
+        </span>
+        <span class="chip tiny font-mono">main@abc123</span>
+      </div>
+    </div>
+
+    <!-- attempts -->
+    <div class="flex-1 overflow-y-auto">
+      <div class="px-4 pt-4 pb-2 flex items-center justify-between">
+        <span class="divider-label">Attempts</span>
+        <span class="text-fg-3 text-[11px] font-mono">4</span>
+      </div>
+
+      <!-- attempt: baseline -->
+      <div class="row-hover px-4 py-2.5 cursor-pointer flex gap-3">
+        <div class="attempt-bar done"></div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="font-mono text-[12px] text-fg-1 truncate">baseline-main</span>
+          </div>
+          <div class="flex items-center gap-2 text-[10.5px] text-fg-3">
+            <span class="chip-ok chip tiny">repro′d</span>
+            <span class="font-mono">9m</span>
+            <span>·</span>
+            <span>1 video</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- attempt: investigate -->
+      <div class="row-hover px-4 py-2.5 cursor-pointer flex gap-3">
+        <div class="attempt-bar"></div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="font-mono text-[12px] text-fg-1 truncate">codex-investigate</span>
+          </div>
+          <div class="flex items-center gap-2 text-[10.5px] text-fg-3">
+            <span class="text-fg-2">parked</span>
+            <span class="font-mono">47m</span>
+            <span>·</span>
+            <span>2 hypotheses</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- attempt: active -->
+      <div class="px-4 py-3 flex gap-3 bg-[var(--bg-2)] border-y border-subtle relative">
+        <div class="attempt-bar active"></div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="font-mono text-[12px] text-fg font-medium truncate">codex-fix-minimal</span>
+            <span class="w-1.5 h-1.5 rounded-full bg-[var(--accent)] pulse-live"></span>
+          </div>
+          <div class="flex items-center gap-1.5 mb-2 flex-wrap">
+            <span class="chip chip-live tiny">codex working</span>
+          </div>
+          <div class="flex items-center gap-2 text-[10.5px] text-fg-3 font-mono">
+            <span>4m elapsed</span>
+            <span>·</span>
+            <span>2 runs</span>
+            <span>·</span>
+            <span>+12/−2</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- attempt: queued -->
+      <div class="row-hover px-4 py-2.5 cursor-pointer flex gap-3">
+        <div class="attempt-bar queued"></div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="font-mono text-[12px] text-fg-1 truncate">codex-fix-bold</span>
+          </div>
+          <div class="flex items-center gap-2 text-[10.5px] text-fg-3">
+            <span class="chip-warn chip tiny">queued</span>
+            <span>awaiting runner</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- new attempt button -->
+      <div class="px-4 pt-2 pb-4">
+        <button class="w-full flex items-center gap-2 px-3 py-2 border border-dashed border-subtle rounded text-[12px] text-fg-2 hover:text-fg hover:border-medium transition">
+          <svg class="w-3 h-3" viewBox="0 0 12 12" fill="none"><path d="M2.5 6h7M6 2.5v7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          new attempt
+        </button>
+      </div>
+
+      <!-- context pack -->
+      <div class="px-4 pt-2 pb-3 border-t border-subtle">
+        <div class="divider-label mb-2">Context pack</div>
+        <div class="space-y-1.5 text-[11.5px] text-fg-2">
+          <div class="flex items-start gap-2">
+            <span class="text-fg-3 mt-0.5">●</span>
+            <span>acceptance criteria <span class="text-fg-3">(3)</span></span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-fg-3 mt-0.5">●</span>
+            <span>failing log from CI</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-fg-3 mt-0.5">●</span>
+            <span>investigation summary</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-fg-3 mt-0.5">●</span>
+            <span>2 suspected files</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- footer status -->
+    <div class="border-t border-subtle px-4 py-3 text-[11px] text-fg-3">
+      <div class="flex items-center justify-between">
+        <span>autosaved · 12s</span>
+        <span class="kbd">esc</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ CENTER ============ -->
+  <main class="flex-1 flex flex-col overflow-hidden min-w-0">
+
+    <!-- attempt status strip -->
+    <div class="border-b border-subtle px-6 py-3 surface flex items-center gap-4 flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="font-mono text-[12px] text-fg font-medium">codex-fix-minimal</span>
+        <span class="chip tiny chip-live">
+          <span class="w-1.5 h-1.5 rounded-full bg-current pulse-live"></span>
+          codex · workspace-write
+        </span>
+      </div>
+      <div class="text-fg-3 text-[11px] font-mono">base abc123 · att_4f9c</div>
+      <div class="flex-1"></div>
+      <div class="flex items-center gap-1.5 text-[11px]">
+        <span class="text-fg-3">guardrails</span>
+        <span class="chip tiny">src/nav/ only</span>
+        <span class="chip tiny">no planner public API</span>
+        <span class="chip tiny font-mono">≤2GB GPU</span>
+        <button class="text-fg-3 hover:text-fg-1 text-[11px] underline underline-offset-2 decoration-dotted">edit</button>
+      </div>
+    </div>
+
+    <!-- conversation -->
+    <div class="flex-1 overflow-y-auto px-6 py-6">
+      <div class="max-w-3xl mx-auto space-y-5">
+
+        <!-- divider: session start -->
+        <div class="flex items-center gap-3 py-2">
+          <div class="flex-1 h-px bg-[var(--br-1)]"></div>
+          <span class="divider-label">attempt started · 4m 12s ago</span>
+          <div class="flex-1 h-px bg-[var(--br-1)]"></div>
+        </div>
+
+        <!-- you -->
+        <div class="flex gap-3">
+          <div class="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--bg-3)] border border-medium text-[11px] flex items-center justify-center font-medium text-fg-1 mt-0.5">DP</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-baseline gap-2 mb-1">
+              <span class="text-[12.5px] font-medium text-fg">you</span>
+              <span class="text-fg-3 text-[11px]">4m ago</span>
+            </div>
+            <div class="text-[14px] text-fg-1 selectable leading-relaxed">
+              let codex make the smallest safe fix in a separate attempt — same hypothesis from the investigation. don't touch the planner public API.
+            </div>
+          </div>
+        </div>
+
+        <!-- range -->
+        <div class="flex gap-3">
+          <div class="flex-shrink-0 w-7 h-7 rounded flex items-center justify-center mt-0.5">
+            <div class="fanmark scale-150"></div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-baseline gap-2 mb-1">
+              <span class="text-[12.5px] font-medium text-fg">range</span>
+              <span class="text-fg-3 text-[11px]">4m ago</span>
+            </div>
+            <div class="text-[14px] text-fg-1 selectable leading-relaxed">
+              created <span class="font-mono text-[13px] text-fg">codex-fix-minimal</span> from <span class="font-mono text-[13px] text-fg">main@abc123</span>. codex is running with <span class="text-fg">workspace-write</span> sandbox. passed in the investigation summary and your 3 constraints.
+            </div>
+            <div class="mt-2.5 flex items-center gap-1.5 text-[11.5px] text-fg-2">
+              <svg class="w-3 h-3 text-fg-3" viewBox="0 0 12 12" fill="none"><path d="M3 6l2 2 4-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>worktree <span class="font-mono">.range/wt/att_4f9c</span> created</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- codex narration -->
+        <div class="flex gap-3">
+          <div class="flex-shrink-0 w-7 h-7 rounded bg-[var(--bg-2)] border border-medium text-[10px] flex items-center justify-center font-display font-medium text-fg-1 mt-0.5">cdx</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-baseline gap-2 mb-1">
+              <span class="text-[12.5px] font-medium text-fg">codex</span>
+              <span class="text-fg-3 text-[11px]">3m ago</span>
+            </div>
+            <div class="text-[14px] text-fg-1 selectable leading-relaxed">
+              starting with the replay buffer. the investigation flagged <span class="font-mono text-[13px] text-fg bg-[var(--bg-2)] px-1 py-0.5 rounded">_advance_pointer</span> as the most likely site. i'll read the surrounding code before proposing anything.
+            </div>
+          </div>
+        </div>
+
+        <!-- command cell -->
+        <div class="ml-10">
+          <div class="border border-subtle rounded-lg overflow-hidden">
+            <div class="px-3 py-2 border-b border-subtle surface-2 flex items-center gap-2">
+              <svg class="w-3 h-3 text-fg-3" viewBox="0 0 12 12" fill="none"><path d="M3 3l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="font-mono text-[12px] text-fg-1">rg "advance_pointer" src/nav/</span>
+              <div class="flex-1"></div>
+              <span class="chip-ok chip tiny">exit 0</span>
+              <span class="text-fg-3 text-[11px] font-mono">0.4s</span>
+            </div>
+            <div class="code-cell px-3 py-2 surface">
+              <div><span class="text-fg-3">src/nav/replay_buffer.py:</span><span class="text-info">142</span> def _advance_pointer(self) -> None:</div>
+              <div><span class="text-fg-3">src/nav/replay_buffer.py:</span><span class="text-info">187</span>     self._advance_pointer()</div>
+              <div><span class="text-fg-3">src/nav/replay_buffer.py:</span><span class="text-info">204</span>     self._advance_pointer()</div>
+              <div class="text-fg-3 text-[11px] mt-1.5">3 matches in 1 file</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- codex hypothesis -->
+        <div class="flex gap-3">
+          <div class="flex-shrink-0 w-7 h-7 rounded bg-[var(--bg-2)] border border-medium text-[10px] flex items-center justify-center font-display font-medium text-fg-1 mt-0.5">cdx</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-baseline gap-2 mb-1">
+              <span class="text-[12.5px] font-medium text-fg">codex</span>
+              <span class="text-fg-3 text-[11px]">2m ago</span>
+            </div>
+            <div class="text-[14px] text-fg-1 selectable leading-relaxed">
+              confirmed. the pointer is advanced <span class="text-fg italic">before</span> the timestamp is stamped onto the frame. when the consumer reads ahead, it pulls a stale frame with the next pointer's timestamp. swapping the order should fix it without touching any public surface.
+            </div>
+          </div>
+        </div>
+
+        <!-- edit cell -->
+        <div class="ml-10">
+          <div class="border border-subtle rounded-lg overflow-hidden">
+            <div class="px-3 py-2 border-b border-subtle surface-2 flex items-center gap-2">
+              <svg class="w-3 h-3 text-fg-3" viewBox="0 0 12 12" fill="none"><path d="M2 8.5L6.5 4l1.5 1.5L3.5 10H2v-1.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+              <span class="font-mono text-[12px] text-fg-1">src/nav/replay_buffer.py</span>
+              <span class="text-ok text-[11px] font-mono">+12</span>
+              <span class="text-err text-[11px] font-mono">−2</span>
+              <div class="flex-1"></div>
+              <button class="text-fg-3 hover:text-fg-1 text-[11px] flex items-center gap-1">
+                <span>expand</span>
+                <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><path d="M3 4.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+            <div class="code-cell px-3 py-2 surface text-[11.5px]">
+              <div class="text-fg-3">@@ −142,8 +142,18 @@</div>
+              <div class="diff-ctx">def _advance_pointer(self) -> None:</div>
+              <div class="diff-del">    self._pointer = (self._pointer + 1) % self._size</div>
+              <div class="diff-del">    self._stamp_frame_timestamp()</div>
+              <div class="diff-add">    self._stamp_frame_timestamp()</div>
+              <div class="diff-add">    self._pointer = (self._pointer + 1) % self._size</div>
+              <div class="diff-ctx"></div>
+              <div class="diff-ctx">def _stamp_frame_timestamp(self) -> None:</div>
+              <div class="diff-add">    # invariant: must run before pointer advance so consumers</div>
+              <div class="diff-add">    # see a frame stamped with its own pointer, not the next one</div>
+              <div class="diff-add">    frame = self._frames[self._pointer]</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- edit cell 2 -->
+        <div class="ml-10">
+          <div class="border border-subtle rounded-lg overflow-hidden">
+            <div class="px-3 py-2 surface-2 flex items-center gap-2">
+              <svg class="w-3 h-3 text-fg-3" viewBox="0 0 12 12" fill="none"><path d="M3 1.5h4l2 2v7h-6v-9z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+              <span class="font-mono text-[12px] text-fg-1">tests/nav/test_replay_buffer.py</span>
+              <span class="text-ok text-[11px] font-mono">+38</span>
+              <span class="chip tiny ml-2 chip-ok">new file</span>
+              <div class="flex-1"></div>
+              <button class="text-fg-3 hover:text-fg-1 text-[11px]">expand</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- codex test -->
+        <div class="flex gap-3">
+          <div class="flex-shrink-0 w-7 h-7 rounded bg-[var(--bg-2)] border border-medium text-[10px] flex items-center justify-center font-display font-medium text-fg-1 mt-0.5">cdx</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-baseline gap-2 mb-1">
+              <span class="text-[12.5px] font-medium text-fg">codex</span>
+              <span class="text-fg-3 text-[11px]">1m ago</span>
+            </div>
+            <div class="text-[14px] text-fg-1 selectable leading-relaxed">
+              running the unit test first to be sure i didn't break the buffer invariants.
+            </div>
+          </div>
+        </div>
+
+        <!-- run cell - passed -->
+        <div class="ml-10">
+          <div class="border border-subtle rounded-lg overflow-hidden">
+            <div class="px-3 py-2 surface-2 flex items-center gap-2">
+              <svg class="w-3 h-3 text-ok" viewBox="0 0 12 12" fill="none"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="font-mono text-[12px] text-fg-1">pytest tests/nav/test_replay_buffer.py</span>
+              <div class="flex-1"></div>
+              <span class="chip-ok chip tiny">12 passed</span>
+              <span class="text-fg-3 text-[11px] font-mono">8.2s</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- codex final -->
+        <div class="flex gap-3">
+          <div class="flex-shrink-0 w-7 h-7 rounded bg-[var(--bg-2)] border border-medium text-[10px] flex items-center justify-center font-display font-medium text-fg-1 mt-0.5">cdx</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-baseline gap-2 mb-1">
+              <span class="text-[12.5px] font-medium text-fg">codex</span>
+              <span class="text-fg-3 text-[11px]">just now</span>
+            </div>
+            <div class="text-[14px] text-fg-1 selectable leading-relaxed">
+              now re-running <span class="font-mono text-[13px] text-fg">warehouse_dense_v3</span> seed 42 on the gpu runner with the fix applied.
+            </div>
+          </div>
+        </div>
+
+        <!-- live run cell -->
+        <div class="ml-10">
+          <div class="border border-accent rounded-lg overflow-hidden bg-accent-soft/30" style="background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 70%);">
+            <div class="px-3 py-2.5 border-b border-subtle flex items-center gap-2">
+              <svg class="w-3.5 h-3.5 text-accent spin-slow" viewBox="0 0 14 14" fill="none">
+                <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.4" stroke-dasharray="6 4" stroke-linecap="round"/>
+              </svg>
+              <span class="font-mono text-[12px] text-fg">python scenarios/run.py warehouse_dense_v3 --seed 42 --record video</span>
+              <div class="flex-1"></div>
+              <span class="chip chip-live tiny">
+                <span class="w-1.5 h-1.5 rounded-full bg-current pulse-live"></span>
+                live
+              </span>
+              <span class="text-fg-2 text-[11px] font-mono">1:24</span>
+            </div>
+
+            <!-- metric strip -->
+            <div class="grid grid-cols-3 border-b border-subtle">
+              <div class="px-3 py-3 border-r border-subtle">
+                <div class="divider-label mb-1.5">success_rate</div>
+                <div class="flex items-baseline gap-1.5">
+                  <span class="font-mono text-[22px] text-fg font-light ticker">0.91</span>
+                  <span class="text-fg-3 text-[10px] font-mono">target ≥ 0.92</span>
+                </div>
+              </div>
+              <div class="px-3 py-3 border-r border-subtle">
+                <div class="divider-label mb-1.5">collisions</div>
+                <div class="flex items-baseline gap-1.5">
+                  <span class="font-mono text-[22px] text-fg font-light">0</span>
+                  <span class="text-ok text-[10px] font-mono">target 0</span>
+                </div>
+              </div>
+              <div class="px-3 py-3">
+                <div class="divider-label mb-1.5">step</div>
+                <div class="flex items-baseline gap-1.5">
+                  <span class="font-mono text-[22px] text-fg font-light">1207</span>
+                  <span class="text-fg-3 text-[10px] font-mono">/ 1500</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- sparkline + log -->
+            <div class="grid grid-cols-[1fr_220px]">
+              <!-- log -->
+              <div class="px-3 py-2.5 border-r border-subtle code-cell fade-bottom max-h-[112px] overflow-hidden">
+                <div class="text-fg-3 ticker">[1:18] rollout step 1180/1500</div>
+                <div class="text-fg-2 ticker">[1:20] success_rate=0.89 collisions=0</div>
+                <div class="text-fg-2 ticker">[1:22] rollout step 1200/1500</div>
+                <div class="text-fg-1 ticker">[1:24] success_rate=0.91 collisions=0</div>
+                <div class="text-fg ticker">[1:24] step 1207 · frame 1207 stamped</div>
+              </div>
+              <!-- sparkline -->
+              <div class="px-3 py-2.5">
+                <div class="divider-label mb-1.5">success_rate · live</div>
+                <svg viewBox="0 0 200 70" class="w-full h-[70px]" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.32"/>
+                      <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  <!-- threshold line -->
+                  <line x1="0" y1="22" x2="200" y2="22" stroke="var(--br-2)" stroke-width="1" stroke-dasharray="2 3"/>
+                  <text x="196" y="18" text-anchor="end" font-size="8" fill="var(--fg-3)" font-family="JetBrains Mono">0.92</text>
+                  <!-- area -->
+                  <path d="M0,60 L18,58 L36,52 L54,46 L72,44 L90,38 L108,36 L126,30 L144,28 L162,26 L180,25 L195,24 L195,70 L0,70 Z" class="sparkline-fill"/>
+                  <!-- line -->
+                  <path d="M0,60 L18,58 L36,52 L54,46 L72,44 L90,38 L108,36 L126,30 L144,28 L162,26 L180,25 L195,24"
+                        fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                  <!-- end dot -->
+                  <circle cx="195" cy="24" r="2.5" fill="var(--accent)"/>
+                </svg>
+              </div>
+            </div>
+
+            <!-- runner -->
+            <div class="px-3 py-2 surface-2 flex items-center gap-3 text-[11px] text-fg-2 border-t border-subtle">
+              <div class="flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-[var(--accent)] pulse-live"></span>
+                <span class="font-mono">rg-h100-12</span>
+              </div>
+              <span class="text-fg-3">·</span>
+              <span>1× H100 · 28% mem</span>
+              <span class="text-fg-3">·</span>
+              <span>cost ~$0.42 so far</span>
+              <div class="flex-1"></div>
+              <span class="text-fg-3 font-mono">eta ~40s</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- codex thinking -->
+        <div class="flex gap-3 items-center">
+          <div class="flex-shrink-0 w-7 h-7 rounded bg-[var(--bg-2)] border border-medium text-[10px] flex items-center justify-center font-display font-medium text-fg-1">cdx</div>
+          <div class="flex items-center gap-1 text-fg-2 text-[12px]">
+            <span class="thinking-dot w-1 h-1 rounded-full bg-current"></span>
+            <span class="thinking-dot w-1 h-1 rounded-full bg-current"></span>
+            <span class="thinking-dot w-1 h-1 rounded-full bg-current"></span>
+            <span class="ml-2 text-fg-3 italic">watching for the rollout to finish</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- composer -->
+    <div class="border-t border-subtle px-6 py-3 surface flex-shrink-0">
+      <div class="max-w-3xl mx-auto">
+        <div class="border border-medium rounded-lg surface-2 focus-within:border-strong transition">
+          <div class="px-3 py-2 flex items-center gap-2 border-b border-subtle">
+            <span class="chip tiny chip-live">
+              <span class="w-1.5 h-1.5 rounded-full bg-current pulse-live"></span>
+              codex working
+            </span>
+            <button class="text-fg-2 hover:text-fg text-[12px] flex items-center gap-1 px-2 py-1 hover:bg-[var(--bg-3)] rounded transition">
+              <svg class="w-3 h-3" viewBox="0 0 12 12" fill="none"><rect x="3" y="3" width="2.5" height="6" fill="currentColor"/><rect x="6.5" y="3" width="2.5" height="6" fill="currentColor"/></svg>
+              pause
+            </button>
+            <button class="text-fg-2 hover:text-fg text-[12px] flex items-center gap-1 px-2 py-1 hover:bg-[var(--bg-3)] rounded transition">
+              <svg class="w-3 h-3" viewBox="0 0 12 12" fill="none"><path d="M3 6h6m-3-3L9 6 6 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              redirect
+            </button>
+            <div class="flex-1"></div>
+            <span class="text-fg-3 text-[11px]">
+              try
+              <span class="font-mono text-fg-2 mx-1">/compare</span>
+              <span class="font-mono text-fg-2">/verify</span>
+            </span>
+          </div>
+          <div class="px-3 py-3 flex items-end gap-3">
+            <textarea
+              class="flex-1 bg-transparent outline-none resize-none text-[14px] text-fg placeholder:text-fg-3 leading-relaxed"
+              rows="1"
+              placeholder="reply to codex or steer the attempt…"
+            ></textarea>
+            <div class="flex items-center gap-1.5">
+              <button class="kbd">⇧⏎ newline</button>
+              <button class="px-2.5 py-1.5 rounded-md text-[12px] font-medium text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] transition flex items-center gap-1.5">
+                send
+                <span class="kbd" style="background: oklch(0.92 0.12 110 / 0.4); border-color: oklch(0.45 0.08 110); color: oklch(0.2 0.05 110);">⏎</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ RIGHT ============ -->
+  <aside class="w-[460px] border-l border-subtle flex flex-col surface flex-shrink-0">
+
+    <!-- tabs -->
+    <div class="border-b border-subtle flex items-stretch flex-shrink-0">
+      <button class="px-4 py-3 text-[12px] font-medium text-fg border-b-2 border-[var(--accent)] -mb-px flex items-center gap-2">
+        evidence
+        <span class="text-fg-3 font-mono text-[11px]">3</span>
+      </button>
+      <button class="px-4 py-3 text-[12px] text-fg-2 hover:text-fg-1 flex items-center gap-2">
+        files
+        <span class="text-fg-3 font-mono text-[11px]">2</span>
+      </button>
+      <button class="px-4 py-3 text-[12px] text-fg-2 hover:text-fg-1 flex items-center gap-2">
+        verification
+        <span class="chip tiny ml-1" style="font-size: 9px; padding: 1px 4px;">pending</span>
+      </button>
+      <div class="flex-1"></div>
+      <button class="px-3 text-fg-3 hover:text-fg-1">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="3" r="1" fill="currentColor"/><circle cx="7" cy="7" r="1" fill="currentColor"/><circle cx="7" cy="11" r="1" fill="currentColor"/></svg>
+      </button>
+    </div>
+
+    <!-- evidence body -->
+    <div class="flex-1 overflow-y-auto">
+
+      <!-- files changed -->
+      <div class="border-b border-subtle">
+        <div class="px-4 py-3 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="divider-label">Files changed</span>
+            <span class="text-fg-3 text-[11px] font-mono">2 · +50/−2</span>
+          </div>
+          <button class="text-fg-3 hover:text-fg-1">
+            <svg class="w-3 h-3" viewBox="0 0 12 12" fill="none"><path d="M3 4.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+
+        <div class="row-hover px-4 py-2.5 cursor-pointer">
+          <div class="flex items-center gap-2 mb-1">
+            <svg class="w-3 h-3 text-fg-3" viewBox="0 0 12 12" fill="none"><path d="M3 1.5h4l2 2v7h-6v-9z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+            <span class="font-mono text-[12px] text-fg-1 truncate">src/nav/replay_buffer.py</span>
+          </div>
+          <div class="flex items-center gap-2 text-[10.5px] text-fg-3">
+            <span class="text-ok font-mono">+12</span>
+            <span class="text-err font-mono">−2</span>
+            <span>·</span>
+            <span>codex · 2m ago</span>
+          </div>
+        </div>
+
+        <div class="row-hover px-4 py-2.5 cursor-pointer">
+          <div class="flex items-center gap-2 mb-1">
+            <svg class="w-3 h-3 text-fg-3" viewBox="0 0 12 12" fill="none"><path d="M3 1.5h4l2 2v7h-6v-9z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+            <span class="font-mono text-[12px] text-fg-1 truncate">tests/nav/test_replay_buffer.py</span>
+            <span class="chip tiny chip-ok" style="font-size: 9px; padding: 1px 4px;">new</span>
+          </div>
+          <div class="flex items-center gap-2 text-[10.5px] text-fg-3">
+            <span class="text-ok font-mono">+38</span>
+            <span>·</span>
+            <span>codex · 2m ago</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- runs -->
+      <div class="border-b border-subtle">
+        <div class="px-4 py-3 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="divider-label">Runs</span>
+            <span class="text-fg-3 text-[11px] font-mono">3</span>
+          </div>
+          <button class="text-fg-3 hover:text-fg-1">
+            <svg class="w-3 h-3" viewBox="0 0 12 12" fill="none"><path d="M3 4.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+
+        <!-- run: baseline reproduce -->
+        <div class="row-hover px-4 py-3 cursor-pointer">
+          <div class="flex items-start gap-3">
+            <span class="chip-ok chip tiny mt-0.5">repro</span>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-baseline gap-2 mb-1">
+                <span class="font-mono text-[11.5px] text-fg-1 truncate">warehouse_dense_v3 · seed 42</span>
+              </div>
+              <div class="text-[11px] text-fg-3 leading-snug">
+                failed as expected · 9m ago · baseline-main
+              </div>
+              <div class="mt-1.5 flex items-center gap-2.5 text-[10.5px] text-fg-2">
+                <span class="flex items-center gap-1">
+                  <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><rect x="2" y="3" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M5 5l2 1-2 1V5z" fill="currentColor"/></svg>
+                  1 video
+                </span>
+                <span class="flex items-center gap-1">
+                  <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><path d="M2 9l2-3 2 1 4-5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  metrics
+                </span>
+                <span class="flex items-center gap-1 font-mono">
+                  sha:7c4a
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- run: unit test -->
+        <div class="row-hover px-4 py-3 cursor-pointer border-t border-subtle">
+          <div class="flex items-start gap-3">
+            <span class="chip-ok chip tiny mt-0.5">test</span>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-baseline gap-2 mb-1">
+                <span class="font-mono text-[11.5px] text-fg-1 truncate">pytest tests/nav/test_replay_buffer.py</span>
+              </div>
+              <div class="text-[11px] text-fg-3 leading-snug">
+                12 passed · 1m ago · codex-fix-minimal · 8.2s
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- run: live -->
+        <div class="px-4 py-3 border-t border-subtle bg-accent-soft/40" style="background: linear-gradient(90deg, var(--accent-soft) 0%, transparent 100%);">
+          <div class="flex items-start gap-3">
+            <span class="chip chip-live tiny mt-0.5">
+              <span class="w-1 h-1 rounded-full bg-current pulse-live"></span>
+              live
+            </span>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-baseline gap-2 mb-1">
+                <span class="font-mono text-[11.5px] text-fg truncate">warehouse_dense_v3 · seed 42</span>
+              </div>
+              <div class="text-[11px] text-fg-2 leading-snug mb-2.5">
+                reproduce with fix · started 1:24 ago · rg-h100-12
+              </div>
+
+              <!-- live thumbnail (procedural) -->
+              <div class="grid grid-cols-[112px_1fr] gap-2.5">
+                <div class="aspect-[4/3] rounded border border-subtle overflow-hidden relative grid-faint bg-[var(--bg)]">
+                  <!-- procedural "frame" -->
+                  <svg viewBox="0 0 80 60" class="absolute inset-0 w-full h-full">
+                    <rect x="0" y="0" width="80" height="60" fill="oklch(0.22 0.01 90)"/>
+                    <!-- floor grid -->
+                    <g stroke="oklch(0.3 0.01 90)" stroke-width="0.3">
+                      <path d="M0 42 L80 42"/>
+                      <path d="M0 46 L80 46"/>
+                      <path d="M0 52 L80 52"/>
+                    </g>
+                    <!-- shelves -->
+                    <g fill="oklch(0.32 0.02 60)" stroke="oklch(0.4 0.02 60)" stroke-width="0.3">
+                      <rect x="6" y="22" width="14" height="20"/>
+                      <rect x="26" y="20" width="14" height="22"/>
+                      <rect x="46" y="22" width="14" height="20"/>
+                      <rect x="66" y="20" width="10" height="22"/>
+                    </g>
+                    <!-- robot -->
+                    <g>
+                      <circle cx="34" cy="48" r="3" fill="var(--accent)"/>
+                      <path d="M34 48 L42 44" stroke="var(--accent)" stroke-width="0.6"/>
+                    </g>
+                    <!-- HUD -->
+                    <text x="2" y="6" font-size="3" fill="var(--accent)" font-family="JetBrains Mono">CAM_FRONT · t=1207</text>
+                    <text x="78" y="6" font-size="3" fill="var(--accent)" text-anchor="end" font-family="JetBrains Mono">●</text>
+                  </svg>
+                  <div class="absolute bottom-1 left-1 right-1 flex items-center gap-1 text-[8px] font-mono text-fg-3">
+                    <span class="text-accent">●</span>
+                    <span>frame 1207 · sha 9b2e</span>
+                  </div>
+                </div>
+                <div class="flex flex-col justify-between min-w-0">
+                  <div>
+                    <div class="flex items-baseline gap-1.5 mb-0.5">
+                      <span class="font-mono text-[18px] text-fg font-light">0.91</span>
+                      <span class="text-fg-3 text-[10px] font-mono">success_rate</span>
+                    </div>
+                    <div class="text-[10.5px] text-fg-3">target ≥ 0.92 · trending up</div>
+                  </div>
+                  <div class="flex items-center gap-2 text-[10px] text-fg-2 font-mono">
+                    <span>step 1207/1500</span>
+                    <span class="text-fg-3">·</span>
+                    <span>eta 40s</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- streamed log peek -->
+              <div class="mt-2.5 code-cell text-[10.5px] surface px-2 py-1.5 rounded border border-subtle">
+                <div class="text-fg ticker">[1:24] step 1207 · success_rate=0.91</div>
+                <div class="text-fg-2 ticker">[1:22] step 1200 · success_rate=0.89</div>
+                <div class="text-fg-3 ticker">[1:20] step 1180 · success_rate=0.87</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- verification placeholder -->
+      <div>
+        <div class="px-4 py-3 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="divider-label">Verification</span>
+          </div>
+          <span class="text-fg-3 text-[11px]">pending live run</span>
+        </div>
+        <div class="px-4 pb-4 space-y-2">
+          <div class="flex items-center justify-between p-2.5 border border-dashed border-subtle rounded">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full border border-fg-3"></span>
+              <span class="text-[12px] text-fg-2">success_rate ≥ 0.92</span>
+            </div>
+            <span class="text-fg-3 text-[11px] font-mono">awaiting</span>
+          </div>
+          <div class="flex items-center justify-between p-2.5 border border-dashed border-subtle rounded">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full border border-fg-3"></span>
+              <span class="text-[12px] text-fg-2">collision_count = 0</span>
+            </div>
+            <span class="text-fg-3 text-[11px] font-mono">awaiting</span>
+          </div>
+          <div class="flex items-center justify-between p-2.5 border border-dashed border-subtle rounded">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full border border-fg-3"></span>
+              <span class="text-[12px] text-fg-2">video artifact captured</span>
+            </div>
+            <span class="text-fg-3 text-[11px] font-mono">awaiting</span>
+          </div>
+          <div class="flex items-center justify-between p-2.5 border border-dashed border-subtle rounded">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full border border-fg-3"></span>
+              <span class="text-[12px] text-fg-2">no unintended files changed</span>
+            </div>
+            <span class="chip-ok chip tiny" style="font-size: 9px;">passing</span>
+          </div>
+        </div>
+
+        <!-- compare hint -->
+        <div class="mx-4 mb-4 p-3 border border-subtle rounded surface-2">
+          <div class="flex items-center gap-2 mb-1">
+            <svg class="w-3 h-3 text-fg-3" viewBox="0 0 12 12" fill="none"><path d="M2 6h8m-3-3l3 3-3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            <span class="text-[12px] text-fg-1 font-medium">when the run completes</span>
+          </div>
+          <p class="text-[11.5px] text-fg-2 leading-relaxed mb-2">
+            range will compare against the baseline run and flag any visual or metric drift before drafting the PR.
+          </p>
+          <button class="text-[11.5px] text-fg-1 hover:text-fg flex items-center gap-1 underline underline-offset-2 decoration-dotted">
+            preview comparison view
+            <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><path d="M3 6h6m-3-3l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+
+</div>
+
+</body>
+</html>

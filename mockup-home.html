@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Range — Home</title>
+<script>
+  (function(){var K='range-theme',r=document.documentElement,s;try{s=localStorage.getItem(K)}catch(e){}var p=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';r.setAttribute('data-theme',s||p);addEventListener('click',function(e){var b=e.target.closest('[data-theme-toggle]');if(!b)return;var n=r.getAttribute('data-theme')==='light'?'dark':'light';r.setAttribute('data-theme',n);try{localStorage.setItem(K,n)}catch(e){}});})();
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Geist:wght@300..700&family=JetBrains+Mono:wght@400..700&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  :root {
+    --bg: oklch(0.165 0.006 70);
+    --bg-1: oklch(0.195 0.006 70);
+    --bg-2: oklch(0.225 0.006 70);
+    --bg-3: oklch(0.26 0.006 70);
+    --br-1: oklch(0.28 0.006 70);
+    --br-2: oklch(0.36 0.006 70);
+    --br-3: oklch(0.46 0.006 70);
+    --fg: oklch(0.96 0.005 80);
+    --fg-1: oklch(0.8 0.005 80);
+    --fg-2: oklch(0.62 0.005 80);
+    --fg-3: oklch(0.46 0.005 80);
+    --accent: oklch(0.9 0.18 110);
+    --accent-2: oklch(0.78 0.18 110);
+    --accent-soft: oklch(0.9 0.18 110 / 0.13);
+    --accent-border: oklch(0.9 0.18 110 / 0.35);
+    --warn: oklch(0.82 0.14 70);
+    --warn-soft: oklch(0.82 0.14 70 / 0.13);
+    --err: oklch(0.72 0.18 25);
+    --err-soft: oklch(0.72 0.18 25 / 0.13);
+    --ok: oklch(0.78 0.13 155);
+    --ok-soft: oklch(0.78 0.13 155 / 0.12);
+    --info: oklch(0.74 0.08 230);
+    --grid-color: oklch(0.28 0.006 70 / 0.4);
+    color-scheme: dark;
+  }
+  [data-theme="light"] {
+    --bg: oklch(0.985 0.005 80);
+    --bg-1: oklch(0.97 0.005 80);
+    --bg-2: oklch(0.945 0.005 80);
+    --bg-3: oklch(0.915 0.005 80);
+    --br-1: oklch(0.9 0.005 80);
+    --br-2: oklch(0.82 0.005 80);
+    --br-3: oklch(0.68 0.005 80);
+    --fg: oklch(0.18 0.006 70);
+    --fg-1: oklch(0.34 0.006 70);
+    --fg-2: oklch(0.48 0.006 70);
+    --fg-3: oklch(0.62 0.006 70);
+    --accent: oklch(0.55 0.17 105);
+    --accent-2: oklch(0.46 0.17 105);
+    --accent-soft: oklch(0.55 0.17 105 / 0.1);
+    --accent-border: oklch(0.55 0.17 105 / 0.4);
+    --warn: oklch(0.55 0.16 60);
+    --warn-soft: oklch(0.55 0.16 60 / 0.1);
+    --err: oklch(0.5 0.2 25);
+    --err-soft: oklch(0.5 0.2 25 / 0.08);
+    --ok: oklch(0.5 0.15 155);
+    --ok-soft: oklch(0.5 0.15 155 / 0.1);
+    --info: oklch(0.5 0.14 230);
+    --grid-color: oklch(0.82 0.006 70 / 0.6);
+    color-scheme: light;
+  }
+  [data-theme="dark"] .theme-moon, [data-theme="light"] .theme-sun { display: none; }
+  html, body { background: var(--bg); color: var(--fg); }
+  body { font-family: 'Geist', system-ui, sans-serif; font-feature-settings: "ss01", "cv11"; -webkit-font-smoothing: antialiased; }
+  .font-display { font-family: 'Bricolage Grotesque', sans-serif; font-optical-sizing: auto; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; font-feature-settings: "calt", "liga"; }
+  .tracking-tightest { letter-spacing: -0.04em; }
+  .divider-label { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--fg-3); font-weight: 500; }
+  .fanmark {
+    width: 14px; height: 14px;
+    background: conic-gradient(from 0deg at 50% 100%, var(--accent) 0deg 30deg, transparent 30deg 360deg);
+    mask: radial-gradient(circle at 50% 100%, transparent 0 2px, black 2.5px);
+    -webkit-mask: radial-gradient(circle at 50% 100%, transparent 0 2px, black 2.5px);
+  }
+  @keyframes pulse-live { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(0.85); } }
+  .pulse-live { animation: pulse-live 1.6s cubic-bezier(0.4,0,0.6,1) infinite; }
+  @keyframes blink-cursor { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+  .cursor { animation: blink-cursor 1.05s steps(1) infinite; }
+  @keyframes spin-slow { to { transform: rotate(360deg); } }
+  .spin-slow { animation: spin-slow 2.4s linear infinite; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--br-2); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--br-3); }
+  .grid-faint {
+    background-image:
+      linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; line-height: 1; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--br-2); color: var(--fg-1); background: var(--bg-2); font-weight: 500; letter-spacing: 0.01em; }
+  .chip.tiny { font-size: 10px; padding: 3px 6px; }
+  .chip-live { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
+  .chip-ok   { color: var(--ok);     border-color: oklch(0.78 0.13 155 / 0.35); background: var(--ok-soft); }
+  .chip-warn { color: var(--warn);   border-color: oklch(0.82 0.14 70 / 0.35); background: var(--warn-soft); }
+  .chip-err  { color: var(--err);    border-color: oklch(0.72 0.18 25 / 0.35); background: var(--err-soft); }
+  .chip-info { color: var(--info);   border-color: oklch(0.74 0.08 230 / 0.35); background: oklch(0.74 0.08 230 / 0.12); }
+  .quick-chip { transition: all 150ms; }
+  .quick-chip:hover { border-color: var(--br-3); background: var(--bg-3); color: var(--fg); }
+  .kbd { font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1; padding: 2px 5px; border: 1px solid var(--br-2); border-bottom-width: 2px; border-radius: 4px; color: var(--fg-1); background: var(--bg-2); display: inline-flex; align-items: center; gap: 2px; }
+  .nav-link { color: var(--fg-2); transition: color 150ms; padding: 6px 10px; border-radius: 5px; }
+  .nav-link:hover { color: var(--fg); background: var(--bg-2); }
+  .nav-link.active { color: var(--fg); background: var(--bg-2); }
+  .row-hover { transition: background 120ms; }
+  .row-hover:hover { background: var(--bg-2); }
+  .card-hover { transition: all 150ms; }
+  .card-hover:hover { border-color: var(--br-2); background: var(--bg-2); }
+  .composer-shell {
+    background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg) 100%);
+    border: 1px solid var(--br-2);
+    box-shadow:
+      0 1px 0 oklch(1 0 0 / 0.04) inset,
+      0 20px 60px -20px oklch(0 0 0 / 0.5),
+      0 0 0 1px var(--accent-soft);
+  }
+  .attempt-bar { width: 2px; align-self: stretch; border-radius: 2px; background: var(--br-1); }
+  .attempt-bar.active { background: var(--accent); }
+  .attempt-bar.warn { background: var(--warn); }
+  .attempt-bar.done { background: var(--ok); }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ============ TOP BAR ============ -->
+<header class="h-12 border-b border-[var(--br-1)] flex items-center px-5 gap-4 bg-[var(--bg-1)] sticky top-0 z-30">
+  <a href="mockup-index.html" class="flex items-center gap-2 pr-4 mr-1 border-r border-[var(--br-1)] h-full">
+    <div class="fanmark"></div>
+    <span class="font-display tracking-tightest text-[18px] font-light">range</span>
+  </a>
+  <nav class="flex items-center gap-1 text-[13px]">
+    <a href="mockup-home.html" class="nav-link active">home</a>
+    <a href="mockup-plan.html" class="nav-link">plan</a>
+    <a class="nav-link" href="#">sessions <span class="font-mono text-[10px] text-[var(--fg-3)] ml-1">3</span></a>
+    <a class="nav-link" href="#">history</a>
+  </nav>
+  <div class="flex-1"></div>
+  <div class="flex items-center gap-2 text-[12px] text-[var(--fg-2)]">
+    <div class="flex items-center gap-1.5 px-2.5 py-1 border border-[var(--br-1)] rounded">
+      <svg class="w-3 h-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/></svg>
+      <span class="font-mono">2 runners</span>
+    </div>
+    <div class="flex items-center gap-1.5 px-2.5 py-1 border border-[var(--br-1)] rounded">
+      <span class="text-[var(--fg-3)]">gpu</span>
+      <span class="font-mono text-[var(--fg-1)]">8.4</span>
+      <span class="text-[var(--fg-3)]">/</span>
+      <span class="font-mono">40h</span>
+    </div>
+    <button class="kbd">⌘K</button>
+    <button data-theme-toggle class="w-7 h-7 rounded border border-[var(--br-1)] hover:border-[var(--br-2)] hover:bg-[var(--bg-2)] flex items-center justify-center text-[var(--fg-2)] hover:text-[var(--fg)] transition" aria-label="Toggle theme">
+      <svg class="theme-sun w-3.5 h-3.5" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3" fill="currentColor"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      <svg class="theme-moon w-3.5 h-3.5" viewBox="0 0 16 16" fill="none"><path d="M13 9.5A5.5 5.5 0 1 1 6.5 3a4.5 4.5 0 0 0 6.5 6.5z" fill="currentColor"/></svg>
+    </button>
+    <div class="w-7 h-7 rounded-full bg-[var(--bg-3)] border border-[var(--br-2)] text-[11px] flex items-center justify-center font-medium text-[var(--fg-1)]">DP</div>
+  </div>
+</header>
+
+<!-- ============ HERO COMPOSER ============ -->
+<section class="relative overflow-hidden border-b border-[var(--br-1)]">
+  <div class="absolute inset-0 grid-faint opacity-50"></div>
+  <div class="absolute inset-0 pointer-events-none" style="background: radial-gradient(ellipse 60% 50% at 50% 0%, var(--accent-soft), transparent 65%);"></div>
+
+  <div class="max-w-3xl mx-auto px-6 pt-16 pb-12 relative">
+    <div class="flex items-center gap-2 mb-5">
+      <span class="divider-label">monday · may 11 · 9:42am</span>
+      <span class="text-[var(--fg-3)] text-[11px]">·</span>
+      <span class="text-[11px] text-[var(--fg-2)]">good morning, dhaval</span>
+    </div>
+
+    <h1 class="font-display tracking-tightest text-[44px] leading-[1.04] font-light mb-7">
+      what are we working on,
+      <span class="italic text-[var(--fg-2)]">today?</span>
+    </h1>
+
+    <!-- composer -->
+    <div class="composer-shell rounded-xl overflow-hidden mb-4">
+      <div class="px-5 py-4">
+        <div class="text-[16px] text-[var(--fg-3)] leading-relaxed">
+          <span class="text-[var(--fg-2)]">pull in</span>
+          <span class="font-mono text-[15px] text-[var(--fg-1)] bg-[var(--bg-2)] px-1.5 py-0.5 rounded mx-0.5">SIM-1842</span>
+          <span class="text-[var(--fg-2)]">and reproduce the warehouse_dense_v3 failure on a gpu runner</span>
+          <span class="inline-block w-[2px] h-[18px] bg-[var(--accent)] cursor align-middle ml-0.5"></span>
+        </div>
+      </div>
+      <div class="px-5 py-2.5 border-t border-[var(--br-1)] flex items-center gap-3 bg-[var(--bg)]">
+        <div class="flex items-center gap-1.5">
+          <span class="chip tiny">
+            <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><path d="M3 1.5h4l2 2v7h-6v-9z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+            robot-nav-sim
+          </span>
+          <button class="text-[11px] text-[var(--fg-3)] hover:text-[var(--fg-1)] flex items-center gap-1 px-1.5 py-1">
+            <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><path d="M6 2v8m-4-4h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            add repo
+          </button>
+        </div>
+        <div class="flex-1"></div>
+        <span class="text-[11px] text-[var(--fg-3)]">range will fetch the task, propose a profile, and ask before anything spins up.</span>
+        <button class="px-3 py-1.5 rounded-md text-[12px] font-medium text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] transition flex items-center gap-1.5">
+          go
+          <span class="kbd" style="background: oklch(0.92 0.12 110 / 0.4); border-color: oklch(0.45 0.08 110); color: oklch(0.2 0.05 110);">⏎</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- quick actions -->
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-[11px] text-[var(--fg-3)] mr-1">or pick a starter:</span>
+      <button class="quick-chip text-[12px] text-[var(--fg-1)] border border-[var(--br-1)] bg-[var(--bg-1)] rounded-md px-3 py-1.5 flex items-center gap-1.5">
+        <svg class="w-3 h-3 text-[var(--fg-3)]" viewBox="0 0 12 12" fill="none"><path d="M2 8l3-3 2 2 3-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        pull in my latest task
+      </button>
+      <button class="quick-chip text-[12px] text-[var(--fg-1)] border border-[var(--br-1)] bg-[var(--bg-1)] rounded-md px-3 py-1.5 flex items-center gap-1.5">
+        <svg class="w-3 h-3 text-[var(--fg-3)]" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4" stroke="currentColor" stroke-width="1.2"/><path d="M6 4v2.5h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        fetch a task by id
+      </button>
+      <button class="quick-chip text-[12px] text-[var(--fg-1)] border border-[var(--br-1)] bg-[var(--bg-1)] rounded-md px-3 py-1.5 flex items-center gap-1.5">
+        <svg class="w-3 h-3 text-[var(--fg-3)]" viewBox="0 0 12 12" fill="none"><path d="M3 4l3 3 3-3M3 8h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        verify a PR
+      </button>
+      <a href="mockup-session-freeform.html" class="quick-chip text-[12px] text-[var(--fg-1)] border border-[var(--accent-border)] bg-[var(--accent-soft)] rounded-md px-3 py-1.5 flex items-center gap-1.5">
+        <svg class="w-3 h-3 text-[var(--accent)]" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M6 2v8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span class="text-[var(--accent)]">freeform</span>
+        <span class="text-[var(--fg-2)]">— just type</span>
+      </a>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ MAIN GRID ============ -->
+<div class="max-w-6xl mx-auto px-6 py-10 grid grid-cols-[1fr_320px] gap-8">
+
+  <!-- LEFT: in-flight + assigned + recent -->
+  <div class="space-y-10 min-w-0">
+
+    <!-- in flight -->
+    <section>
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2.5">
+          <span class="divider-label">In flight</span>
+          <span class="text-[var(--fg-3)] text-[11px] font-mono">3 sessions</span>
+        </div>
+        <a class="text-[11.5px] text-[var(--fg-2)] hover:text-[var(--fg)] flex items-center gap-1" href="#">
+          see all
+          <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><path d="M3 6h6m-2.5-3l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </a>
+      </div>
+
+      <div class="space-y-2">
+        <!-- session 1: SIM-1842 -->
+        <a href="mockup-implementation.html" class="block border border-[var(--br-1)] rounded-lg overflow-hidden card-hover bg-[var(--bg-1)]">
+          <div class="flex items-stretch">
+            <div class="attempt-bar active"></div>
+            <div class="flex-1 min-w-0 p-4">
+              <div class="flex items-start gap-3 mb-2">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="text-[10px] text-[var(--fg-3)] font-mono">SIM-1842</span>
+                    <span class="text-[var(--fg-3)] text-[10px]">·</span>
+                    <span class="text-[10px] text-[var(--fg-3)] font-mono">robot-nav-sim</span>
+                  </div>
+                  <div class="text-[14.5px] text-[var(--fg)] font-medium mb-1 truncate">Navigation regression in warehouse_dense_v3</div>
+                  <div class="flex items-center gap-2 text-[11.5px] text-[var(--fg-2)]">
+                    <span class="font-mono">codex-fix-minimal</span>
+                    <span class="text-[var(--fg-3)]">·</span>
+                    <span>4 attempts</span>
+                    <span class="text-[var(--fg-3)]">·</span>
+                    <span>+50/−2</span>
+                  </div>
+                </div>
+                <span class="chip chip-live">
+                  <span class="w-1.5 h-1.5 rounded-full bg-current pulse-live"></span>
+                  codex working
+                </span>
+              </div>
+              <!-- evidence strip -->
+              <div class="mt-3 flex items-center gap-2 text-[10.5px] text-[var(--fg-2)] border-t border-[var(--br-1)] pt-3">
+                <span class="flex items-center gap-1">
+                  <svg class="w-2.5 h-2.5 text-[var(--accent)] spin-slow" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 3"/></svg>
+                  reproduce w/ fix · step 1207/1500
+                </span>
+                <span class="text-[var(--fg-3)]">·</span>
+                <span class="font-mono">success_rate 0.91</span>
+                <span class="text-[var(--fg-3)]">·</span>
+                <span>rg-h100-12</span>
+                <div class="flex-1"></div>
+                <span class="text-[var(--fg-3)] font-mono">4m elapsed</span>
+              </div>
+            </div>
+          </div>
+        </a>
+
+        <!-- session 2: TRAIN-2104 -->
+        <div class="block border border-[var(--br-1)] rounded-lg overflow-hidden card-hover bg-[var(--bg-1)] cursor-pointer">
+          <div class="flex items-stretch">
+            <div class="attempt-bar warn"></div>
+            <div class="flex-1 min-w-0 p-4">
+              <div class="flex items-start gap-3 mb-2">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="text-[10px] text-[var(--fg-3)] font-mono">TRAIN-2104</span>
+                    <span class="text-[var(--fg-3)] text-[10px]">·</span>
+                    <span class="text-[10px] text-[var(--fg-3)] font-mono">warp-rl-pipelines</span>
+                  </div>
+                  <div class="text-[14.5px] text-[var(--fg)] font-medium mb-1 truncate">Policy training diverges around step 50k since #4521</div>
+                  <div class="flex items-center gap-2 text-[11.5px] text-[var(--fg-2)]">
+                    <span class="font-mono">codex-investigate</span>
+                    <span class="text-[var(--fg-3)]">·</span>
+                    <span>2 hypotheses</span>
+                  </div>
+                </div>
+                <span class="chip chip-warn">awaiting you</span>
+              </div>
+              <div class="mt-3 flex items-center gap-2 text-[10.5px] text-[var(--fg-2)] border-t border-[var(--br-1)] pt-3">
+                <span>codex flagged the data loader refactor as the likely site</span>
+                <div class="flex-1"></div>
+                <span class="text-[var(--fg-3)] font-mono">paused 2h ago</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- session 3: RENDER-87 PR verify -->
+        <div class="block border border-[var(--br-1)] rounded-lg overflow-hidden card-hover bg-[var(--bg-1)] cursor-pointer">
+          <div class="flex items-stretch">
+            <div class="attempt-bar"></div>
+            <div class="flex-1 min-w-0 p-4">
+              <div class="flex items-start gap-3 mb-2">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="chip tiny chip-info">verifying PR #4612</span>
+                    <span class="text-[var(--fg-3)] text-[10px]">·</span>
+                    <span class="text-[10px] text-[var(--fg-3)] font-mono">RENDER-87</span>
+                    <span class="text-[var(--fg-3)] text-[10px]">·</span>
+                    <span class="text-[10px] text-[var(--fg-3)] font-mono">sensor-sim-tools</span>
+                  </div>
+                  <div class="text-[14.5px] text-[var(--fg)] font-medium mb-1 truncate">Fix lidar timestamp drift in long rollouts</div>
+                  <div class="flex items-center gap-2 text-[11.5px] text-[var(--fg-2)]">
+                    <span class="text-[var(--fg-3)]">by</span>
+                    <span class="font-mono">amrita-c</span>
+                    <span class="text-[var(--fg-3)]">·</span>
+                    <span>cleanroom queued</span>
+                  </div>
+                </div>
+                <span class="chip">verification in progress</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- assigned -->
+    <section>
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2.5">
+          <span class="divider-label">Assigned to you</span>
+          <span class="text-[var(--fg-3)] text-[11px] font-mono">5 tasks</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button class="chip tiny">all</button>
+          <button class="chip tiny" style="opacity: 0.55;">jira</button>
+          <button class="chip tiny" style="opacity: 0.55;">github</button>
+        </div>
+      </div>
+
+      <div class="border border-[var(--br-1)] rounded-lg overflow-hidden bg-[var(--bg-1)]">
+        <!-- row 1 -->
+        <div class="row-hover px-4 py-3 flex items-center gap-3 cursor-pointer">
+          <span class="chip tiny chip-err">P0</span>
+          <span class="font-mono text-[11px] text-[var(--fg-2)] w-[88px]">SIM-1850</span>
+          <span class="text-[13.5px] text-[var(--fg-1)] flex-1 truncate">Sensor occlusion produces NaN in warehouse_outdoor</span>
+          <span class="chip tiny">
+            <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><rect x="1.5" y="1.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.2"/></svg>
+            jira
+          </span>
+          <span class="text-[10.5px] text-[var(--fg-3)] font-mono w-[60px] text-right">2h ago</span>
+        </div>
+        <!-- row 2 -->
+        <div class="row-hover px-4 py-3 flex items-center gap-3 cursor-pointer border-t border-[var(--br-1)]">
+          <span class="chip tiny chip-warn">P1</span>
+          <span class="font-mono text-[11px] text-[var(--fg-2)] w-[88px]">RENDER-91</span>
+          <span class="text-[13.5px] text-[var(--fg-1)] flex-1 truncate">Camera intrinsics drift after seed reset in long episodes</span>
+          <span class="chip tiny">
+            <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><rect x="1.5" y="1.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.2"/></svg>
+            jira
+          </span>
+          <span class="text-[10.5px] text-[var(--fg-3)] font-mono w-[60px] text-right">5h ago</span>
+        </div>
+        <!-- row 3 -->
+        <div class="row-hover px-4 py-3 flex items-center gap-3 cursor-pointer border-t border-[var(--br-1)]">
+          <span class="chip tiny chip-warn">P1</span>
+          <span class="font-mono text-[11px] text-[var(--fg-2)] w-[88px]">#312</span>
+          <span class="text-[13.5px] text-[var(--fg-1)] flex-1 truncate">policy_eval.py crashes on H200 with --record-trajectory</span>
+          <span class="chip tiny">
+            <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="currentColor"><path d="M6 0a6 6 0 0 0-1.9 11.7c.3.05.4-.13.4-.29 0-.14 0-.62-.01-1.11-1.51.28-1.9-.36-2.02-.7-.07-.17-.36-.7-.62-.85-.21-.11-.5-.39-.01-.4.47-.01.81.43.92.61.54.91 1.4.65 1.75.5.05-.39.21-.65.38-.8-1.33-.15-2.74-.66-2.74-2.96 0-.65.23-1.19.61-1.61-.06-.15-.27-.76.06-1.59 0 0 .5-.16 1.65.62.48-.13.99-.2 1.5-.2.51 0 1.02.07 1.5.2 1.15-.78 1.65-.62 1.65-.62.33.83.12 1.44.06 1.59.38.42.61.95.61 1.61 0 2.3-1.41 2.81-2.74 2.96.22.19.41.55.41 1.11 0 .8-.01 1.45-.01 1.65 0 .16.11.34.41.29A6 6 0 0 0 6 0z"/></svg>
+            github
+          </span>
+          <span class="text-[10.5px] text-[var(--fg-3)] font-mono w-[60px] text-right">1d</span>
+        </div>
+        <!-- row 4 -->
+        <div class="row-hover px-4 py-3 flex items-center gap-3 cursor-pointer border-t border-[var(--br-1)]">
+          <span class="chip tiny">P2</span>
+          <span class="font-mono text-[11px] text-[var(--fg-2)] w-[88px]">SIM-1855</span>
+          <span class="text-[13.5px] text-[var(--fg-1)] flex-1 truncate">Add reproduce profile for warehouse_dense_v3 multi-seed</span>
+          <span class="chip tiny">
+            <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><rect x="1.5" y="1.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.2"/></svg>
+            jira
+          </span>
+          <span class="text-[10.5px] text-[var(--fg-3)] font-mono w-[60px] text-right">3d</span>
+        </div>
+        <!-- row 5 -->
+        <div class="row-hover px-4 py-3 flex items-center gap-3 cursor-pointer border-t border-[var(--br-1)]">
+          <span class="chip tiny">P2</span>
+          <span class="font-mono text-[11px] text-[var(--fg-2)] w-[88px]">TRAIN-2108</span>
+          <span class="text-[13.5px] text-[var(--fg-1)] flex-1 truncate">Bench: compare reward stability across optimizers on H100/H200</span>
+          <span class="chip tiny">
+            <svg class="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none"><rect x="1.5" y="1.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.2"/></svg>
+            jira
+          </span>
+          <span class="text-[10.5px] text-[var(--fg-3)] font-mono w-[60px] text-right">5d</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- recent -->
+    <section>
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2.5">
+          <span class="divider-label">Picked up recently</span>
+          <span class="text-[var(--fg-3)] text-[11px] font-mono">last 7 days</span>
+        </div>
+        <a class="text-[11.5px] text-[var(--fg-2)] hover:text-[var(--fg)]" href="#">all activity</a>
+      </div>
+
+      <div class="grid grid-cols-3 gap-3">
+        <div class="border border-[var(--br-1)] rounded-lg p-4 card-hover cursor-pointer bg-[var(--bg-1)]">
+          <span class="chip tiny chip-ok mb-3">merged</span>
+          <div class="font-mono text-[10.5px] text-[var(--fg-3)] mt-2 mb-1">SIM-1789 · PR #4598</div>
+          <div class="text-[13px] text-[var(--fg-1)] mb-2 leading-snug">Replay buffer ordering fix for camera frames</div>
+          <div class="text-[10.5px] text-[var(--fg-3)] font-mono">5d · 4 attempts · evidence ✓</div>
+        </div>
+        <div class="border border-[var(--br-1)] rounded-lg p-4 card-hover cursor-pointer bg-[var(--bg-1)]">
+          <span class="chip tiny chip-info mb-3">opened</span>
+          <div class="font-mono text-[10.5px] text-[var(--fg-3)] mt-2 mb-1">SIM-1801 · PR #4607</div>
+          <div class="text-[13px] text-[var(--fg-1)] mb-2 leading-snug">Stabilize trajectory recording at high frame rates</div>
+          <div class="text-[10.5px] text-[var(--fg-3)] font-mono">2d · awaiting review</div>
+        </div>
+        <div class="border border-[var(--br-1)] rounded-lg p-4 card-hover cursor-pointer bg-[var(--bg-1)]">
+          <span class="chip tiny mb-3" style="color: var(--fg-2);">archived</span>
+          <div class="font-mono text-[10.5px] text-[var(--fg-3)] mt-2 mb-1">TRAIN-2098</div>
+          <div class="text-[13px] text-[var(--fg-1)] mb-2 leading-snug">Tried tuning lr schedule — not the cause, kept notes</div>
+          <div class="text-[10.5px] text-[var(--fg-3)] font-mono">3d · 1 hypothesis ruled out</div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- RIGHT: side panel -->
+  <aside class="space-y-7 min-w-0">
+
+    <!-- range thinks -->
+    <section class="border border-[var(--br-1)] rounded-lg overflow-hidden bg-[var(--bg-1)]">
+      <div class="px-4 py-3 border-b border-[var(--br-1)] flex items-center gap-2">
+        <div class="fanmark"></div>
+        <span class="text-[12.5px] text-[var(--fg-1)] font-medium">range suggests</span>
+      </div>
+      <div class="p-4 space-y-3.5">
+        <div>
+          <div class="text-[12.5px] text-[var(--fg-1)] mb-1.5 leading-snug">
+            the SIM-1842 reproduce-with-fix run will finish in <span class="text-[var(--accent)] font-mono">~40s</span>. want me to start drafting the PR if it passes?
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button class="text-[11px] text-[var(--fg-1)] border border-[var(--br-2)] hover:border-[var(--br-3)] bg-[var(--bg-2)] rounded px-2.5 py-1">yes, draft if passes</button>
+            <button class="text-[11px] text-[var(--fg-3)] hover:text-[var(--fg-1)] px-1.5">later</button>
+          </div>
+        </div>
+        <div class="pt-3.5 border-t border-[var(--br-1)]">
+          <div class="text-[12.5px] text-[var(--fg-1)] mb-1.5 leading-snug">
+            <span class="font-mono text-[12px]">TRAIN-2104</span> has been paused 2 hours. codex left two hypotheses for your review.
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button class="text-[11px] text-[var(--fg-1)] border border-[var(--br-2)] hover:border-[var(--br-3)] bg-[var(--bg-2)] rounded px-2.5 py-1">resume</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- runners -->
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <span class="divider-label">Runners</span>
+        <span class="text-[var(--fg-3)] text-[11px] font-mono">2 active</span>
+      </div>
+      <div class="border border-[var(--br-1)] rounded-lg overflow-hidden bg-[var(--bg-1)] divide-y divide-[var(--br-1)]">
+        <div class="px-3.5 py-2.5 flex items-center gap-2.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-[var(--accent)] pulse-live"></span>
+          <span class="font-mono text-[11.5px] text-[var(--fg-1)]">rg-h100-12</span>
+          <div class="flex-1"></div>
+          <span class="text-[10.5px] text-[var(--fg-3)] font-mono">SIM-1842</span>
+        </div>
+        <div class="px-3.5 py-2.5 flex items-center gap-2.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-[var(--fg-3)]"></span>
+          <span class="font-mono text-[11.5px] text-[var(--fg-2)]">rg-h100-7</span>
+          <div class="flex-1"></div>
+          <span class="text-[10.5px] text-[var(--fg-3)]">idle · 4m</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- budget -->
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <span class="divider-label">GPU budget</span>
+        <span class="text-[var(--fg-3)] text-[11px] font-mono">week</span>
+      </div>
+      <div class="border border-[var(--br-1)] rounded-lg p-4 bg-[var(--bg-1)]">
+        <div class="flex items-baseline gap-2 mb-2">
+          <span class="font-mono font-light text-[28px] text-[var(--fg)]">8.4</span>
+          <span class="text-[var(--fg-3)] font-mono text-[12px]">/</span>
+          <span class="font-mono text-[12px] text-[var(--fg-2)]">40h</span>
+        </div>
+        <div class="h-1.5 rounded-full bg-[var(--bg-3)] overflow-hidden mb-3">
+          <div class="h-full rounded-full" style="width: 21%; background: var(--accent);"></div>
+        </div>
+        <div class="flex items-center justify-between text-[10.5px] text-[var(--fg-3)]">
+          <span>21% used</span>
+          <span class="font-mono">resets sun</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- activity -->
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <span class="divider-label">Activity</span>
+      </div>
+      <div class="space-y-2.5 text-[11.5px] text-[var(--fg-2)]">
+        <div class="flex items-start gap-2.5">
+          <span class="w-1 h-1 rounded-full bg-[var(--accent)] mt-2 flex-shrink-0"></span>
+          <div class="leading-snug">
+            <span class="text-[var(--fg-1)]">codex</span> finished pytest on SIM-1842
+            <span class="text-[var(--fg-3)] font-mono ml-1">· 1m</span>
+          </div>
+        </div>
+        <div class="flex items-start gap-2.5">
+          <span class="w-1 h-1 rounded-full bg-[var(--ok)] mt-2 flex-shrink-0"></span>
+          <div class="leading-snug">
+            <span class="text-[var(--fg-1)]">PR #4598</span> merged to main
+            <span class="text-[var(--fg-3)] font-mono ml-1">· 5d</span>
+          </div>
+        </div>
+        <div class="flex items-start gap-2.5">
+          <span class="w-1 h-1 rounded-full bg-[var(--info)] mt-2 flex-shrink-0"></span>
+          <div class="leading-snug">
+            <span class="text-[var(--fg-1)]">amrita-c</span> opened PR for RENDER-87 verification
+            <span class="text-[var(--fg-3)] font-mono ml-1">· 12m</span>
+          </div>
+        </div>
+        <div class="flex items-start gap-2.5">
+          <span class="w-1 h-1 rounded-full bg-[var(--fg-3)] mt-2 flex-shrink-0"></span>
+          <div class="leading-snug">
+            attempt <span class="font-mono text-[var(--fg-1)]">codex-fix-bold</span> queued for runner
+            <span class="text-[var(--fg-3)] font-mono ml-1">· 8m</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </aside>
+
+</div>
+
+</body>
+</html>
