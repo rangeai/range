@@ -7,6 +7,7 @@
  */
 
 import { db } from "./db.ts";
+import { isGitRepo } from "./worktree.ts";
 import type {
   CreateSessionRequest,
   Session,
@@ -75,6 +76,14 @@ const selectByIdStmt = db.prepare<SessionRow, [string]>(
 const selectListStmt = db.prepare<SessionRow, [number]>(
   "SELECT * FROM sessions ORDER BY updated_at DESC LIMIT ?",
 );
+
+export async function validateRepoPath(repoPath: string): Promise<void> {
+  if (!(await isGitRepo(repoPath))) {
+    throw new Error(
+      `repoPath "${repoPath}" is not a git repository (or does not exist)`,
+    );
+  }
+}
 
 export function createSession(req: CreateSessionRequest): Session {
   const id = newSessionId();

@@ -2,7 +2,7 @@
  * Wire protocol shared between server and browser.
  *
  * Kept deliberately small for Phase 1. Will grow as we implement
- * runs, evidence streaming, and permission flow.
+ * evidence streaming and permission flow.
  */
 
 // ─── Sessions ──────────────────────────────────────────────────────────────
@@ -67,6 +67,51 @@ export interface Attempt {
   updatedAt: number;
 }
 
+// ─── Runs ──────────────────────────────────────────────────────────────────
+
+export type RunKind =
+  | "reproduce"
+  | "verify"
+  | "evaluate"
+  | "train"
+  | "render"
+  | "shell"
+  | "agent";
+
+export type RunState =
+  | "queued"
+  | "starting"
+  | "running"
+  | "paused"
+  | "succeeded"
+  | "failed"
+  | "aborted"
+  | "failed_start";
+
+export interface Run {
+  id: string;
+  attemptId: string;
+  kind: RunKind;
+  command: string[];
+  cwd: string;
+  state: RunState;
+  exitCode: number | null;
+  startedAt: number | null;
+  finishedAt: number | null;
+  runDir: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type LogStream = "stdout" | "stderr" | "system";
+
+export interface RunLogEntry {
+  runId: string;
+  stream: LogStream;
+  t: number; // ms offset from run.startedAt
+  message: string;
+}
+
 // ─── Server → Browser ──────────────────────────────────────────────────────
 
 export interface ServerHello {
@@ -101,13 +146,34 @@ export interface ServerAttemptUpdated {
   attempt: Attempt;
 }
 
+export interface ServerRunStarted {
+  type: "run_started";
+  run: Run;
+}
+
+export interface ServerRunLog {
+  type: "run_log";
+  runId: string;
+  stream: LogStream;
+  t: number;
+  message: string;
+}
+
+export interface ServerRunFinished {
+  type: "run_finished";
+  run: Run;
+}
+
 export type ServerMessage =
   | ServerHello
   | ServerPing
   | ServerSessionCreated
   | ServerSessionUpdated
   | ServerAttemptCreated
-  | ServerAttemptUpdated;
+  | ServerAttemptUpdated
+  | ServerRunStarted
+  | ServerRunLog
+  | ServerRunFinished;
 
 // ─── Browser → Server ──────────────────────────────────────────────────────
 
@@ -158,4 +224,22 @@ export interface ListAttemptsResponse {
 
 export interface GetAttemptResponse {
   attempt: Attempt;
+}
+
+export interface CreateRunRequest {
+  command: string | string[]; // string is split on whitespace, array is used as-is
+  kind?: RunKind;
+}
+
+export interface CreateRunResponse {
+  run: Run;
+}
+
+export interface ListRunsResponse {
+  runs: Run[];
+}
+
+export interface GetRunResponse {
+  run: Run;
+  logs?: RunLogEntry[]; // recent log entries, if requested
 }

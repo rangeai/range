@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as api from "../lib/api";
 import { sessionsByRecency, useAppStore } from "../lib/store";
 import type { Session, SessionKind } from "@shared/protocol";
@@ -17,7 +17,7 @@ export function Home() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <Hero />
+      <Hero sessions={sessions} />
       <RecentSessions
         sessions={sessionsByRecency(sessions)}
         onOpen={openSession}
@@ -26,25 +26,46 @@ export function Home() {
   );
 }
 
-function Hero() {
+function recentRepoPaths(map: Map<string, Session>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of sessionsByRecency(map)) {
+    if (s.repoPath && !seen.has(s.repoPath)) {
+      seen.add(s.repoPath);
+      out.push(s.repoPath);
+    }
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+function Hero({ sessions }: { sessions: Map<string, Session> }) {
   const [prompt, setPrompt] = useState("");
+  const [repoPath, setRepoPath] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const upsertSession = useAppStore((s) => s.upsertSession);
   const openSession = useAppStore((s) => s.openSession);
+
+  const recentRepos = useMemo(() => recentRepoPaths(sessions), [sessions]);
 
   const submit = async (kind: SessionKind) => {
     if (busy) return;
     setBusy(true);
+    setError(null);
     try {
       const res = await api.createSession({
         kind,
         prompt: prompt.trim() || null,
+        repoPath: repoPath.trim() || null,
       });
       upsertSession(res.session);
       openSession(res.session.id);
       setPrompt("");
+      setRepoPath("");
     } catch (err) {
       console.error("createSession failed", err);
+      setError(String(err instanceof Error ? err.message : err));
       setBusy(false);
     }
   };
@@ -101,6 +122,46 @@ function Hero() {
               }}
             />
           </div>
+
+          <div className="px-5 py-3 border-t border-[var(--br-1)] flex items-center gap-2 bg-[var(--bg)]">
+            <svg
+              className="w-3.5 h-3.5 text-fg-3 flex-shrink-0"
+              viewBox="0 0 14 14"
+              fill="none"
+            >
+              <rect
+                x="2"
+                y="2"
+                width="10"
+                height="10"
+                rx="1.5"
+                stroke="currentColor"
+                strokeWidth="1.2"
+              />
+              <path
+                d="M4 6h6M4 8h4"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+              />
+            </svg>
+            <input
+              type="text"
+              value={repoPath}
+              onChange={(e) => setRepoPath(e.target.value)}
+              placeholder="repo path (optional) — /path/to/your/repo"
+              disabled={busy}
+              spellCheck={false}
+              className="flex-1 bg-transparent outline-none text-[12.5px] font-mono text-fg-1 placeholder:text-fg-3 disabled:opacity-60"
+            />
+            {recentRepos.length > 0 && repoPath.length === 0 && (
+              <RecentRepoMenu
+                repos={recentRepos}
+                onPick={(p) => setRepoPath(p)}
+              />
+            )}
+          </div>
+
           <div className="px-5 py-2.5 border-t border-[var(--br-1)] flex items-center gap-3 bg-[var(--bg)]">
             <span className="text-[11px] text-fg-3">
               ⏎ to start a freeform session · or pick a kind →
@@ -115,6 +176,12 @@ function Hero() {
             </button>
           </div>
         </div>
+
+        {error && (
+          <div className="mb-4 p-3 rounded border border-[var(--err)]/40 bg-[var(--err)]/10 text-[12px] text-[var(--err)] break-words">
+            {error}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] text-fg-3 mr-1">starters:</span>
@@ -136,6 +203,45 @@ function Hero() {
         </div>
       </div>
     </section>
+  );
+}
+
+function RecentRepoMenu({
+  repos,
+  onPick,
+}: {
+  repos: string[];
+  onPick: (p: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="text-[10.5px] text-fg-3 hover:text-fg-1 px-2 py-1 border border-[var(--br-1)] rounded transition"
+      >
+        recent ▾
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 min-w-[280px] max-w-[400px] border border-[var(--br-2)] bg-[var(--bg-1)] rounded shadow-lg z-20 overflow-hidden">
+          {repos.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => {
+                onPick(p);
+                setOpen(false);
+              }}
+              className="w-full text-left px-3 py-2 text-[11.5px] font-mono text-fg-1 hover:bg-[var(--bg-2)] truncate"
+              title={p}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -219,6 +325,17 @@ function SessionRow({
         <span className="text-[10px] font-mono text-fg-3">
           {labelForKind(session.kind)}
         </span>
+        {session.repoPath && (
+          <>
+            <span className="text-fg-3 text-[10px]">·</span>
+            <span
+              className="text-[10px] font-mono text-fg-3 truncate max-w-[300px]"
+              title={session.repoPath}
+            >
+              {shortenPath(session.repoPath)}
+            </span>
+          </>
+        )}
       </div>
       <div className="text-[14px] text-fg leading-snug mb-1.5 truncate">
         {session.title}
@@ -248,4 +365,13 @@ function formatRelativeTime(t: number): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function shortenPath(p: string): string {
+  const home = "/Users/";
+  if (!p.startsWith(home)) return p;
+  const rest = p.slice(home.length);
+  const slash = rest.indexOf("/");
+  if (slash === -1) return p;
+  return `~/${rest.slice(slash + 1)}`;
 }

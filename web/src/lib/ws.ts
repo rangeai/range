@@ -81,6 +81,18 @@ class WsStore {
       case "attempt_updated":
         useAppStore.getState().upsertAttempt(msg.attempt);
         break;
+      case "run_started":
+      case "run_finished":
+        useAppStore.getState().upsertRun(msg.run);
+        break;
+      case "run_log":
+        useAppStore.getState().appendLog({
+          runId: msg.runId,
+          stream: msg.stream,
+          t: msg.t,
+          message: msg.message,
+        });
+        break;
     }
   }
 

@@ -90,6 +90,32 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_attempts_session ON attempts(session_id, created_at DESC);
     `,
   },
+  {
+    id: 4,
+    name: "init_runs",
+    up: `
+      CREATE TABLE runs (
+        id TEXT PRIMARY KEY,
+        attempt_id TEXT NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN (
+          'reproduce', 'verify', 'evaluate', 'train', 'render', 'shell', 'agent'
+        )),
+        command TEXT NOT NULL,
+        cwd TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'queued' CHECK (state IN (
+          'queued', 'starting', 'running', 'paused',
+          'succeeded', 'failed', 'aborted', 'failed_start'
+        )),
+        exit_code INTEGER,
+        started_at INTEGER,
+        finished_at INTEGER,
+        run_dir TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX idx_runs_attempt ON runs(attempt_id, created_at DESC);
+    `,
+  },
 ];
 
 function applyMigrations() {

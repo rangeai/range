@@ -21,19 +21,34 @@ import type {
   ListSessionsResponse,
 } from "../shared/protocol.ts";
 import "./db.ts";
-import { createSession, getSession, listSessions } from "./sessions.ts";
+import {
+  createSession,
+  getSession,
+  listSessions,
+  validateRepoPath,
+} from "./sessions.ts";
 import {
   createAttempt,
   getAttempt,
   listAttempts,
   setCandidate,
 } from "./attempts.ts";
+import {
+  getRun,
+  listRunsByAttempt,
+} from "./runs.ts";
+import { abortRun, readRunEvents, startRun } from "./runner.ts";
 import { broadcast, registerSender } from "./hub.ts";
 import type {
   CreateAttemptRequest,
   CreateAttemptResponse,
+  CreateRunRequest,
+  CreateRunResponse,
   GetAttemptResponse,
+  GetRunResponse,
   ListAttemptsResponse,
+  ListRunsResponse,
+  RunKind,
 } from "../shared/protocol.ts";
 
 const VERSION = "0.1.0";
@@ -68,6 +83,14 @@ app.post("/api/sessions", async (c) => {
 
   if (!body || typeof body !== "object" || !VALID_KINDS.has(body.kind)) {
     return c.json({ error: "kind must be one of tracked_task | freeform | pr_verification" }, 400);
+  }
+
+  if (body.repoPath) {
+    try {
+      await validateRepoPath(body.repoPath);
+    } catch (err) {
+      return c.json({ error: String(err instanceof Error ? err.message : err) }, 400);
+    }
   }
 
   const session = createSession(body);
@@ -172,6 +195,102 @@ app.post("/api/attempts/:id/promote", (c) => {
   if (!attempt) return c.json({ error: "attempt not found" }, 404);
   broadcast({ type: "attempt_updated", attempt });
   return c.json({ attempt });
+});
+
+// ─── Runs ──────────────────────────────────────────────────────────────────
+
+const VALID_RUN_KINDS: ReadonlySet<RunKind> = new Set<RunKind>([
+  "reproduce",
+  "verify",
+  "evaluate",
+  "train",
+  "render",
+  "shell",
+  "agent",
+]);
+
+function splitCommand(input: string | string[]): string[] {
+  if (Array.isArray(input)) return input.filter((x) => x.length > 0);
+  // Naive whitespace split. Good enough for MVP; users with quoted args
+  // pass an array instead.
+  return input
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+app.get("/api/attempts/:id/runs", (c) => {
+  const attemptId = c.req.param("id");
+  const attempt = getAttempt(attemptId);
+  if (!attempt) return c.json({ error: "attempt not found" }, 404);
+  const runs = listRunsByAttempt(attemptId);
+  const response: ListRunsResponse = { runs };
+  return c.json(response);
+});
+
+app.post("/api/attempts/:id/runs", async (c) => {
+  const attemptId = c.req.param("id");
+  const attempt = getAttempt(attemptId);
+  if (!attempt) return c.json({ error: "attempt not found" }, 404);
+
+  let body: CreateRunRequest;
+  try {
+    body = (await c.req.json()) as CreateRunRequest;
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+
+  if (!body || typeof body !== "object" || body.command === undefined) {
+    return c.json({ error: "command is required" }, 400);
+  }
+
+  const command = splitCommand(body.command);
+  if (command.length === 0) {
+    return c.json({ error: "command is empty" }, 400);
+  }
+
+  const kind: RunKind = body.kind ?? "shell";
+  if (!VALID_RUN_KINDS.has(kind)) {
+    return c.json({ error: `kind must be one of: ${[...VALID_RUN_KINDS].join(" | ")}` }, 400);
+  }
+
+  try {
+    const run = await startRun({ attemptId, command, kind });
+    const response: CreateRunResponse = { run };
+    return c.json(response, 201);
+  } catch (err) {
+    log.error("api", "run start failed", {
+      attemptId,
+      err: String(err instanceof Error ? err.message : err),
+    });
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.get("/api/runs/:id", async (c) => {
+  const id = c.req.param("id");
+  const run = getRun(id);
+  if (!run) return c.json({ error: "run not found" }, 404);
+  const includeLogs = c.req.query("logs") === "1";
+  const response: GetRunResponse = {
+    run,
+    logs: includeLogs
+      ? (await readRunEvents(id)).map((e) => ({
+          runId: e.runId,
+          stream: e.stream,
+          t: e.t,
+          message: e.message,
+        }))
+      : undefined,
+  };
+  return c.json(response);
+});
+
+app.post("/api/runs/:id/abort", async (c) => {
+  const id = c.req.param("id");
+  const ok = await abortRun(id);
+  if (!ok) return c.json({ error: "run not active" }, 404);
+  return c.json({ ok: true });
 });
 
 // ─── WebSocket ─────────────────────────────────────────────────────────────
