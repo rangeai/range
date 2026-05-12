@@ -31,6 +31,7 @@ interface AttemptRow {
   branch: string | null;
   base_sha: string | null;
   is_candidate: number;
+  codex_thread_id: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -47,6 +48,7 @@ function rowToAttempt(row: AttemptRow): Attempt {
     branch: row.branch,
     baseSha: row.base_sha,
     isCandidate: row.is_candidate === 1,
+    codexThreadId: row.codex_thread_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -116,6 +118,18 @@ const clearOtherCandidatesStmt = db.prepare(`
   UPDATE attempts SET is_candidate = 0, updated_at = ?
   WHERE session_id = ? AND id != ?
 `);
+
+const setCodexThreadIdStmt = db.prepare(`
+  UPDATE attempts SET codex_thread_id = ?, updated_at = ? WHERE id = ?
+`);
+
+export function setCodexThreadId(
+  id: string,
+  threadId: string | null,
+): Attempt | null {
+  setCodexThreadIdStmt.run(threadId, Date.now(), id);
+  return getAttempt(id);
+}
 
 export interface CreateAttemptInput {
   sessionId: string;

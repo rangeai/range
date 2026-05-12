@@ -63,6 +63,7 @@ export interface Attempt {
   branch: string | null;
   baseSha: string | null;
   isCandidate: boolean;
+  codexThreadId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -153,6 +154,94 @@ export interface GetProfileResponse {
   result: ProfileLoadResult;
 }
 
+// ─── Agent events (Codex item lifecycle) ──────────────────────────────────
+
+/**
+ * Agent items as observed from Codex. The codex app-server emits
+ * `item/started` → optional `item/updated` → `item/completed`, plus
+ * `item/agentMessage/delta` for streaming text chunks. We translate
+ * those into a small set of Range-native event types so the UI never
+ * sees the raw Codex protocol shape.
+ */
+
+export type AgentItemKind =
+  | "message"
+  | "reasoning"
+  | "command"
+  | "file_edit"
+  | "mcp_tool"
+  | "web_search"
+  | "unknown";
+
+export type AgentItemState = "started" | "completed";
+
+export interface AgentMessageItem {
+  id: string;
+  kind: "message";
+  state: AgentItemState;
+  text: string; // accumulated text up to this point
+}
+
+export interface AgentReasoningItem {
+  id: string;
+  kind: "reasoning";
+  state: AgentItemState;
+  text: string;
+}
+
+export interface AgentCommandItem {
+  id: string;
+  kind: "command";
+  state: AgentItemState;
+  command: string | string[];
+  cwd?: string;
+  exitCode?: number | null;
+  durationMs?: number | null;
+  output?: string; // captured at completion
+}
+
+export interface AgentFileEditItem {
+  id: string;
+  kind: "file_edit";
+  state: AgentItemState;
+  path: string;
+  changeKind: "create" | "edit" | "delete" | "modify";
+  summary?: string;
+}
+
+export interface AgentMcpToolItem {
+  id: string;
+  kind: "mcp_tool";
+  state: AgentItemState;
+  server?: string;
+  tool?: string;
+  output?: string;
+}
+
+export interface AgentWebSearchItem {
+  id: string;
+  kind: "web_search";
+  state: AgentItemState;
+  query?: string;
+  result?: string;
+}
+
+export interface AgentUnknownItem {
+  id: string;
+  kind: "unknown";
+  state: AgentItemState;
+  raw: unknown;
+}
+
+export type AgentItem =
+  | AgentMessageItem
+  | AgentReasoningItem
+  | AgentCommandItem
+  | AgentFileEditItem
+  | AgentMcpToolItem
+  | AgentWebSearchItem
+  | AgentUnknownItem;
+
 // ─── Server → Browser ──────────────────────────────────────────────────────
 
 export interface ServerHello {
@@ -205,6 +294,52 @@ export interface ServerRunFinished {
   run: Run;
 }
 
+// Agent / Codex events ───
+export interface ServerAgentStarted {
+  type: "agent_started";
+  attemptId: string;
+  threadId: string;
+}
+
+export interface ServerAgentStopped {
+  type: "agent_stopped";
+  attemptId: string;
+  reason?: string;
+}
+
+export interface ServerAgentTurnStarted {
+  type: "agent_turn_started";
+  attemptId: string;
+  turnId: string;
+  prompt: string;
+}
+
+export interface ServerAgentTurnFinished {
+  type: "agent_turn_finished";
+  attemptId: string;
+  turnId: string;
+  status: "ok" | "failed" | "aborted";
+}
+
+export interface ServerAgentItem {
+  type: "agent_item";
+  attemptId: string;
+  item: AgentItem;
+}
+
+export interface ServerAgentMessageDelta {
+  type: "agent_message_delta";
+  attemptId: string;
+  itemId: string;
+  delta: string;
+}
+
+export interface ServerAgentError {
+  type: "agent_error";
+  attemptId: string;
+  message: string;
+}
+
 export type ServerMessage =
   | ServerHello
   | ServerPing
@@ -214,7 +349,14 @@ export type ServerMessage =
   | ServerAttemptUpdated
   | ServerRunStarted
   | ServerRunLog
-  | ServerRunFinished;
+  | ServerRunFinished
+  | ServerAgentStarted
+  | ServerAgentStopped
+  | ServerAgentTurnStarted
+  | ServerAgentTurnFinished
+  | ServerAgentItem
+  | ServerAgentMessageDelta
+  | ServerAgentError;
 
 // ─── Browser → Server ──────────────────────────────────────────────────────
 
@@ -283,4 +425,22 @@ export interface ListRunsResponse {
 export interface GetRunResponse {
   run: Run;
   logs?: RunLogEntry[]; // recent log entries, if requested
+}
+
+// Agent (Codex) endpoints ───
+
+export interface StartAgentResponse {
+  attempt: Attempt; // attempt with codexThreadId populated
+}
+
+export interface AgentMessageRequest {
+  prompt: string;
+}
+
+export interface AgentMessageResponse {
+  turnId: string;
+}
+
+export interface ListAgentItemsResponse {
+  items: AgentItem[];
 }

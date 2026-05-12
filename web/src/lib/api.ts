@@ -1,4 +1,5 @@
 import type {
+  AgentMessageResponse,
   CreateAttemptRequest,
   CreateAttemptResponse,
   CreateRunRequest,
@@ -12,6 +13,7 @@ import type {
   ListAttemptsResponse,
   ListRunsResponse,
   ListSessionsResponse,
+  StartAgentResponse,
 } from "@shared/protocol";
 
 async function jsonRequest<T>(
@@ -128,4 +130,33 @@ export function abortRun(id: string): Promise<{ ok: boolean }> {
   return jsonRequest(`/api/runs/${encodeURIComponent(id)}/abort`, {
     method: "POST",
   });
+}
+
+// ─── Agent (Codex) ────────────────────────────────────────────────────────
+
+export function startAgent(attemptId: string): Promise<StartAgentResponse> {
+  return jsonRequest<StartAgentResponse>(
+    `/api/attempts/${encodeURIComponent(attemptId)}/agent/start`,
+    { method: "POST" },
+  );
+}
+
+export function sendAgentMessage(
+  attemptId: string,
+  prompt: string,
+): Promise<AgentMessageResponse> {
+  return jsonRequest<AgentMessageResponse>(
+    `/api/attempts/${encodeURIComponent(attemptId)}/agent/message`,
+    {
+      method: "POST",
+      body: JSON.stringify({ prompt }),
+    },
+  );
+}
+
+export function stopAgent(attemptId: string): Promise<{ ok: boolean }> {
+  return jsonRequest(
+    `/api/attempts/${encodeURIComponent(attemptId)}/agent/stop`,
+    { method: "POST" },
+  );
 }

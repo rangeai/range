@@ -93,6 +93,56 @@ class WsStore {
           message: msg.message,
         });
         break;
+      case "agent_started":
+        useAppStore.getState().patchConversation(msg.attemptId, {
+          status: msg.threadId === "<initializing>" ? "starting" : "running",
+          threadId: msg.threadId,
+          error: null,
+        });
+        if (msg.threadId !== "<initializing>") {
+          useAppStore
+            .getState()
+            .pushSystemEntry(msg.attemptId, `Codex thread started · ${msg.threadId}`);
+        }
+        break;
+      case "agent_stopped":
+        useAppStore.getState().patchConversation(msg.attemptId, {
+          status: "stopped",
+          threadId: null,
+          turnInFlight: false,
+        });
+        useAppStore.getState().pushSystemEntry(
+          msg.attemptId,
+          `Codex stopped${msg.reason ? ` · ${msg.reason}` : ""}`,
+        );
+        break;
+      case "agent_turn_started":
+        useAppStore.getState().patchConversation(msg.attemptId, {
+          turnInFlight: true,
+        });
+        break;
+      case "agent_turn_finished":
+        useAppStore.getState().patchConversation(msg.attemptId, {
+          turnInFlight: false,
+        });
+        break;
+      case "agent_item":
+        useAppStore.getState().applyAgentItem(msg.attemptId, msg.item);
+        break;
+      case "agent_message_delta":
+        useAppStore.getState().applyMessageDelta(
+          msg.attemptId,
+          msg.itemId,
+          msg.delta,
+        );
+        break;
+      case "agent_error":
+        useAppStore.getState().patchConversation(msg.attemptId, {
+          status: "error",
+          error: msg.message,
+          turnInFlight: false,
+        });
+        break;
     }
   }
 

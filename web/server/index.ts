@@ -39,8 +39,16 @@ import {
 } from "./runs.ts";
 import { abortRun, readRunEvents, startRun } from "./runner.ts";
 import { loadProfile } from "./profile.ts";
+import {
+  isAgentRunning,
+  sendUserMessage,
+  startAgent,
+  stopAgent,
+} from "./codex.ts";
 import { broadcast, registerSender } from "./hub.ts";
 import type {
+  AgentMessageRequest,
+  AgentMessageResponse,
   CreateAttemptRequest,
   CreateAttemptResponse,
   CreateRunRequest,
@@ -51,6 +59,7 @@ import type {
   ListAttemptsResponse,
   ListRunsResponse,
   RunKind,
+  StartAgentResponse,
 } from "../shared/protocol.ts";
 
 const VERSION = "0.1.0";
@@ -312,6 +321,62 @@ app.post("/api/runs/:id/abort", async (c) => {
   const id = c.req.param("id");
   const ok = await abortRun(id);
   if (!ok) return c.json({ error: "run not active" }, 404);
+  return c.json({ ok: true });
+});
+
+// ─── Agent (Codex) ────────────────────────────────────────────────────────
+
+app.post("/api/attempts/:id/agent/start", async (c) => {
+  const attemptId = c.req.param("id");
+  const attempt = getAttempt(attemptId);
+  if (!attempt) return c.json({ error: "attempt not found" }, 404);
+  try {
+    await startAgent(attemptId);
+    const fresh = getAttempt(attemptId);
+    const response: StartAgentResponse = { attempt: fresh! };
+    return c.json(response, 201);
+  } catch (err) {
+    log.error("api", "agent start failed", {
+      attemptId,
+      err: String(err instanceof Error ? err.message : err),
+    });
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      500,
+    );
+  }
+});
+
+app.post("/api/attempts/:id/agent/message", async (c) => {
+  const attemptId = c.req.param("id");
+  if (!isAgentRunning(attemptId)) {
+    return c.json({ error: "agent not running for this attempt" }, 400);
+  }
+  let body: AgentMessageRequest;
+  try {
+    body = (await c.req.json()) as AgentMessageRequest;
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  if (!body?.prompt || typeof body.prompt !== "string") {
+    return c.json({ error: "prompt is required" }, 400);
+  }
+  try {
+    const { turnId } = await sendUserMessage(attemptId, body.prompt);
+    const response: AgentMessageResponse = { turnId };
+    return c.json(response, 201);
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      500,
+    );
+  }
+});
+
+app.post("/api/attempts/:id/agent/stop", async (c) => {
+  const attemptId = c.req.param("id");
+  const ok = await stopAgent(attemptId);
+  if (!ok) return c.json({ error: "agent not running for this attempt" }, 404);
   return c.json({ ok: true });
 });
 

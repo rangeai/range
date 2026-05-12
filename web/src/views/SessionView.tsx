@@ -6,6 +6,7 @@ import {
   useAppStore,
 } from "../lib/store";
 import type {
+  AgentItem,
   Attempt,
   AttemptState,
   ProfileCommand,
@@ -15,6 +16,7 @@ import type {
   RunState,
   Session,
 } from "@shared/protocol";
+import type { ConversationEntry, ConversationState } from "../lib/store";
 
 export function SessionView({ sessionId }: { sessionId: string }) {
   const session = useAppStore((s) => s.sessions.get(sessionId));
@@ -412,6 +414,8 @@ function AttemptDetail({
         </div>
       )}
 
+      <ConversationPanel attempt={attempt} />
+
       <RunsPanel
         attempt={attempt}
         runs={runs}
@@ -421,6 +425,399 @@ function AttemptDetail({
       />
 
       {selectedRun && <LogPanel run={selectedRun} />}
+    </div>
+  );
+}
+
+// ─── Conversation panel (Codex agent) ──────────────────────────────────────
+
+function ConversationPanel({ attempt }: { attempt: Attempt }) {
+  const conv = useAppStore(
+    (s) => s.conversationsByAttempt.get(attempt.id) ?? EMPTY_CONV,
+  );
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-baseline justify-between mb-3">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] tracking-[0.18em] uppercase text-fg-3 font-medium">
+            conversation
+          </span>
+          <ConversationStatusChip conv={conv} />
+        </div>
+        <AgentControls attempt={attempt} conv={conv} />
+      </div>
+
+      <ConversationTimeline conv={conv} />
+
+      <MessageComposer attempt={attempt} conv={conv} />
+    </div>
+  );
+}
+
+const EMPTY_CONV: ConversationState = {
+  status: "stopped",
+  threadId: null,
+  turnInFlight: false,
+  error: null,
+  entries: [],
+};
+
+function ConversationStatusChip({ conv }: { conv: ConversationState }) {
+  let label = "stopped";
+  let color = "var(--fg-3)";
+  let dot = false;
+  if (conv.status === "starting") {
+    label = "starting…";
+    color = "var(--warn)";
+    dot = true;
+  } else if (conv.status === "running" && conv.turnInFlight) {
+    label = "codex working";
+    color = "var(--accent)";
+    dot = true;
+  } else if (conv.status === "running") {
+    label = "ready";
+    color = "var(--ok)";
+    dot = true;
+  } else if (conv.status === "error") {
+    label = "error";
+    color = "var(--err)";
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-[10.5px] font-medium"
+      style={{ color }}
+    >
+      {dot && (
+        <span
+          className={`w-1.5 h-1.5 rounded-full ${
+            conv.turnInFlight || conv.status === "starting" ? "pulse-live" : ""
+          }`}
+          style={{ background: color }}
+        />
+      )}
+      {label}
+    </span>
+  );
+}
+
+function AgentControls({
+  attempt,
+  conv,
+}: {
+  attempt: Attempt;
+  conv: ConversationState;
+}) {
+  const patch = useAppStore((s) => s.patchConversation);
+  const pushSystem = useAppStore((s) => s.pushSystemEntry);
+  const [busy, setBusy] = useState(false);
+
+  const start = async () => {
+    if (busy || !attempt.worktreePath) return;
+    setBusy(true);
+    patch(attempt.id, { status: "starting", error: null });
+    try {
+      await api.startAgent(attempt.id);
+      // agent_started WS event will flip to "running"
+    } catch (e) {
+      const msg = String(e instanceof Error ? e.message : e);
+      patch(attempt.id, { status: "error", error: msg });
+      pushSystem(attempt.id, `start failed · ${msg}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const stop = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await api.stopAgent(attempt.id);
+    } catch (e) {
+      console.error("stop agent failed", e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const running = conv.status === "running" || conv.status === "starting";
+  const noWorktree = !attempt.worktreePath;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {!running ? (
+        <button
+          onClick={start}
+          disabled={busy || noWorktree}
+          title={noWorktree ? "attach a repo to enable Codex" : undefined}
+          className="text-[11px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition flex items-center gap-1.5 font-medium"
+        >
+          <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="currentColor">
+            <path d="M3 2v8l7-4z" />
+          </svg>
+          {busy ? "starting…" : "start codex"}
+        </button>
+      ) : (
+        <button
+          onClick={stop}
+          disabled={busy}
+          className="text-[11px] text-fg-1 border border-[var(--br-1)] hover:border-[var(--br-2)] hover:bg-[var(--bg-2)] px-2.5 py-1 rounded transition flex items-center gap-1.5"
+        >
+          <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="currentColor">
+            <rect x="3" y="3" width="6" height="6" rx="1" />
+          </svg>
+          {busy ? "stopping…" : "stop"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ConversationTimeline({ conv }: { conv: ConversationState }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [conv.entries.length]);
+
+  if (conv.entries.length === 0 && conv.status === "stopped") {
+    return (
+      <div className="border border-dashed border-[var(--br-1)] rounded-lg p-6 mb-3 bg-[var(--bg-1)]/40">
+        <div className="text-[12.5px] text-fg-2 leading-relaxed">
+          Codex hasn't started for this attempt yet. Click <span className="text-fg-1 font-medium">start codex</span>{" "}
+          to spawn{" "}
+          <span className="font-mono text-[12px] text-fg-3">codex app-server</span>{" "}
+          in the attempt's worktree. Phase A: sandbox is{" "}
+          <span className="font-mono">read-only</span>, approvals are auto-accepted.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={ref}
+      className="border border-[var(--br-1)] rounded-lg bg-[var(--bg-1)] mb-3 overflow-y-auto max-h-[460px] p-4 space-y-4"
+    >
+      {conv.entries.map((entry, i) => (
+        <ConversationEntryView key={i} entry={entry} />
+      ))}
+      {conv.status === "error" && conv.error && (
+        <div className="text-[11.5px] text-[var(--err)] border border-[var(--err)]/40 bg-[var(--err)]/10 rounded p-2 break-words">
+          {conv.error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConversationEntryView({ entry }: { entry: ConversationEntry }) {
+  if (entry.kind === "user") {
+    return (
+      <div className="flex gap-3">
+        <div className="w-7 h-7 flex-shrink-0 rounded-full bg-[var(--bg-3)] border border-[var(--br-2)] text-[10.5px] flex items-center justify-center font-medium text-fg-1">
+          you
+        </div>
+        <div className="flex-1 min-w-0 text-[13.5px] text-fg-1 leading-relaxed whitespace-pre-wrap break-words">
+          {entry.text}
+        </div>
+      </div>
+    );
+  }
+  if (entry.kind === "system") {
+    return (
+      <div className="text-[10.5px] text-fg-3 italic">{entry.text}</div>
+    );
+  }
+  return <AgentItemView item={entry.item} />;
+}
+
+function AgentItemView({ item }: { item: AgentItem }) {
+  const inProgress = item.state === "started";
+  switch (item.kind) {
+    case "message":
+      return (
+        <div className="flex gap-3">
+          <AgentBadge label="cdx" />
+          <div className="flex-1 min-w-0 text-[13.5px] text-fg-1 leading-relaxed whitespace-pre-wrap break-words">
+            {item.text || (inProgress ? "…" : "")}
+            {inProgress && item.text && (
+              <span className="inline-block w-[2px] h-[14px] bg-[var(--accent)] ml-0.5 align-middle pulse-live" />
+            )}
+          </div>
+        </div>
+      );
+    case "reasoning":
+      return (
+        <div className="flex gap-3">
+          <AgentBadge label="·" />
+          <div className="flex-1 min-w-0 text-[12px] text-fg-3 italic leading-relaxed whitespace-pre-wrap break-words">
+            {item.text || (inProgress ? "thinking…" : "")}
+          </div>
+        </div>
+      );
+    case "command": {
+      const cmd =
+        typeof item.command === "string"
+          ? item.command
+          : item.command.join(" ");
+      return (
+        <div className="flex gap-3">
+          <AgentBadge label="$" />
+          <div className="flex-1 min-w-0">
+            <div className="font-mono text-[12px] text-fg-1 break-words">
+              {cmd}
+            </div>
+            {item.state === "completed" && (
+              <div className="mt-1 flex items-center gap-2 text-[10.5px] text-fg-3 font-mono">
+                <span
+                  style={{
+                    color:
+                      item.exitCode === 0
+                        ? "var(--ok)"
+                        : item.exitCode == null
+                          ? undefined
+                          : "var(--err)",
+                  }}
+                >
+                  exit {item.exitCode ?? "?"}
+                </span>
+                {item.durationMs != null && (
+                  <>
+                    <span>·</span>
+                    <span>{item.durationMs}ms</span>
+                  </>
+                )}
+              </div>
+            )}
+            {item.output && item.state === "completed" && (
+              <pre className="mt-2 font-mono text-[11px] text-fg-2 bg-[var(--bg)] border border-[var(--br-1)] rounded p-2 max-h-[160px] overflow-y-auto whitespace-pre-wrap break-words">
+                {item.output}
+              </pre>
+            )}
+          </div>
+        </div>
+      );
+    }
+    case "file_edit":
+      return (
+        <div className="flex gap-3">
+          <AgentBadge label="✎" />
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] text-fg-1 font-mono break-words">
+              {item.changeKind} {item.path}
+            </div>
+            {item.summary && (
+              <div className="text-[11px] text-fg-3 mt-0.5">
+                {item.summary}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    case "mcp_tool":
+      return (
+        <div className="flex gap-3">
+          <AgentBadge label="t" />
+          <div className="flex-1 min-w-0 text-[12px] text-fg-1 font-mono">
+            mcp · {item.server ?? "?"}:{item.tool ?? "?"}
+          </div>
+        </div>
+      );
+    case "web_search":
+      return (
+        <div className="flex gap-3">
+          <AgentBadge label="?" />
+          <div className="flex-1 min-w-0 text-[12px] text-fg-1">
+            web search · {item.query ?? "(no query)"}
+          </div>
+        </div>
+      );
+    default:
+      return (
+        <div className="text-[11px] text-fg-3 italic">
+          unknown agent item
+        </div>
+      );
+  }
+}
+
+function AgentBadge({ label }: { label: string }) {
+  return (
+    <div className="w-7 h-7 flex-shrink-0 rounded bg-[var(--bg-2)] border border-[var(--br-2)] text-[10.5px] flex items-center justify-center font-mono text-fg-1">
+      {label}
+    </div>
+  );
+}
+
+function MessageComposer({
+  attempt,
+  conv,
+}: {
+  attempt: Attempt;
+  conv: ConversationState;
+}) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const pushUserMessage = useAppStore((s) => s.pushUserMessage);
+  const patch = useAppStore((s) => s.patchConversation);
+
+  const canSend =
+    conv.status === "running" && !conv.turnInFlight && text.trim().length > 0 && !busy;
+
+  const submit = async () => {
+    if (!canSend) return;
+    const prompt = text.trim();
+    setBusy(true);
+    pushUserMessage(attempt.id, prompt);
+    setText("");
+    try {
+      await api.sendAgentMessage(attempt.id, prompt);
+    } catch (e) {
+      const msg = String(e instanceof Error ? e.message : e);
+      patch(attempt.id, { error: msg, turnInFlight: false });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const placeholder =
+    conv.status === "stopped"
+      ? "start Codex to send a message"
+      : conv.status === "starting"
+        ? "Codex is starting…"
+        : conv.turnInFlight
+          ? "Codex is working on the previous turn…"
+          : "ask Codex to investigate, explain, or run commands…";
+
+  return (
+    <div className="border border-[var(--br-2)] rounded-lg bg-[var(--bg-1)]">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        disabled={conv.status !== "running" || conv.turnInFlight}
+        placeholder={placeholder}
+        rows={2}
+        className="w-full bg-transparent outline-none resize-none text-[13px] text-fg placeholder:text-fg-3 leading-relaxed disabled:opacity-60 px-3 py-2"
+      />
+      <div className="px-3 py-1.5 border-t border-[var(--br-1)] flex items-center gap-2 bg-[var(--bg)]">
+        <span className="text-[10.5px] text-fg-3">⏎ to send · ⇧⏎ newline</span>
+        <div className="flex-1"></div>
+        <button
+          onClick={submit}
+          disabled={!canSend}
+          className="text-[11px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition font-medium"
+        >
+          send
+        </button>
+      </div>
     </div>
   );
 }

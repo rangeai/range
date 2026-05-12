@@ -116,6 +116,13 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_runs_attempt ON runs(attempt_id, created_at DESC);
     `,
   },
+  {
+    id: 5,
+    name: "attempts_add_codex_thread_id",
+    up: `
+      ALTER TABLE attempts ADD COLUMN codex_thread_id TEXT;
+    `,
+  },
 ];
 
 function applyMigrations() {
