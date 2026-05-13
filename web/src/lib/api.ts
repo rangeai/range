@@ -56,6 +56,12 @@ export function getSession(id: string): Promise<GetSessionResponse> {
   );
 }
 
+export function deleteSession(id: string): Promise<{ ok: boolean }> {
+  return jsonRequest(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
 export function attachRepo(
   sessionId: string,
   repoPath: string,

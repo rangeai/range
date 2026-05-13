@@ -59,6 +59,7 @@ interface AppState {
 
   upsertSession: (s: Session) => void;
   upsertManySessions: (s: Session[]) => void;
+  removeSession: (id: string) => void;
 
   upsertRun: (r: Run) => void;
   upsertManyRuns: (r: Run[]) => void;
@@ -121,6 +122,31 @@ export const useAppStore = create<AppState>((set) => ({
       const next = new Map(state.sessions);
       for (const s of list) next.set(s.id, s);
       return { sessions: next };
+    }),
+  removeSession: (id) =>
+    set((state) => {
+      const sessions = new Map(state.sessions);
+      sessions.delete(id);
+      const runsBySession = new Map(state.runsBySession);
+      runsBySession.delete(id);
+      const profilesBySession = new Map(state.profilesBySession);
+      profilesBySession.delete(id);
+      const conversationsBySession = new Map(state.conversationsBySession);
+      conversationsBySession.delete(id);
+      const verificationBySession = new Map(state.verificationBySession);
+      verificationBySession.delete(id);
+      const view =
+        state.view.kind === "session" && state.view.id === id
+          ? ({ kind: "home" } as const)
+          : state.view;
+      return {
+        sessions,
+        runsBySession,
+        profilesBySession,
+        conversationsBySession,
+        verificationBySession,
+        view,
+      };
     }),
 
   upsertRun: (r) =>

@@ -71,6 +71,9 @@ class WsStore {
       case "session_updated":
         useAppStore.getState().upsertSession(msg.session);
         break;
+      case "session_deleted":
+        useAppStore.getState().removeSession(msg.sessionId);
+        break;
       case "run_started":
       case "run_finished":
         useAppStore.getState().upsertRun(msg.run);

@@ -243,6 +243,11 @@ export interface ServerSessionUpdated {
   session: Session;
 }
 
+export interface ServerSessionDeleted {
+  type: "session_deleted";
+  sessionId: string;
+}
+
 export interface ServerRunStarted {
   type: "run_started";
   run: Run;
@@ -339,6 +344,7 @@ export type ServerMessage =
   | ServerPing
   | ServerSessionCreated
   | ServerSessionUpdated
+  | ServerSessionDeleted
   | ServerRunStarted
   | ServerRunLog
   | ServerRunFinished

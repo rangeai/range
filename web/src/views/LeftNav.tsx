@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import * as api from "../lib/api";
 import { sessionsByRecency, useAppStore } from "../lib/store";
 import type { Session, SessionKind } from "@shared/protocol";
@@ -88,40 +88,87 @@ function SessionRow({
   selected: boolean;
   onClick: () => void;
 }) {
+  const removeSession = useAppStore((s) => s.removeSession);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const doDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (busy) return;
+    if (!confirming) {
+      setConfirming(true);
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.deleteSession(session.id);
+      removeSession(session.id);
+    } catch (err) {
+      console.error("deleteSession failed", err);
+      setBusy(false);
+      setConfirming(false);
+    }
+  };
+
   return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left px-3 py-2 flex gap-2 transition ${
+    <div
+      onMouseLeave={() => setConfirming(false)}
+      className={`group relative w-full flex transition ${
         selected ? "bg-[var(--bg-2)]" : "hover:bg-[var(--bg-2)]"
       }`}
     >
-      <div
-        className="w-[2px] self-stretch rounded flex-shrink-0"
-        style={{
-          background: selected ? "var(--accent)" : "transparent",
-        }}
-      ></div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <span className="text-[9.5px] tracking-[0.12em] uppercase text-fg-3">
-            {labelForKind(session.kind)}
-          </span>
-          {session.codexThreadId && (
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ background: "var(--accent)" }}
-              title="Codex thread active"
-            />
-          )}
+      <button
+        onClick={onClick}
+        className="flex-1 text-left px-3 py-2 flex gap-2 min-w-0"
+      >
+        <div
+          className="w-[2px] self-stretch rounded flex-shrink-0"
+          style={{
+            background: selected ? "var(--accent)" : "transparent",
+          }}
+        ></div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="text-[9.5px] tracking-[0.12em] uppercase text-fg-3">
+              {labelForKind(session.kind)}
+            </span>
+            {session.codexThreadId && (
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: "var(--accent)" }}
+                title="Codex thread active"
+              />
+            )}
+          </div>
+          <div className="text-[13px] text-fg-1 truncate leading-snug pr-6">
+            {session.title}
+          </div>
+          <div className="text-[10.5px] text-fg-3 font-mono mt-0.5">
+            {formatRelativeTime(session.updatedAt)}
+          </div>
         </div>
-        <div className="text-[13px] text-fg-1 truncate leading-snug">
-          {session.title}
-        </div>
-        <div className="text-[10.5px] text-fg-3 font-mono mt-0.5">
-          {formatRelativeTime(session.updatedAt)}
-        </div>
-      </div>
-    </button>
+      </button>
+      <button
+        onClick={doDelete}
+        disabled={busy}
+        title={confirming ? "click again to confirm delete" : "delete session"}
+        className={`absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded flex items-center justify-center transition ${
+          confirming
+            ? "bg-[var(--err)] text-[var(--bg)] opacity-100"
+            : "text-fg-3 hover:text-[var(--err)] hover:bg-[var(--bg-3)] opacity-0 group-hover:opacity-100"
+        }`}
+      >
+        <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none">
+          <path
+            d="M3 4h6m-5 0v5a1 1 0 001 1h2a1 1 0 001-1V4M5 2h2"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+    </div>
   );
 }
 

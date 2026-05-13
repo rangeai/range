@@ -50,6 +50,7 @@ import "./db.ts";
 import {
   attachRepo,
   createSession,
+  deleteSession,
   getSession,
   listSessions,
   validateRepoPath,
@@ -150,6 +151,19 @@ app.get("/api/sessions/:id", (c) => {
   if (!session) return c.json({ error: "session not found" }, 404);
   const response: GetSessionResponse = { session };
   return c.json(response);
+});
+
+app.delete("/api/sessions/:id", async (c) => {
+  const id = c.req.param("id");
+  const session = getSession(id);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  if (isAgentRunning(id)) {
+    await stopAgent(id);
+  }
+  const ok = await deleteSession(id);
+  if (!ok) return c.json({ error: "delete failed" }, 500);
+  broadcast({ type: "session_deleted", sessionId: id });
+  return c.json({ ok: true });
 });
 
 app.post("/api/sessions/:id/attach-repo", async (c) => {

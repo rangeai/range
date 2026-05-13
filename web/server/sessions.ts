@@ -15,7 +15,7 @@
 
 import { db } from "./db.ts";
 import { log } from "./log.ts";
-import { isGitRepo, createWorktree } from "./worktree.ts";
+import { isGitRepo, createWorktree, removeWorktree } from "./worktree.ts";
 import type {
   CreateSessionRequest,
   Sandbox,
@@ -207,4 +207,34 @@ export function setSessionCodexThreadId(
 ): Session | null {
   setCodexThreadIdStmt.run(threadId, Date.now(), id);
   return getSession(id);
+}
+
+const deleteStmt = db.prepare("DELETE FROM sessions WHERE id = ?");
+
+/**
+ * Delete a session. Removes the git worktree (best-effort) and the DB
+ * row; runs cascade via FK. The caller is responsible for stopping any
+ * live Codex thread before calling this.
+ */
+export async function deleteSession(id: string): Promise<boolean> {
+  const session = getSession(id);
+  if (!session) return false;
+
+  if (session.repoPath && session.worktreePath) {
+    try {
+      await removeWorktree({
+        repoPath: session.repoPath,
+        worktreePath: session.worktreePath,
+      });
+    } catch (err) {
+      log.warn("sessions", "worktree remove failed", {
+        sessionId: id,
+        err: String(err instanceof Error ? err.message : err),
+      });
+    }
+  }
+
+  deleteStmt.run(id);
+  log.info("sessions", "deleted", { id });
+  return true;
 }
