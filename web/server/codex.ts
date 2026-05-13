@@ -23,10 +23,12 @@ import { join } from "node:path";
 import { log } from "./log.ts";
 import { broadcast } from "./hub.ts";
 import { getSession, setSessionCodexThreadId } from "./sessions.ts";
+import { loadProfile } from "./profile.ts";
 import type {
   AgentItem,
   AgentItemState,
   ServerMessage,
+  Session,
 } from "../shared/protocol.ts";
 
 type Pending = {
@@ -49,6 +51,69 @@ const sessions = new Map<string, CodexSession>();
 
 function threadDir(sessionId: string): string {
   return join(homedir(), ".range", "threads", sessionId);
+}
+
+/**
+ * Build the system-level context Codex carries through every turn.
+ * Exposed so the UI can show the user exactly what Codex was told.
+ */
+export async function composeBaseInstructions(
+  session: Session,
+): Promise<string> {
+  const lines: string[] = [];
+  lines.push("You are an agent inside a Range session.");
+  lines.push("");
+  lines.push(`Session: ${session.id}`);
+  lines.push(`Kind:    ${session.kind}`);
+  lines.push(`Title:   ${session.title}`);
+  if (session.repoPath) {
+    lines.push(`Repo:    ${session.repoPath}`);
+  }
+  if (session.worktreePath) {
+    lines.push(`Worktree: ${session.worktreePath}`);
+  }
+  if (session.branch) {
+    lines.push(`Branch:  ${session.branch}`);
+  }
+  if (session.baseSha) {
+    lines.push(`Base:    ${session.baseSha.slice(0, 12)}`);
+  }
+  lines.push(`Sandbox: ${session.sandbox}`);
+
+  if (session.prompt && session.prompt !== session.title) {
+    lines.push("");
+    lines.push("The user's session prompt was:");
+    for (const line of session.prompt.split("\n")) {
+      lines.push(`  ${line}`);
+    }
+  }
+
+  if (session.repoPath) {
+    try {
+      const profile = await loadProfile(session.repoPath);
+      if (profile.profile && profile.profile.commands.length > 0) {
+        lines.push("");
+        lines.push("Available profile commands (range.yaml):");
+        for (const cmd of profile.profile.commands) {
+          const args = cmd.args.join(" ");
+          const desc = cmd.description ? ` — ${cmd.description}` : "";
+          lines.push(`  • ${cmd.name}: ${args}${desc}`);
+        }
+        lines.push(
+          "You can run these directly; they are pre-approved when the sandbox allows.",
+        );
+      }
+    } catch {
+      // ignore profile load errors; instructions just won't include them
+    }
+  }
+
+  lines.push("");
+  lines.push(
+    "Be terse, factual, and evidence-based. When unsure, run a small command to check rather than guess.",
+  );
+
+  return lines.join("\n");
 }
 
 export function isAgentRunning(sessionId: string): boolean {
@@ -125,10 +190,12 @@ export async function startAgent(sessionId: string): Promise<{
     });
     sendNotification(cs, "initialized", {});
 
+    const baseInstructions = await composeBaseInstructions(session);
     const threadResp = (await sendRequest(cs, "thread/start", {
       cwd: session.worktreePath,
       approvalPolicy: "never",
       sandbox: "read-only",
+      baseInstructions,
     })) as { thread?: { id?: string }; threadId?: string };
 
     const threadId =

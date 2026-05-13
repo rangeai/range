@@ -182,9 +182,77 @@ function ConversationBlock({ session }: { session: Session }) {
         </div>
         <AgentControls session={session} conv={conv} />
       </div>
+      <ContextCard session={session} />
       <ConversationTimeline conv={conv} />
       <MessageComposer session={session} conv={conv} />
     </section>
+  );
+}
+
+function ContextCard({ session }: { session: Session }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Only show this card when there's a worktree (else there's no
+  // meaningful context to show).
+  if (!session.worktreePath) return null;
+
+  const toggle = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && text === null && !loading) {
+      setLoading(true);
+      try {
+        const res = await api.getAgentContext(session.id);
+        setText(res.baseInstructions);
+      } catch (e) {
+        setText(`(failed to load: ${String(e instanceof Error ? e.message : e)})`);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  return (
+    <div className="mb-3 border border-[var(--br-1)] rounded-lg bg-[var(--bg-1)] overflow-hidden">
+      <button
+        onClick={toggle}
+        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-[var(--bg-2)] transition"
+      >
+        <svg
+          className={`w-2.5 h-2.5 text-fg-3 transition-transform ${open ? "rotate-90" : ""}`}
+          viewBox="0 0 12 12"
+          fill="none"
+        >
+          <path
+            d="M4 2l4 4-4 4"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="text-[10.5px] tracking-[0.16em] uppercase text-fg-3 font-medium">
+          context Codex sees
+        </span>
+        <div className="flex-1"></div>
+        <span className="text-[10.5px] text-fg-3 italic">
+          {open ? "click to hide" : "click to inspect"}
+        </span>
+      </button>
+      {open && (
+        <div className="border-t border-[var(--br-1)] bg-[var(--bg)] p-3 max-h-[240px] overflow-y-auto">
+          {loading ? (
+            <div className="text-[11.5px] text-fg-3 italic">loading…</div>
+          ) : (
+            <pre className="font-mono text-[11.5px] text-fg-1 whitespace-pre-wrap break-words">
+              {text}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

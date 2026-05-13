@@ -119,3 +119,11 @@ export function stopAgent(sessionId: string): Promise<{ ok: boolean }> {
     { method: "POST" },
   );
 }
+
+export function getAgentContext(
+  sessionId: string,
+): Promise<{ baseInstructions: string }> {
+  return jsonRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/agent/context`,
+  );
+}

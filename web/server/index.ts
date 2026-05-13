@@ -54,6 +54,7 @@ import {
 import { abortRun, readRunEvents, startRun } from "./runner.ts";
 import { loadProfile } from "./profile.ts";
 import {
+  composeBaseInstructions,
   isAgentRunning,
   sendUserMessage,
   startAgent,
@@ -247,6 +248,14 @@ app.post("/api/runs/:id/abort", async (c) => {
 });
 
 // ─── Agent (Codex) ────────────────────────────────────────────────────────
+
+app.get("/api/sessions/:id/agent/context", async (c) => {
+  const id = c.req.param("id");
+  const session = getSession(id);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  const text = await composeBaseInstructions(session);
+  return c.json({ baseInstructions: text });
+});
 
 app.post("/api/sessions/:id/agent/start", async (c) => {
   const sessionId = c.req.param("id");
