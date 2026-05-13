@@ -22,6 +22,7 @@ import {
   setRunState,
 } from "./runs.ts";
 import { getSession } from "./sessions.ts";
+import { evaluateGatesForRun } from "./verification.ts";
 import type {
   LogStream,
   Run,
@@ -202,7 +203,15 @@ async function runInBackground(initialRun: Run): Promise<void> {
     exitCode,
     finishedAt,
   );
-  if (finished) broadcast({ type: "run_finished", run: finished });
+  if (finished) {
+    broadcast({ type: "run_finished", run: finished });
+    void evaluateGatesForRun(finished).catch((err) => {
+      log.warn("runner", "verification failed", {
+        runId,
+        err: String(err instanceof Error ? err.message : err),
+      });
+    });
+  }
   log.info("runner", "finished", {
     runId,
     state,

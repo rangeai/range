@@ -149,6 +149,9 @@ class WsStore {
           .getState()
           .resolveApproval(msg.sessionId, msg.requestId, msg.decision);
         break;
+      case "verification_result":
+        useAppStore.getState().applyVerificationResult(msg.result);
+        break;
     }
   }
 

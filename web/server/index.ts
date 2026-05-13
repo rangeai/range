@@ -56,6 +56,7 @@ import {
 } from "./runs.ts";
 import { abortRun, readRunEvents, startRun } from "./runner.ts";
 import { loadProfile } from "./profile.ts";
+import { getLatestResults } from "./verification.ts";
 import {
   composeBaseInstructions,
   isAgentRunning,
@@ -134,6 +135,13 @@ app.get("/api/sessions/:id", (c) => {
   if (!session) return c.json({ error: "session not found" }, 404);
   const response: GetSessionResponse = { session };
   return c.json(response);
+});
+
+app.get("/api/sessions/:id/verification", (c) => {
+  const id = c.req.param("id");
+  const session = getSession(id);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  return c.json({ results: getLatestResults(id) });
 });
 
 app.get("/api/sessions/:id/profile", async (c) => {

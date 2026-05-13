@@ -90,6 +90,21 @@ export interface ProfileCommand {
   description?: string;
 }
 
+export interface VerificationCriterion {
+  exitCode?: number;
+  stdoutContains?: string;
+  stderrContains?: string;
+  stdoutMissing?: string;
+}
+
+export interface VerificationGate {
+  name: string;
+  command: string;
+  pass?: VerificationCriterion;
+  warn?: VerificationCriterion;
+  description?: string;
+}
+
 export interface Profile {
   version: number;
   project: {
@@ -99,6 +114,18 @@ export interface Profile {
     language?: string;
   };
   commands: ProfileCommand[];
+  gates: VerificationGate[];
+}
+
+export type VerificationStatus = "pass" | "warn" | "fail" | "error";
+
+export interface VerificationResult {
+  sessionId: string;
+  runId: string;
+  gateName: string;
+  status: VerificationStatus;
+  reason: string;
+  evaluatedAt: number;
 }
 
 export interface ProfileLoadResult {
@@ -302,6 +329,11 @@ export interface ServerAgentApprovalResolved {
   decision: "accept" | "decline";
 }
 
+export interface ServerVerificationResult {
+  type: "verification_result";
+  result: VerificationResult;
+}
+
 export type ServerMessage =
   | ServerHello
   | ServerPing
@@ -318,7 +350,8 @@ export type ServerMessage =
   | ServerAgentMessageDelta
   | ServerAgentError
   | ServerAgentApprovalRequest
-  | ServerAgentApprovalResolved;
+  | ServerAgentApprovalResolved
+  | ServerVerificationResult;
 
 // ─── Browser → Server ──────────────────────────────────────────────────────
 

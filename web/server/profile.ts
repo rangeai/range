@@ -24,6 +24,8 @@ import type {
   Profile,
   ProfileCommand,
   ProfileLoadResult,
+  VerificationCriterion,
+  VerificationGate,
 } from "../shared/protocol.ts";
 
 const FILENAME = "range.yaml";
@@ -88,6 +90,46 @@ interface RawYaml {
     language?: unknown;
   };
   commands?: Record<string, unknown>;
+  verification?: {
+    gates?: unknown;
+  };
+}
+
+function coerceCriterion(raw: unknown): VerificationCriterion | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const c: VerificationCriterion = {};
+  if (typeof r.exit_code === "number") c.exitCode = r.exit_code;
+  if (typeof r.exitCode === "number") c.exitCode = r.exitCode;
+  if (typeof r.stdout_contains === "string")
+    c.stdoutContains = r.stdout_contains;
+  if (typeof r.stderr_contains === "string")
+    c.stderrContains = r.stderr_contains;
+  if (typeof r.stdout_missing === "string")
+    c.stdoutMissing = r.stdout_missing;
+  return Object.keys(c).length === 0 ? undefined : c;
+}
+
+function coerceGates(raw: unknown): VerificationGate[] {
+  if (!Array.isArray(raw)) return [];
+  const out: VerificationGate[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const r = item as Record<string, unknown>;
+    const name = typeof r.name === "string" ? r.name : null;
+    const command = typeof r.command === "string" ? r.command : null;
+    if (!name || !command) continue;
+    const gate: VerificationGate = {
+      name,
+      command,
+      pass: coerceCriterion(r.pass),
+      warn: coerceCriterion(r.warn),
+      description:
+        typeof r.description === "string" ? r.description : undefined,
+    };
+    out.push(gate);
+  }
+  return out;
 }
 
 function coerceProfile(raw: unknown): Profile {
@@ -121,7 +163,9 @@ function coerceProfile(raw: unknown): Profile {
     }
   }
 
-  return { version, project, commands };
+  const gates = coerceGates(r.verification?.gates);
+
+  return { version, project, commands, gates };
 }
 
 export async function loadProfile(

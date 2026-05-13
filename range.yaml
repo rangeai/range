@@ -42,3 +42,24 @@ commands:
   smoke-health:
     args: ["curl", "-sS", "http://127.0.0.1:3457/api/health"]
     description: "hit the local server's /api/health from inside the worktree"
+
+verification:
+  gates:
+    - name: types
+      command: typecheck
+      description: "tsc must report no errors"
+      pass: { exit_code: 0 }
+    - name: build
+      command: build
+      description: "vite build must succeed"
+      pass: { exit_code: 0 }
+    - name: server-bundle
+      command: build-server
+      description: "bun bundle of the server must succeed"
+      pass: { exit_code: 0 }
+    - name: health
+      command: smoke-health
+      description: "GET /api/health returns ok:true"
+      pass:
+        exit_code: 0
+        stdout_contains: "\"ok\":true"

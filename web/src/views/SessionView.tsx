@@ -12,6 +12,9 @@ import type {
   RunState,
   Sandbox,
   Session,
+  VerificationGate,
+  VerificationResult,
+  VerificationStatus,
 } from "@shared/protocol";
 import type {
   ConversationEntry,
@@ -803,13 +806,18 @@ function RunsBlock({
   );
   const upsertManyRuns = useAppStore((s) => s.upsertManyRuns);
   const appendManyLogs = useAppStore((s) => s.appendManyLogs);
+  const setVerificationResults = useAppStore((s) => s.setVerificationResults);
 
   useEffect(() => {
     api
       .listRuns(session.id)
       .then((res) => upsertManyRuns(res.runs))
       .catch((err) => console.error("listRuns failed", err));
-  }, [session.id, upsertManyRuns]);
+    api
+      .getVerification(session.id)
+      .then((res) => setVerificationResults(session.id, res.results))
+      .catch((err) => console.error("getVerification failed", err));
+  }, [session.id, upsertManyRuns, setVerificationResults]);
 
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
@@ -841,6 +849,7 @@ function RunsBlock({
   );
 
   const profileCommands = profile?.profile?.commands ?? [];
+  const gates = profile?.profile?.gates ?? [];
 
   return (
     <section className="mb-8">
@@ -850,6 +859,10 @@ function RunsBlock({
         </div>
         <span className="text-[10.5px] font-mono text-fg-3">{runs.length}</span>
       </div>
+
+      {gates.length > 0 && (
+        <VerificationStrip sessionId={session.id} gates={gates} />
+      )}
 
       {profileCommands.length > 0 && (
         <ProfileCommandStrip session={session} commands={profileCommands} />
@@ -873,6 +886,81 @@ function RunsBlock({
       {selectedRun && <LogPanel run={selectedRun} />}
     </section>
   );
+}
+
+function VerificationStrip({
+  sessionId,
+  gates,
+}: {
+  sessionId: string;
+  gates: VerificationGate[];
+}) {
+  const results = useAppStore((s) =>
+    s.verificationBySession.get(sessionId),
+  );
+
+  return (
+    <div className="mb-3">
+      <div className="text-[9.5px] tracking-[0.16em] uppercase text-fg-3 mb-2">
+        verification gates
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {gates.map((g) => {
+          const r = results?.get(g.name) ?? null;
+          return <GateChip key={g.name} gate={g} result={r} />;
+        })}
+      </div>
+    </div>
+  );
+}
+
+function GateChip({
+  gate,
+  result,
+}: {
+  gate: VerificationGate;
+  result: VerificationResult | null;
+}) {
+  const color = verificationColor(result?.status);
+  const label = result?.status ?? "pending";
+  const tip = result
+    ? `${gate.command} · ${result.status} · ${result.reason}`
+    : gate.description || `runs after \`${gate.command}\``;
+  return (
+    <div
+      title={tip}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border rounded text-[11.5px] bg-[var(--bg-1)]"
+      style={{ borderColor: color ?? "var(--br-1)" }}
+    >
+      <span
+        className="w-1.5 h-1.5 rounded-full"
+        style={{ background: color ?? "var(--br-3)" }}
+      />
+      <span className="font-mono text-fg-1">{gate.name}</span>
+      <span
+        className="text-[10.5px] font-mono"
+        style={{ color: color ?? "var(--fg-3)" }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function verificationColor(
+  status: VerificationStatus | undefined,
+): string | undefined {
+  switch (status) {
+    case "pass":
+      return "var(--ok)";
+    case "warn":
+      return "var(--warn)";
+    case "fail":
+    case "error":
+      return "var(--err)";
+    default:
+      return undefined;
+  }
 }
 
 function ProfileCommandStrip({

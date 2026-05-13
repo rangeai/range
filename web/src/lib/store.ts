@@ -6,6 +6,7 @@ import type {
   RunLogEntry,
   ServerAgentApprovalRequest,
   Session,
+  VerificationResult,
 } from "@shared/protocol";
 
 export interface PendingApproval {
@@ -51,6 +52,7 @@ interface AppState {
   logsByRun: Map<string, RunLogEntry[]>;
   profilesBySession: Map<string, ProfileLoadResult>;
   conversationsBySession: Map<string, ConversationState>;
+  verificationBySession: Map<string, Map<string, VerificationResult>>;
 
   goHome: () => void;
   openSession: (id: string) => void;
@@ -86,6 +88,12 @@ interface AppState {
     requestId: number,
     decision: "accept" | "decline",
   ) => void;
+
+  applyVerificationResult: (result: VerificationResult) => void;
+  setVerificationResults: (
+    sessionId: string,
+    results: VerificationResult[],
+  ) => void;
 }
 
 const LOG_CAP = 5_000;
@@ -97,6 +105,7 @@ export const useAppStore = create<AppState>((set) => ({
   logsByRun: new Map(),
   profilesBySession: new Map(),
   conversationsBySession: new Map(),
+  verificationBySession: new Map(),
 
   goHome: () => set({ view: { kind: "home" } }),
   openSession: (id) => set({ view: { kind: "session", id } }),
@@ -253,6 +262,23 @@ export const useAppStore = create<AppState>((set) => ({
       );
       next.set(sessionId, { ...prev, entries });
       return { conversationsBySession: next };
+    }),
+
+  applyVerificationResult: (result) =>
+    set((state) => {
+      const next = new Map(state.verificationBySession);
+      const inner = new Map(next.get(result.sessionId) ?? []);
+      inner.set(result.gateName, result);
+      next.set(result.sessionId, inner);
+      return { verificationBySession: next };
+    }),
+  setVerificationResults: (sessionId, results) =>
+    set((state) => {
+      const next = new Map(state.verificationBySession);
+      const inner = new Map<string, VerificationResult>();
+      for (const r of results) inner.set(r.gateName, r);
+      next.set(sessionId, inner);
+      return { verificationBySession: next };
     }),
 
   applyMessageDelta: (sessionId, itemId, delta) =>

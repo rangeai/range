@@ -11,6 +11,7 @@ import type {
   ListSessionsResponse,
   StartAgentRequest,
   StartAgentResponse,
+  VerificationResult,
 } from "@shared/protocol";
 
 async function jsonRequest<T>(
@@ -55,6 +56,14 @@ export function getSession(id: string): Promise<GetSessionResponse> {
 export function getProfile(sessionId: string): Promise<GetProfileResponse> {
   return jsonRequest<GetProfileResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/profile`,
+  );
+}
+
+export function getVerification(
+  sessionId: string,
+): Promise<{ results: VerificationResult[] }> {
+  return jsonRequest<{ results: VerificationResult[] }>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/verification`,
   );
 }
 
