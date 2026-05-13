@@ -187,3 +187,24 @@ export function openPr(
     },
   );
 }
+
+// ─── FS browser ───────────────────────────────────────────────────────────
+
+export interface FsEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  isGitRepo: boolean;
+}
+
+export interface FsListResponse {
+  path: string;
+  parent: string | null;
+  home: string;
+  entries: FsEntry[];
+}
+
+export function listFs(path?: string): Promise<FsListResponse> {
+  const qs = path ? `?path=${encodeURIComponent(path)}` : "";
+  return jsonRequest<FsListResponse>(`/api/fs/list${qs}`);
+}

@@ -136,93 +136,26 @@ function ProfileBadge({
 // ─── Worktree block ────────────────────────────────────────────────────────
 
 function WorktreeBlock({ session }: { session: Session }) {
-  if (session.worktreePath) {
-    return (
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <Fact
-          label="worktree"
-          value={session.worktreePath}
-          mono
-          breakAll
-        />
-        <Fact
-          label="branch"
-          value={session.branch ?? "—"}
-          mono={!!session.branch}
-        />
-        <Fact
-          label="base"
-          value={session.baseSha?.slice(0, 12) ?? "—"}
-          mono={!!session.baseSha}
-        />
-        <Fact label="sandbox" value={session.sandbox} />
-      </div>
-    );
-  }
-
-  return <AttachRepoForm session={session} />;
-}
-
-function AttachRepoForm({ session }: { session: Session }) {
-  const upsertSession = useAppStore((s) => s.upsertSession);
-  const [path, setPath] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const submit = async () => {
-    const trimmed = path.trim();
-    if (!trimmed || busy) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      const res = await api.attachRepo(session.id, trimmed);
-      upsertSession(res.session);
-    } catch (e) {
-      setErr(String(e instanceof Error ? e.message : e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
+  if (!session.worktreePath) return null;
   return (
-    <div className="border border-dashed border-[var(--br-1)] rounded-lg p-4 bg-[var(--bg-1)]/40 mb-6">
-      <div className="text-[10px] tracking-[0.18em] uppercase text-fg-3 font-medium mb-2">
-        attach a repo
-      </div>
-      <div className="text-[12.5px] text-fg-2 leading-relaxed mb-3">
-        This session is freeform. Attach a local git repo to spawn a worktree
-        and let Codex work against it. Codex will restart with the new
-        context.
-      </div>
-      <div className="flex items-stretch gap-2">
-        <input
-          type="text"
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          disabled={busy}
-          spellCheck={false}
-          placeholder="/Users/you/code/project"
-          className="flex-1 bg-[var(--bg-1)] border border-[var(--br-1)] rounded px-3 py-1.5 outline-none text-[13px] font-mono text-fg placeholder:text-fg-3 focus:border-[var(--br-3)] disabled:opacity-60"
-        />
-        <button
-          onClick={submit}
-          disabled={busy || path.trim().length === 0}
-          className="text-[11.5px] font-medium text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded transition"
-        >
-          {busy ? "attaching…" : "attach"}
-        </button>
-      </div>
-      {err && (
-        <div className="mt-2 text-[11px] text-[var(--err)] break-words">
-          {err}
-        </div>
-      )}
+    <div className="grid grid-cols-2 gap-3 mb-6">
+      <Fact
+        label="worktree"
+        value={session.worktreePath}
+        mono
+        breakAll
+      />
+      <Fact
+        label="branch"
+        value={session.branch ?? "—"}
+        mono={!!session.branch}
+      />
+      <Fact
+        label="base"
+        value={session.baseSha?.slice(0, 12) ?? "—"}
+        mono={!!session.baseSha}
+      />
+      <Fact label="sandbox" value={session.sandbox} />
     </div>
   );
 }
@@ -722,7 +655,9 @@ function MessageComposer({
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const pushUserMessage = useAppStore((s) => s.pushUserMessage);
+  const upsertSession = useAppStore((s) => s.upsertSession);
   const patch = useAppStore((s) => s.patchConversation);
 
   const canSend =
@@ -747,6 +682,17 @@ function MessageComposer({
     }
   };
 
+  const onPickRepo = async (path: string) => {
+    setPickerOpen(false);
+    try {
+      const res = await api.attachRepo(session.id, path);
+      upsertSession(res.session);
+    } catch (e) {
+      const msg = String(e instanceof Error ? e.message : e);
+      patch(session.id, { error: msg });
+    }
+  };
+
   const placeholder =
     conv.status === "stopped"
       ? "start Codex to send a message"
@@ -756,32 +702,235 @@ function MessageComposer({
           ? "Codex is working on the previous turn…"
           : "ask Codex to investigate, explain, or run commands…";
 
+  const noRepo = !session.worktreePath;
+
   return (
-    <div className="border border-[var(--br-2)] rounded-lg bg-[var(--bg-1)]">
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            submit();
-          }
-        }}
-        disabled={conv.status !== "running" || conv.turnInFlight}
-        placeholder={placeholder}
-        rows={2}
-        className="w-full bg-transparent outline-none resize-none text-[13px] text-fg placeholder:text-fg-3 leading-relaxed disabled:opacity-60 px-3 py-2"
-      />
-      <div className="px-3 py-1.5 border-t border-[var(--br-1)] flex items-center gap-2 bg-[var(--bg)]">
-        <span className="text-[10.5px] text-fg-3">⏎ to send · ⇧⏎ newline</span>
-        <div className="flex-1"></div>
-        <button
-          onClick={submit}
-          disabled={!canSend}
-          className="text-[11px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition font-medium"
-        >
-          send
-        </button>
+    <>
+      <div className="border border-[var(--br-2)] rounded-lg bg-[var(--bg-1)]">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          disabled={conv.status !== "running" || conv.turnInFlight}
+          placeholder={placeholder}
+          rows={2}
+          className="w-full bg-transparent outline-none resize-none text-[13px] text-fg placeholder:text-fg-3 leading-relaxed disabled:opacity-60 px-3 py-2"
+        />
+        <div className="px-3 py-1.5 border-t border-[var(--br-1)] flex items-center gap-2 bg-[var(--bg)]">
+          <span className="text-[10.5px] text-fg-3">⏎ to send · ⇧⏎ newline</span>
+          <div className="flex-1"></div>
+          {noRepo && (
+            <button
+              onClick={() => setPickerOpen(true)}
+              title="attach a repo to this session"
+              className="text-[11px] text-fg-1 border border-[var(--br-2)] hover:border-[var(--br-3)] hover:bg-[var(--bg-2)] px-2.5 py-1 rounded transition flex items-center gap-1.5"
+            >
+              <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none">
+                <path
+                  d="M1.5 3.5h3l1 1H10a.5.5 0 01.5.5V9a.5.5 0 01-.5.5H2a.5.5 0 01-.5-.5V4a.5.5 0 01.5-.5z"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              attach repo
+            </button>
+          )}
+          <button
+            onClick={submit}
+            disabled={!canSend}
+            className="text-[11px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition font-medium"
+          >
+            send
+          </button>
+        </div>
+      </div>
+      {pickerOpen && (
+        <RepoPicker
+          onPick={onPickRepo}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+function RepoPicker({
+  onPick,
+  onClose,
+}: {
+  onPick: (path: string) => void;
+  onClose: () => void;
+}) {
+  const [data, setData] = useState<{
+    path: string;
+    parent: string | null;
+    entries: { name: string; path: string; isGitRepo: boolean }[];
+  } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = async (path?: string) => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await api.listFs(path);
+      setData({
+        path: res.path,
+        parent: res.parent,
+        entries: res.entries,
+      });
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load(undefined);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-[640px] max-w-[90vw] max-h-[80vh] flex flex-col border border-[var(--br-2)] rounded-lg bg-[var(--bg-1)] shadow-2xl overflow-hidden"
+      >
+        <div className="px-4 py-3 border-b border-[var(--br-1)] flex items-center gap-3">
+          <span className="text-[10px] tracking-[0.18em] uppercase text-fg-3 font-medium">
+            attach a repo
+          </span>
+          <div className="flex-1"></div>
+          <button
+            onClick={onClose}
+            className="text-fg-3 hover:text-fg-1 text-[14px] leading-none px-1"
+            aria-label="close"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="px-4 py-2 border-b border-[var(--br-1)] bg-[var(--bg)]">
+          <div className="font-mono text-[11.5px] text-fg-2 break-all flex items-center gap-2">
+            {data?.parent && (
+              <button
+                onClick={() => data && load(data.parent ?? undefined)}
+                title={`up to ${data.parent}`}
+                className="text-fg-3 hover:text-fg-1 px-1 transition"
+              >
+                ↑
+              </button>
+            )}
+            <span>{data?.path ?? "…"}</span>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {loading && (
+            <div className="px-4 py-6 text-[12px] text-fg-3 italic">
+              loading…
+            </div>
+          )}
+          {err && (
+            <div className="px-4 py-3 text-[12px] text-[var(--err)] break-words">
+              {err}
+            </div>
+          )}
+          {!loading && !err && data && data.entries.length === 0 && (
+            <div className="px-4 py-6 text-[12px] text-fg-3 italic">
+              no subdirectories here.
+            </div>
+          )}
+          {!loading &&
+            data?.entries.map((e) => (
+              <button
+                key={e.path}
+                onDoubleClick={() => {
+                  if (e.isGitRepo) onPick(e.path);
+                  else load(e.path);
+                }}
+                onClick={() => load(e.path)}
+                className="w-full text-left px-4 py-2 flex items-center gap-2 hover:bg-[var(--bg-2)] transition"
+                title={
+                  e.isGitRepo
+                    ? "double-click to attach · or open"
+                    : "open"
+                }
+              >
+                <svg
+                  className={`w-3.5 h-3.5 flex-shrink-0 ${
+                    e.isGitRepo ? "text-[var(--accent)]" : "text-fg-3"
+                  }`}
+                  viewBox="0 0 14 14"
+                  fill="none"
+                >
+                  {e.isGitRepo ? (
+                    <>
+                      <circle
+                        cx="7"
+                        cy="7"
+                        r="5"
+                        stroke="currentColor"
+                        strokeWidth="1.2"
+                      />
+                      <path
+                        d="M5 6l1.5 1.5L9 5"
+                        stroke="currentColor"
+                        strokeWidth="1.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </>
+                  ) : (
+                    <path
+                      d="M1.5 3.5h3.5l1 1H12a.5.5 0 01.5.5V11a.5.5 0 01-.5.5H2a.5.5 0 01-.5-.5V4a.5.5 0 01.5-.5z"
+                      stroke="currentColor"
+                      strokeWidth="1.2"
+                      strokeLinejoin="round"
+                    />
+                  )}
+                </svg>
+                <span className="text-[13px] text-fg-1 truncate flex-1">
+                  {e.name}
+                </span>
+                {e.isGitRepo && (
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--accent)] font-medium">
+                    git
+                  </span>
+                )}
+              </button>
+            ))}
+        </div>
+
+        <div className="px-4 py-3 border-t border-[var(--br-1)] bg-[var(--bg)] flex items-center gap-2">
+          <span className="text-[10.5px] text-fg-3 italic flex-1">
+            click to open · double-click a{" "}
+            <span className="text-[var(--accent)] font-medium">git</span> entry
+            to attach, or pick the current folder →
+          </span>
+          <button
+            onClick={() => data && onPick(data.path)}
+            disabled={!data}
+            className="text-[11.5px] font-medium text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded transition"
+          >
+            attach this folder
+          </button>
+        </div>
       </div>
     </div>
   );

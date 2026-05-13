@@ -63,6 +63,7 @@ import { abortRun, readRunEvents, startRun } from "./runner.ts";
 import { loadProfile } from "./profile.ts";
 import { getLatestResults } from "./verification.ts";
 import { draftPr, openPr } from "./pr.ts";
+import { listDirectory, homeDir } from "./fs_browse.ts";
 import {
   composeBaseInstructions,
   isAgentRunning,
@@ -86,6 +87,21 @@ const app = new Hono();
 app.get("/api/health", (c) =>
   c.json({ ok: true, server: "range", version: VERSION, t: Date.now() }),
 );
+
+// ─── FS browser (for the attach-repo picker) ─────────────────────────────
+
+app.get("/api/fs/list", async (c) => {
+  const path = c.req.query("path");
+  try {
+    const result = await listDirectory(path);
+    return c.json({ ...result, home: homeDir() });
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      400,
+    );
+  }
+});
 
 // ─── Sessions ──────────────────────────────────────────────────────────────
 
