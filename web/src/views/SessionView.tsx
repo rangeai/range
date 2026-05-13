@@ -565,49 +565,8 @@ function AgentItemView({ item }: { item: AgentItem }) {
           </div>
         </div>
       );
-    case "command": {
-      const cmd =
-        typeof item.command === "string"
-          ? item.command
-          : item.command.join(" ");
-      return (
-        <div className="flex gap-3">
-          <AgentBadge label="$" />
-          <div className="flex-1 min-w-0">
-            <div className="font-mono text-[12px] text-fg-1 break-words">
-              {cmd}
-            </div>
-            {item.state === "completed" && (
-              <div className="mt-1 flex items-center gap-2 text-[10.5px] text-fg-3 font-mono">
-                <span
-                  style={{
-                    color:
-                      item.exitCode === 0
-                        ? "var(--ok)"
-                        : item.exitCode == null
-                          ? undefined
-                          : "var(--err)",
-                  }}
-                >
-                  exit {item.exitCode ?? "?"}
-                </span>
-                {item.durationMs != null && (
-                  <>
-                    <span>·</span>
-                    <span>{item.durationMs}ms</span>
-                  </>
-                )}
-              </div>
-            )}
-            {item.output && item.state === "completed" && (
-              <pre className="mt-2 font-mono text-[11px] text-fg-2 bg-[var(--bg)] border border-[var(--br-1)] rounded p-2 max-h-[160px] overflow-y-auto whitespace-pre-wrap break-words">
-                {item.output}
-              </pre>
-            )}
-          </div>
-        </div>
-      );
-    }
+    case "command":
+      return <CommandItemView item={item} inProgress={inProgress} />;
     case "file_edit":
       return (
         <div className="flex gap-3">
@@ -643,12 +602,133 @@ function AgentItemView({ item }: { item: AgentItem }) {
         </div>
       );
     default:
-      return (
-        <div className="text-[11px] text-fg-3 italic">
-          unknown agent item
-        </div>
-      );
+      return <UnknownItemView item={item} />;
   }
+}
+
+function UnknownItemView({
+  item,
+}: {
+  item: Extract<AgentItem, { kind: "unknown" }>;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex gap-3 items-center">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="text-[10.5px] text-fg-3 italic hover:text-fg-2 transition"
+        title="agent emitted an event Range doesn't have a renderer for"
+      >
+        · {open ? "hide" : "show"} raw agent item
+      </button>
+      {open && (
+        <pre className="ml-2 font-mono text-[10.5px] text-fg-3 bg-[var(--bg)] border border-[var(--br-1)] rounded p-2 max-h-[160px] overflow-auto break-words flex-1 min-w-0">
+          {JSON.stringify(item.raw, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function CommandItemView({
+  item,
+  inProgress,
+}: {
+  item: Extract<AgentItem, { kind: "command" }>;
+  inProgress: boolean;
+}) {
+  // Collapsed by default for completed commands; auto-open while running
+  // so the user can see what Codex is doing live.
+  const [open, setOpen] = useState(inProgress);
+  // Re-open on transition into in-progress (rare, but safe).
+  useEffect(() => {
+    if (inProgress) setOpen(true);
+  }, [inProgress]);
+
+  const cmd =
+    typeof item.command === "string"
+      ? item.command
+      : item.command.join(" ");
+  const shortCmd = prettyCommand(cmd);
+  const exitColor =
+    item.exitCode === 0
+      ? "var(--ok)"
+      : item.exitCode == null
+        ? "var(--fg-3)"
+        : "var(--err)";
+
+  return (
+    <div className="flex gap-3">
+      <AgentBadge label="$" />
+      <div className="flex-1 min-w-0">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="w-full flex items-center gap-2 text-left group"
+        >
+          <svg
+            className={`w-2.5 h-2.5 text-fg-3 flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+            viewBox="0 0 12 12"
+            fill="none"
+          >
+            <path
+              d="M4 2l4 4-4 4"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span className="font-mono text-[12px] text-fg-1 truncate min-w-0 group-hover:text-fg">
+            {shortCmd}
+          </span>
+          {item.state === "completed" ? (
+            <span
+              className="font-mono text-[10.5px] flex-shrink-0"
+              style={{ color: exitColor }}
+            >
+              exit {item.exitCode ?? "?"}
+            </span>
+          ) : (
+            <span className="font-mono text-[10.5px] text-[var(--accent)] flex-shrink-0 pulse-live">
+              running…
+            </span>
+          )}
+          {item.durationMs != null && (
+            <span className="font-mono text-[10.5px] text-fg-3 flex-shrink-0">
+              {item.durationMs}ms
+            </span>
+          )}
+        </button>
+        {open && (
+          <div className="mt-1.5">
+            {shortCmd !== cmd && (
+              <pre className="font-mono text-[11.5px] text-fg-2 bg-[var(--bg)] border border-[var(--br-1)] rounded p-2 mb-2 whitespace-pre-wrap break-words">
+                {cmd}
+              </pre>
+            )}
+            {item.output && (
+              <pre className="font-mono text-[11px] text-fg-2 bg-[var(--bg)] border border-[var(--br-1)] rounded p-2 max-h-[240px] overflow-y-auto whitespace-pre-wrap break-words">
+                {item.output}
+              </pre>
+            )}
+            {item.state === "completed" && !item.output && (
+              <div className="text-[10.5px] text-fg-3 italic">
+                no output
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function prettyCommand(cmd: string): string {
+  // Codex usually wraps shell commands as: /bin/zsh -lc "actual command"
+  // — peel that off for the summary line. Falls back to the raw cmd.
+  const m = cmd.match(/^\/bin\/(?:ba|z)sh\s+-l?c\s+(['"])(.*)\1\s*$/s);
+  if (m) return m[2]!;
+  return cmd;
 }
 
 function AgentBadge({ label }: { label: string }) {
