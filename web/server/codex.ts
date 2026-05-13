@@ -1,25 +1,18 @@
 /**
- * Codex adapter.
+ * Codex adapter — one Codex thread per session.
  *
- * Spawns `codex app-server` as a subprocess per attempt and talks
- * JSON-RPC 2.0 newline-delimited over stdio. Translates Codex's item
- * lifecycle (item/started → optional item/updated → item/completed,
- * plus item/agentMessage/delta for streaming text) into Range-native
- * `agent_*` WebSocket events.
+ * Spawns `codex app-server` as a subprocess inside the session's
+ * worktree and talks JSON-RPC 2.0 newline-delimited over stdio.
+ * Translates Codex's item lifecycle (item/started → optional
+ * item/updated → item/completed, plus item/agentMessage/delta for
+ * streaming text) into Range-native `agent_*` WebSocket events.
  *
- * MVP scope (Phase A):
+ * MVP scope:
  *   - initialize / initialized / thread/start handshake
  *   - approvalPolicy: "never", sandbox: "read-only"
- *   - turn/start with a prompt
+ *   - turn/start with input=[{type:"text",text:prompt}]
  *   - notification translation for agentMessage, reasoning, commandExecution
- *   - persist all observed items to ~/.range/threads/<attempt_id>/events.jsonl
- *
- * Out of scope (Phase B+):
- *   - Approval request flow (requires "untrusted" or "on-request" policy)
- *   - File-edit items (require workspace-write sandbox)
- *   - MCP tool / web search item kinds (passed through as 'unknown')
- *   - thread/resume across server restarts
- *   - Multi-model selection (uses the user's ~/.codex/config.toml default)
+ *   - persist all observed events to ~/.range/threads/<session_id>/events.jsonl
  */
 
 import type { Subprocess } from "bun";
@@ -29,14 +22,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { log } from "./log.ts";
 import { broadcast } from "./hub.ts";
-import { getAttempt, setCodexThreadId } from "./attempts.ts";
+import { getSession, setSessionCodexThreadId } from "./sessions.ts";
 import type {
   AgentItem,
   AgentItemState,
   ServerMessage,
 } from "../shared/protocol.ts";
-
-// ─── Types ──────────────────────────────────────────────────────────────────
 
 type Pending = {
   resolve: (val: unknown) => void;
@@ -44,57 +35,53 @@ type Pending = {
 };
 
 interface CodexSession {
-  attemptId: string;
+  sessionId: string;
   proc: Subprocess<"pipe", "pipe", "pipe">;
   nextRequestId: number;
   pendingRequests: Map<number, Pending>;
   threadId: string | null;
-  /** Codex item.id → cached state we've accumulated (text for streaming) */
   itemTexts: Map<string, string>;
-  /** Codex item.id → last known kind/state to keep handlers consistent */
   itemMeta: Map<string, { kind: string }>;
   eventFile: WriteStream;
 }
 
 const sessions = new Map<string, CodexSession>();
 
-// ─── Public API ────────────────────────────────────────────────────────────
-
-function threadDir(attemptId: string): string {
-  return join(homedir(), ".range", "threads", attemptId);
+function threadDir(sessionId: string): string {
+  return join(homedir(), ".range", "threads", sessionId);
 }
 
-export function isAgentRunning(attemptId: string): boolean {
-  return sessions.has(attemptId);
+export function isAgentRunning(sessionId: string): boolean {
+  return sessions.has(sessionId);
 }
 
-export async function startAgent(attemptId: string): Promise<{
+export async function startAgent(sessionId: string): Promise<{
   threadId: string;
 }> {
-  if (sessions.has(attemptId)) {
-    const s = sessions.get(attemptId)!;
+  if (sessions.has(sessionId)) {
+    const s = sessions.get(sessionId)!;
     return { threadId: s.threadId ?? "" };
   }
 
-  const attempt = getAttempt(attemptId);
-  if (!attempt) throw new Error(`attempt not found: ${attemptId}`);
-  if (!attempt.worktreePath) {
+  const session = getSession(sessionId);
+  if (!session) throw new Error(`session not found: ${sessionId}`);
+  if (!session.worktreePath) {
     throw new Error(
-      `attempt ${attemptId} has no worktree — attach a repo to the session before starting Codex`,
+      `session ${sessionId} has no worktree — create it with a repoPath`,
     );
   }
 
-  const dir = threadDir(attemptId);
+  const dir = threadDir(sessionId);
   await mkdir(dir, { recursive: true });
   const eventFile = createWriteStream(join(dir, "events.jsonl"), {
     flags: "a",
   });
 
-  log.info("codex", "spawning", { attemptId, cwd: attempt.worktreePath });
+  log.info("codex", "spawning", { sessionId, cwd: session.worktreePath });
   let proc: Subprocess<"pipe", "pipe", "pipe">;
   try {
     proc = Bun.spawn(["codex", "app-server"], {
-      cwd: attempt.worktreePath,
+      cwd: session.worktreePath,
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
@@ -104,8 +91,8 @@ export async function startAgent(attemptId: string): Promise<{
     throw new Error(`failed to spawn codex app-server: ${err}`);
   }
 
-  const session: CodexSession = {
-    attemptId,
+  const cs: CodexSession = {
+    sessionId,
     proc,
     nextRequestId: 1,
     pendingRequests: new Map(),
@@ -114,39 +101,32 @@ export async function startAgent(attemptId: string): Promise<{
     itemMeta: new Map(),
     eventFile,
   };
-  sessions.set(attemptId, session);
+  sessions.set(sessionId, cs);
 
-  // Start reading stdout in the background.
-  void readLoop(session).catch((err) => {
+  void readLoop(cs).catch((err) => {
     log.error("codex", "read loop crashed", {
-      attemptId,
+      sessionId,
       err: String(err),
     });
-    teardown(session, `read loop crashed: ${err}`);
+    teardown(cs, `read loop crashed: ${err}`);
   });
+  void teeStderr(cs).catch(() => undefined);
 
-  // Tee stderr to logs (best effort).
-  void teeStderr(session).catch(() => undefined);
-
-  // Notify the browser that Codex is starting (before handshake completes,
-  // so the UI can show a spinner).
   emit({
     type: "agent_started",
-    attemptId,
+    sessionId,
     threadId: "<initializing>",
   });
 
   try {
-    // Initialize handshake
-    await sendRequest(session, "initialize", {
+    await sendRequest(cs, "initialize", {
       clientInfo: { name: "range", version: "0.1.0" },
       capabilities: {},
     });
-    sendNotification(session, "initialized", {});
+    sendNotification(cs, "initialized", {});
 
-    // Start a new thread.
-    const threadResp = (await sendRequest(session, "thread/start", {
-      cwd: attempt.worktreePath,
+    const threadResp = (await sendRequest(cs, "thread/start", {
+      cwd: session.worktreePath,
       approvalPolicy: "never",
       sandbox: "read-only",
     })) as { thread?: { id?: string }; threadId?: string };
@@ -156,88 +136,91 @@ export async function startAgent(attemptId: string): Promise<{
     if (!threadId) {
       throw new Error("thread/start returned no thread id");
     }
-    session.threadId = threadId;
-    setCodexThreadId(attemptId, threadId);
+    cs.threadId = threadId;
+    setSessionCodexThreadId(sessionId, threadId);
 
-    log.info("codex", "thread started", { attemptId, threadId });
-    emit({ type: "agent_started", attemptId, threadId });
+    log.info("codex", "thread started", { sessionId, threadId });
+    emit({ type: "agent_started", sessionId, threadId });
+    const updated = getSession(sessionId);
+    if (updated)
+      broadcast({ type: "session_updated", session: updated });
 
     return { threadId };
   } catch (err) {
     log.error("codex", "handshake failed", {
-      attemptId,
+      sessionId,
       err: String(err),
     });
-    teardown(session, `handshake failed: ${err}`);
+    teardown(cs, `handshake failed: ${err}`);
     throw err;
   }
 }
 
 export async function sendUserMessage(
-  attemptId: string,
+  sessionId: string,
   prompt: string,
 ): Promise<{ turnId: string }> {
-  const session = sessions.get(attemptId);
-  if (!session || !session.threadId) {
-    throw new Error(`no live Codex session for attempt ${attemptId}`);
+  const cs = sessions.get(sessionId);
+  if (!cs || !cs.threadId) {
+    throw new Error(`no live Codex session for ${sessionId}`);
   }
 
-  const resp = (await sendRequest(session, "turn/start", {
-    threadId: session.threadId,
+  const resp = (await sendRequest(cs, "turn/start", {
+    threadId: cs.threadId,
     input: [{ type: "text", text: prompt }],
   })) as { turn?: { id?: string }; turnId?: string };
 
   const turnId = resp?.turn?.id ?? resp?.turnId ?? "";
   emit({
     type: "agent_turn_started",
-    attemptId,
+    sessionId,
     turnId,
     prompt,
   });
   return { turnId };
 }
 
-export async function stopAgent(attemptId: string): Promise<boolean> {
-  const session = sessions.get(attemptId);
-  if (!session) return false;
-  teardown(session, "stopped by user");
+export async function stopAgent(sessionId: string): Promise<boolean> {
+  const cs = sessions.get(sessionId);
+  if (!cs) return false;
+  teardown(cs, "stopped by user");
   return true;
 }
 
 // ─── JSON-RPC plumbing ─────────────────────────────────────────────────────
 
-function sendRaw(session: CodexSession, payload: unknown): void {
+function sendRaw(cs: CodexSession, payload: unknown): void {
   try {
-    session.proc.stdin.write(JSON.stringify(payload) + "\n");
+    cs.proc.stdin.write(JSON.stringify(payload) + "\n");
   } catch (err) {
     log.error("codex", "stdin write failed", {
-      attemptId: session.attemptId,
+      sessionId: cs.sessionId,
       err: String(err),
     });
   }
 }
 
 function sendNotification(
-  session: CodexSession,
+  cs: CodexSession,
   method: string,
   params: Record<string, unknown>,
 ): void {
-  sendRaw(session, { method, params });
+  sendRaw(cs, { method, params });
 }
 
 function sendRequest(
-  session: CodexSession,
+  cs: CodexSession,
   method: string,
   params: Record<string, unknown>,
   timeoutMs = 60_000,
 ): Promise<unknown> {
-  const id = session.nextRequestId++;
+  const id = cs.nextRequestId++;
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      session.pendingRequests.delete(id);
+      cs.pendingRequests.delete(id);
       reject(new Error(`Codex request ${method} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
-    session.pendingRequests.set(id, {
+    cs.pendingRequests.set(id, {
       resolve: (val) => {
         clearTimeout(timer);
         resolve(val);
@@ -247,12 +230,12 @@ function sendRequest(
         reject(err);
       },
     });
-    sendRaw(session, { method, id, params });
+    sendRaw(cs, { method, id, params });
   });
 }
 
-async function readLoop(session: CodexSession): Promise<void> {
-  const reader = session.proc.stdout;
+async function readLoop(cs: CodexSession): Promise<void> {
+  const reader = cs.proc.stdout;
   const decoder = new TextDecoder();
   let buf = "";
   for await (const chunk of reader as unknown as AsyncIterable<Uint8Array>) {
@@ -264,27 +247,26 @@ async function readLoop(session: CodexSession): Promise<void> {
       if (line.length === 0) continue;
       try {
         const msg = JSON.parse(line);
-        handleMessage(session, msg);
+        handleMessage(cs, msg);
       } catch (err) {
         log.warn("codex", "non-JSON line", {
-          attemptId: session.attemptId,
+          sessionId: cs.sessionId,
           err: String(err),
           line: line.slice(0, 200),
         });
       }
     }
   }
-  // Process stdout closed → process exited.
-  const exitCode = await session.proc.exited;
+  const exitCode = await cs.proc.exited;
   log.info("codex", "process exited", {
-    attemptId: session.attemptId,
+    sessionId: cs.sessionId,
     exitCode,
   });
-  teardown(session, `exited code=${exitCode}`);
+  teardown(cs, `exited code=${exitCode}`);
 }
 
-async function teeStderr(session: CodexSession): Promise<void> {
-  const reader = session.proc.stderr;
+async function teeStderr(cs: CodexSession): Promise<void> {
+  const reader = cs.proc.stderr;
   const decoder = new TextDecoder();
   let buf = "";
   for await (const chunk of reader as unknown as AsyncIterable<Uint8Array>) {
@@ -294,7 +276,7 @@ async function teeStderr(session: CodexSession): Promise<void> {
       const line = buf.slice(0, nl);
       buf = buf.slice(nl + 1);
       if (line.length === 0) continue;
-      log.warn("codex.stderr", line, { attemptId: session.attemptId });
+      log.warn("codex.stderr", line, { sessionId: cs.sessionId });
     }
   }
 }
@@ -316,37 +298,34 @@ interface JsonRpcRequest extends JsonRpcNotification {
   id: number;
 }
 
-function handleMessage(session: CodexSession, msg: unknown): void {
+function handleMessage(cs: CodexSession, msg: unknown): void {
   if (!msg || typeof msg !== "object") return;
   const m = msg as Record<string, unknown>;
 
   if (typeof m.id === "number" && ("result" in m || "error" in m)) {
-    handleResponse(session, m as unknown as JsonRpcResponse);
+    handleResponse(cs, m as unknown as JsonRpcResponse);
     return;
   }
   if (typeof m.method === "string" && typeof m.id === "number") {
-    handleIncomingRequest(session, m as unknown as JsonRpcRequest);
+    handleIncomingRequest(cs, m as unknown as JsonRpcRequest);
     return;
   }
   if (typeof m.method === "string") {
-    handleNotification(session, m as unknown as JsonRpcNotification);
+    handleNotification(cs, m as unknown as JsonRpcNotification);
     return;
   }
 }
 
-function handleResponse(
-  session: CodexSession,
-  msg: JsonRpcResponse,
-): void {
-  const pending = session.pendingRequests.get(msg.id);
+function handleResponse(cs: CodexSession, msg: JsonRpcResponse): void {
+  const pending = cs.pendingRequests.get(msg.id);
   if (!pending) {
     log.warn("codex", "response with no pending request", {
-      attemptId: session.attemptId,
+      sessionId: cs.sessionId,
       id: msg.id,
     });
     return;
   }
-  session.pendingRequests.delete(msg.id);
+  cs.pendingRequests.delete(msg.id);
   if (msg.error) {
     pending.reject(new Error(`${msg.error.code}: ${msg.error.message}`));
   } else {
@@ -354,48 +333,41 @@ function handleResponse(
   }
 }
 
-function handleIncomingRequest(
-  session: CodexSession,
-  msg: JsonRpcRequest,
-): void {
-  // Phase A: we auto-decline any request from Codex since approval flow
-  // isn't implemented yet. With approvalPolicy=never this should never
-  // fire, but if Codex sends anything we don't recognize, fail closed.
+function handleIncomingRequest(cs: CodexSession, msg: JsonRpcRequest): void {
   log.info("codex", "incoming request (auto-declining)", {
-    attemptId: session.attemptId,
+    sessionId: cs.sessionId,
     method: msg.method,
     id: msg.id,
   });
-  sendRaw(session, { id: msg.id, result: { decision: "decline" } });
+  sendRaw(cs, { id: msg.id, result: { decision: "decline" } });
 }
 
 function handleNotification(
-  session: CodexSession,
+  cs: CodexSession,
   msg: JsonRpcNotification,
 ): void {
   const params = (msg.params ?? {}) as Record<string, unknown>;
   switch (msg.method) {
     case "item/started":
-      onItemStarted(session, params);
+      onItemStarted(cs, params);
       break;
     case "item/updated":
-      onItemUpdated(session, params);
+      onItemUpdated(cs, params);
       break;
     case "item/completed":
-      onItemCompleted(session, params);
+      onItemCompleted(cs, params);
       break;
     case "item/agentMessage/delta":
-      onAgentMessageDelta(session, params);
+      onAgentMessageDelta(cs, params);
       break;
     case "turn/started":
-      // Already emitted on our side at request time; ignore Codex's.
       break;
     case "turn/completed":
-      onTurnCompleted(session, params);
+      onTurnCompleted(cs, params);
       break;
     default:
       log.debug("codex", "unhandled notification", {
-        attemptId: session.attemptId,
+        sessionId: cs.sessionId,
         method: msg.method,
       });
   }
@@ -518,54 +490,49 @@ function toAgentItem(raw: RawItem, state: AgentItemState): AgentItem {
 }
 
 function onItemStarted(
-  session: CodexSession,
+  cs: CodexSession,
   params: Record<string, unknown>,
 ): void {
   const raw = getItemFromParams(params);
   if (!raw) return;
-  session.itemMeta.set(raw.id!, { kind: String(raw.type ?? "unknown") });
+  cs.itemMeta.set(raw.id!, { kind: String(raw.type ?? "unknown") });
   if (raw.type === "agentMessage" || raw.type === "reasoning") {
-    session.itemTexts.set(raw.id!, "");
+    cs.itemTexts.set(raw.id!, "");
   }
   const item = toAgentItem(raw, "started");
-  emit({ type: "agent_item", attemptId: session.attemptId, item });
+  emit({ type: "agent_item", sessionId: cs.sessionId, item });
 }
 
 function onItemUpdated(
-  session: CodexSession,
+  cs: CodexSession,
   params: Record<string, unknown>,
 ): void {
-  // For Phase A we don't distinguish updated from completed except for the
-  // streaming delta path (handled separately). Forward as started so the UI
-  // sees the latest snapshot.
   const raw = getItemFromParams(params);
   if (!raw) return;
   const item = toAgentItem(raw, "started");
-  emit({ type: "agent_item", attemptId: session.attemptId, item });
+  emit({ type: "agent_item", sessionId: cs.sessionId, item });
 }
 
 function onItemCompleted(
-  session: CodexSession,
+  cs: CodexSession,
   params: Record<string, unknown>,
 ): void {
   const raw = getItemFromParams(params);
   if (!raw) return;
-  // For message/reasoning, merge accumulated text from deltas if Codex didn't
-  // include the final text in the completed event.
   if (
     (raw.type === "agentMessage" || raw.type === "reasoning") &&
     (typeof raw.text !== "string" || raw.text.length === 0)
   ) {
-    raw.text = session.itemTexts.get(raw.id!) ?? "";
+    raw.text = cs.itemTexts.get(raw.id!) ?? "";
   }
   const item = toAgentItem(raw, "completed");
-  emit({ type: "agent_item", attemptId: session.attemptId, item });
-  session.itemTexts.delete(raw.id!);
-  session.itemMeta.delete(raw.id!);
+  emit({ type: "agent_item", sessionId: cs.sessionId, item });
+  cs.itemTexts.delete(raw.id!);
+  cs.itemMeta.delete(raw.id!);
 }
 
 function onAgentMessageDelta(
-  session: CodexSession,
+  cs: CodexSession,
   params: Record<string, unknown>,
 ): void {
   const itemId =
@@ -582,19 +549,19 @@ function onAgentMessageDelta(
         : "";
   if (!itemId || !delta) return;
 
-  const prev = session.itemTexts.get(itemId) ?? "";
-  session.itemTexts.set(itemId, prev + delta);
+  const prev = cs.itemTexts.get(itemId) ?? "";
+  cs.itemTexts.set(itemId, prev + delta);
 
   emit({
     type: "agent_message_delta",
-    attemptId: session.attemptId,
+    sessionId: cs.sessionId,
     itemId,
     delta,
   });
 }
 
 function onTurnCompleted(
-  session: CodexSession,
+  cs: CodexSession,
   params: Record<string, unknown>,
 ): void {
   const turn = params.turn as { id?: string } | undefined;
@@ -603,63 +570,56 @@ function onTurnCompleted(
     (params.status as "ok" | "failed" | "aborted" | undefined) ?? "ok";
   emit({
     type: "agent_turn_finished",
-    attemptId: session.attemptId,
+    sessionId: cs.sessionId,
     turnId,
     status,
   });
 }
 
-// ─── Emit helper ───────────────────────────────────────────────────────────
-
 function emit(msg: ServerMessage): void {
-  // Persist to events.jsonl for replay, then broadcast over WS.
-  // Skip ping/hello which aren't agent-scoped.
-  const session = sessionFor(msg);
-  if (session) {
-    try {
-      session.eventFile.write(JSON.stringify(msg) + "\n");
-    } catch (err) {
-      log.warn("codex", "event file write failed", {
-        err: String(err),
-      });
+  const sessionId = (msg as { sessionId?: string }).sessionId;
+  if (sessionId) {
+    const cs = sessions.get(sessionId);
+    if (cs) {
+      try {
+        cs.eventFile.write(JSON.stringify(msg) + "\n");
+      } catch (err) {
+        log.warn("codex", "event file write failed", {
+          err: String(err),
+        });
+      }
     }
   }
   broadcast(msg);
 }
 
-function sessionFor(msg: ServerMessage): CodexSession | null {
-  const attemptId = (msg as { attemptId?: string }).attemptId;
-  if (!attemptId) return null;
-  return sessions.get(attemptId) ?? null;
-}
-
-// ─── Teardown ──────────────────────────────────────────────────────────────
-
-function teardown(session: CodexSession, reason: string): void {
-  if (!sessions.has(session.attemptId)) return;
-  sessions.delete(session.attemptId);
-  for (const [id, p] of session.pendingRequests) {
+function teardown(cs: CodexSession, reason: string): void {
+  if (!sessions.has(cs.sessionId)) return;
+  sessions.delete(cs.sessionId);
+  for (const [id, p] of cs.pendingRequests) {
     p.reject(new Error(`session ended: ${reason}`));
-    session.pendingRequests.delete(id);
+    cs.pendingRequests.delete(id);
   }
   try {
-    session.proc.kill();
+    cs.proc.kill();
   } catch {
     // already dead
   }
   try {
-    session.eventFile.end();
+    cs.eventFile.end();
   } catch {
     // already closed
   }
-  setCodexThreadId(session.attemptId, null);
+  setSessionCodexThreadId(cs.sessionId, null);
   emit({
     type: "agent_stopped",
-    attemptId: session.attemptId,
+    sessionId: cs.sessionId,
     reason,
   });
+  const updated = getSession(cs.sessionId);
+  if (updated) broadcast({ type: "session_updated", session: updated });
   log.info("codex", "torn down", {
-    attemptId: session.attemptId,
+    sessionId: cs.sessionId,
     reason,
   });
 }

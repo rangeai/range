@@ -1,12 +1,23 @@
 /**
- * Range MVP server — Phase 1 foundation + sessions.
+ * Range MVP server.
  *
- * Bun + Hono.
- * - GET  /api/health
- * - GET  /api/sessions
- * - GET  /api/sessions/:id
- * - POST /api/sessions
- * - GET  /ws                (WebSocket: events + pings)
+ * Sessions are the sole top-level work container. Each session with a
+ * repo_path owns one worktree, one Codex thread, and one stream of runs.
+ *
+ * REST surface:
+ *   GET  /api/health
+ *   GET  /api/sessions
+ *   POST /api/sessions
+ *   GET  /api/sessions/:id
+ *   GET  /api/sessions/:id/profile
+ *   GET  /api/sessions/:id/runs
+ *   POST /api/sessions/:id/runs
+ *   GET  /api/runs/:id
+ *   POST /api/runs/:id/abort
+ *   POST /api/sessions/:id/agent/start
+ *   POST /api/sessions/:id/agent/message
+ *   POST /api/sessions/:id/agent/stop
+ *   GET  /ws
  */
 
 import { Hono } from "hono";
@@ -14,11 +25,20 @@ import { createBunWebSocket } from "hono/bun";
 import type { ServerWebSocket } from "bun";
 import { log } from "./log.ts";
 import type {
-  ServerMessage,
+  AgentMessageRequest,
+  AgentMessageResponse,
+  CreateRunRequest,
+  CreateRunResponse,
   CreateSessionRequest,
   CreateSessionResponse,
+  GetProfileResponse,
+  GetRunResponse,
   GetSessionResponse,
+  ListRunsResponse,
   ListSessionsResponse,
+  RunKind,
+  ServerMessage,
+  StartAgentResponse,
 } from "../shared/protocol.ts";
 import "./db.ts";
 import {
@@ -28,14 +48,8 @@ import {
   validateRepoPath,
 } from "./sessions.ts";
 import {
-  createAttempt,
-  getAttempt,
-  listAttempts,
-  setCandidate,
-} from "./attempts.ts";
-import {
   getRun,
-  listRunsByAttempt,
+  listRunsBySession,
 } from "./runs.ts";
 import { abortRun, readRunEvents, startRun } from "./runner.ts";
 import { loadProfile } from "./profile.ts";
@@ -46,21 +60,6 @@ import {
   stopAgent,
 } from "./codex.ts";
 import { broadcast, registerSender } from "./hub.ts";
-import type {
-  AgentMessageRequest,
-  AgentMessageResponse,
-  CreateAttemptRequest,
-  CreateAttemptResponse,
-  CreateRunRequest,
-  CreateRunResponse,
-  GetAttemptResponse,
-  GetProfileResponse,
-  GetRunResponse,
-  ListAttemptsResponse,
-  ListRunsResponse,
-  RunKind,
-  StartAgentResponse,
-} from "../shared/protocol.ts";
 
 const VERSION = "0.1.0";
 const PORT = Number(Bun.env.RANGE_PORT ?? 3457);
@@ -91,24 +90,29 @@ app.post("/api/sessions", async (c) => {
   } catch {
     return c.json({ error: "invalid JSON body" }, 400);
   }
-
   if (!body || typeof body !== "object" || !VALID_KINDS.has(body.kind)) {
-    return c.json({ error: "kind must be one of tracked_task | freeform | pr_verification" }, 400);
+    return c.json(
+      { error: "kind must be one of tracked_task | freeform | pr_verification" },
+      400,
+    );
   }
-
   if (body.repoPath) {
     try {
       await validateRepoPath(body.repoPath);
     } catch (err) {
-      return c.json({ error: String(err instanceof Error ? err.message : err) }, 400);
+      return c.json(
+        { error: String(err instanceof Error ? err.message : err) },
+        400,
+      );
     }
   }
-
-  const session = createSession(body);
-  log.info("sessions", "created", { id: session.id, kind: session.kind });
-
+  const session = await createSession(body);
+  log.info("sessions", "created", {
+    id: session.id,
+    kind: session.kind,
+    hasWorktree: !!session.worktreePath,
+  });
   broadcast({ type: "session_created", session });
-
   const response: CreateSessionResponse = { session };
   return c.json(response, 201);
 });
@@ -137,7 +141,7 @@ app.get("/api/sessions/:id/profile", async (c) => {
         profile: null,
         path: "",
         found: false,
-        error: "session has no repoPath",
+        error: null,
       },
     };
     return c.json(response);
@@ -145,87 +149,6 @@ app.get("/api/sessions/:id/profile", async (c) => {
   const result = await loadProfile(session.repoPath);
   const response: GetProfileResponse = { result };
   return c.json(response);
-});
-
-// ─── Attempts ──────────────────────────────────────────────────────────────
-
-const VALID_ATTEMPT_KINDS = new Set([
-  "baseline",
-  "investigation",
-  "implementation",
-  "verification",
-  "freeform",
-]);
-
-const VALID_SANDBOXES = new Set([
-  "read-only",
-  "workspace-write",
-  "danger-full-access",
-]);
-
-app.get("/api/sessions/:id/attempts", (c) => {
-  const sessionId = c.req.param("id");
-  const session = getSession(sessionId);
-  if (!session) return c.json({ error: "session not found" }, 404);
-  const attempts = listAttempts(sessionId);
-  const response: ListAttemptsResponse = { attempts };
-  return c.json(response);
-});
-
-app.post("/api/sessions/:id/attempts", async (c) => {
-  const sessionId = c.req.param("id");
-  const session = getSession(sessionId);
-  if (!session) return c.json({ error: "session not found" }, 404);
-
-  let body: CreateAttemptRequest;
-  try {
-    body = (await c.req.json().catch(() => ({}))) as CreateAttemptRequest;
-  } catch {
-    return c.json({ error: "invalid JSON body" }, 400);
-  }
-
-  if (body.kind && !VALID_ATTEMPT_KINDS.has(body.kind)) {
-    return c.json({ error: `kind must be one of: ${[...VALID_ATTEMPT_KINDS].join(" | ")}` }, 400);
-  }
-  if (body.sandbox && !VALID_SANDBOXES.has(body.sandbox)) {
-    return c.json({ error: `sandbox must be one of: ${[...VALID_SANDBOXES].join(" | ")}` }, 400);
-  }
-
-  try {
-    const attempt = await createAttempt({
-      sessionId,
-      name: body.name,
-      kind: body.kind,
-      sandbox: body.sandbox,
-      baseBranch: body.baseBranch,
-    });
-    broadcast({ type: "attempt_created", attempt });
-    log.info("api", "attempt created", { id: attempt.id, sessionId });
-    const response: CreateAttemptResponse = { attempt };
-    return c.json(response, 201);
-  } catch (err) {
-    log.error("api", "attempt create failed", {
-      sessionId,
-      err: String(err),
-    });
-    return c.json({ error: String(err) }, 500);
-  }
-});
-
-app.get("/api/attempts/:id", (c) => {
-  const id = c.req.param("id");
-  const attempt = getAttempt(id);
-  if (!attempt) return c.json({ error: "attempt not found" }, 404);
-  const response: GetAttemptResponse = { attempt };
-  return c.json(response);
-});
-
-app.post("/api/attempts/:id/promote", (c) => {
-  const id = c.req.param("id");
-  const attempt = setCandidate(id, true);
-  if (!attempt) return c.json({ error: "attempt not found" }, 404);
-  broadcast({ type: "attempt_updated", attempt });
-  return c.json({ attempt });
 });
 
 // ─── Runs ──────────────────────────────────────────────────────────────────
@@ -242,27 +165,25 @@ const VALID_RUN_KINDS: ReadonlySet<RunKind> = new Set<RunKind>([
 
 function splitCommand(input: string | string[]): string[] {
   if (Array.isArray(input)) return input.filter((x) => x.length > 0);
-  // Naive whitespace split. Good enough for MVP; users with quoted args
-  // pass an array instead.
   return input
     .split(/\s+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 }
 
-app.get("/api/attempts/:id/runs", (c) => {
-  const attemptId = c.req.param("id");
-  const attempt = getAttempt(attemptId);
-  if (!attempt) return c.json({ error: "attempt not found" }, 404);
-  const runs = listRunsByAttempt(attemptId);
+app.get("/api/sessions/:id/runs", (c) => {
+  const sessionId = c.req.param("id");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  const runs = listRunsBySession(sessionId);
   const response: ListRunsResponse = { runs };
   return c.json(response);
 });
 
-app.post("/api/attempts/:id/runs", async (c) => {
-  const attemptId = c.req.param("id");
-  const attempt = getAttempt(attemptId);
-  if (!attempt) return c.json({ error: "attempt not found" }, 404);
+app.post("/api/sessions/:id/runs", async (c) => {
+  const sessionId = c.req.param("id");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
 
   let body: CreateRunRequest;
   try {
@@ -270,28 +191,29 @@ app.post("/api/attempts/:id/runs", async (c) => {
   } catch {
     return c.json({ error: "invalid JSON body" }, 400);
   }
-
   if (!body || typeof body !== "object" || body.command === undefined) {
     return c.json({ error: "command is required" }, 400);
   }
-
   const command = splitCommand(body.command);
   if (command.length === 0) {
     return c.json({ error: "command is empty" }, 400);
   }
-
   const kind: RunKind = body.kind ?? "shell";
   if (!VALID_RUN_KINDS.has(kind)) {
-    return c.json({ error: `kind must be one of: ${[...VALID_RUN_KINDS].join(" | ")}` }, 400);
+    return c.json(
+      {
+        error: `kind must be one of: ${[...VALID_RUN_KINDS].join(" | ")}`,
+      },
+      400,
+    );
   }
-
   try {
-    const run = await startRun({ attemptId, command, kind });
+    const run = await startRun({ sessionId, command, kind });
     const response: CreateRunResponse = { run };
     return c.json(response, 201);
   } catch (err) {
     log.error("api", "run start failed", {
-      attemptId,
+      sessionId,
       err: String(err instanceof Error ? err.message : err),
     });
     return c.json({ error: String(err) }, 500);
@@ -326,18 +248,18 @@ app.post("/api/runs/:id/abort", async (c) => {
 
 // ─── Agent (Codex) ────────────────────────────────────────────────────────
 
-app.post("/api/attempts/:id/agent/start", async (c) => {
-  const attemptId = c.req.param("id");
-  const attempt = getAttempt(attemptId);
-  if (!attempt) return c.json({ error: "attempt not found" }, 404);
+app.post("/api/sessions/:id/agent/start", async (c) => {
+  const sessionId = c.req.param("id");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
   try {
-    await startAgent(attemptId);
-    const fresh = getAttempt(attemptId);
-    const response: StartAgentResponse = { attempt: fresh! };
+    await startAgent(sessionId);
+    const fresh = getSession(sessionId);
+    const response: StartAgentResponse = { session: fresh! };
     return c.json(response, 201);
   } catch (err) {
     log.error("api", "agent start failed", {
-      attemptId,
+      sessionId,
       err: String(err instanceof Error ? err.message : err),
     });
     return c.json(
@@ -347,10 +269,10 @@ app.post("/api/attempts/:id/agent/start", async (c) => {
   }
 });
 
-app.post("/api/attempts/:id/agent/message", async (c) => {
-  const attemptId = c.req.param("id");
-  if (!isAgentRunning(attemptId)) {
-    return c.json({ error: "agent not running for this attempt" }, 400);
+app.post("/api/sessions/:id/agent/message", async (c) => {
+  const sessionId = c.req.param("id");
+  if (!isAgentRunning(sessionId)) {
+    return c.json({ error: "agent not running for this session" }, 400);
   }
   let body: AgentMessageRequest;
   try {
@@ -362,7 +284,7 @@ app.post("/api/attempts/:id/agent/message", async (c) => {
     return c.json({ error: "prompt is required" }, 400);
   }
   try {
-    const { turnId } = await sendUserMessage(attemptId, body.prompt);
+    const { turnId } = await sendUserMessage(sessionId, body.prompt);
     const response: AgentMessageResponse = { turnId };
     return c.json(response, 201);
   } catch (err) {
@@ -373,10 +295,11 @@ app.post("/api/attempts/:id/agent/message", async (c) => {
   }
 });
 
-app.post("/api/attempts/:id/agent/stop", async (c) => {
-  const attemptId = c.req.param("id");
-  const ok = await stopAgent(attemptId);
-  if (!ok) return c.json({ error: "agent not running for this attempt" }, 404);
+app.post("/api/sessions/:id/agent/stop", async (c) => {
+  const sessionId = c.req.param("id");
+  const ok = await stopAgent(sessionId);
+  if (!ok)
+    return c.json({ error: "agent not running for this session" }, 404);
   return c.json({ ok: true });
 });
 

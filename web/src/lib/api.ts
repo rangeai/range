@@ -1,16 +1,12 @@
 import type {
   AgentMessageResponse,
-  CreateAttemptRequest,
-  CreateAttemptResponse,
   CreateRunRequest,
   CreateRunResponse,
   CreateSessionRequest,
   CreateSessionResponse,
-  GetAttemptResponse,
   GetProfileResponse,
   GetRunResponse,
   GetSessionResponse,
-  ListAttemptsResponse,
   ListRunsResponse,
   ListSessionsResponse,
   StartAgentResponse,
@@ -61,57 +57,20 @@ export function getProfile(sessionId: string): Promise<GetProfileResponse> {
   );
 }
 
-// ─── Attempts ─────────────────────────────────────────────────────────────
-
-export function listAttempts(
-  sessionId: string,
-): Promise<ListAttemptsResponse> {
-  return jsonRequest<ListAttemptsResponse>(
-    `/api/sessions/${encodeURIComponent(sessionId)}/attempts`,
-  );
-}
-
-export function createAttempt(
-  sessionId: string,
-  body: CreateAttemptRequest,
-): Promise<CreateAttemptResponse> {
-  return jsonRequest<CreateAttemptResponse>(
-    `/api/sessions/${encodeURIComponent(sessionId)}/attempts`,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    },
-  );
-}
-
-export function getAttempt(id: string): Promise<GetAttemptResponse> {
-  return jsonRequest<GetAttemptResponse>(
-    `/api/attempts/${encodeURIComponent(id)}`,
-  );
-}
-
-export function promoteAttempt(
-  id: string,
-): Promise<{ attempt: GetAttemptResponse["attempt"] }> {
-  return jsonRequest(`/api/attempts/${encodeURIComponent(id)}/promote`, {
-    method: "POST",
-  });
-}
-
 // ─── Runs ─────────────────────────────────────────────────────────────────
 
-export function listRuns(attemptId: string): Promise<ListRunsResponse> {
+export function listRuns(sessionId: string): Promise<ListRunsResponse> {
   return jsonRequest<ListRunsResponse>(
-    `/api/attempts/${encodeURIComponent(attemptId)}/runs`,
+    `/api/sessions/${encodeURIComponent(sessionId)}/runs`,
   );
 }
 
 export function createRun(
-  attemptId: string,
+  sessionId: string,
   body: CreateRunRequest,
 ): Promise<CreateRunResponse> {
   return jsonRequest<CreateRunResponse>(
-    `/api/attempts/${encodeURIComponent(attemptId)}/runs`,
+    `/api/sessions/${encodeURIComponent(sessionId)}/runs`,
     {
       method: "POST",
       body: JSON.stringify(body),
@@ -134,19 +93,19 @@ export function abortRun(id: string): Promise<{ ok: boolean }> {
 
 // ─── Agent (Codex) ────────────────────────────────────────────────────────
 
-export function startAgent(attemptId: string): Promise<StartAgentResponse> {
+export function startAgent(sessionId: string): Promise<StartAgentResponse> {
   return jsonRequest<StartAgentResponse>(
-    `/api/attempts/${encodeURIComponent(attemptId)}/agent/start`,
+    `/api/sessions/${encodeURIComponent(sessionId)}/agent/start`,
     { method: "POST" },
   );
 }
 
 export function sendAgentMessage(
-  attemptId: string,
+  sessionId: string,
   prompt: string,
 ): Promise<AgentMessageResponse> {
   return jsonRequest<AgentMessageResponse>(
-    `/api/attempts/${encodeURIComponent(attemptId)}/agent/message`,
+    `/api/sessions/${encodeURIComponent(sessionId)}/agent/message`,
     {
       method: "POST",
       body: JSON.stringify({ prompt }),
@@ -154,9 +113,9 @@ export function sendAgentMessage(
   );
 }
 
-export function stopAgent(attemptId: string): Promise<{ ok: boolean }> {
+export function stopAgent(sessionId: string): Promise<{ ok: boolean }> {
   return jsonRequest(
-    `/api/attempts/${encodeURIComponent(attemptId)}/agent/stop`,
+    `/api/sessions/${encodeURIComponent(sessionId)}/agent/stop`,
     { method: "POST" },
   );
 }

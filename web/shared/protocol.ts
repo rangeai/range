@@ -1,8 +1,11 @@
 /**
  * Wire protocol shared between server and browser.
  *
- * Kept deliberately small for Phase 1. Will grow as we implement
- * evidence streaming and permission flow.
+ * The MVP collapses attempts into sessions: each session owns one
+ * worktree, one Codex thread, and one stream of runs. "Attempts" as
+ * a top-level concept is removed. If we ever need parallel exploration
+ * inside a session again, we can reintroduce it without breaking this
+ * surface.
  */
 
 // ─── Sessions ──────────────────────────────────────────────────────────────
@@ -10,6 +13,11 @@
 export type SessionKind = "tracked_task" | "freeform" | "pr_verification";
 
 export type SessionStatus = "active" | "parked" | "archived";
+
+export type Sandbox =
+  | "read-only"
+  | "workspace-write"
+  | "danger-full-access";
 
 export interface Session {
   id: string;
@@ -20,50 +28,11 @@ export interface Session {
   repoPath: string | null;
   taskRef: string | null;
   status: SessionStatus;
-  createdAt: number;
-  updatedAt: number;
-}
-
-// ─── Attempts ──────────────────────────────────────────────────────────────
-
-export type AttemptKind =
-  | "baseline"
-  | "investigation"
-  | "implementation"
-  | "verification"
-  | "freeform";
-
-export type AttemptState =
-  | "created"
-  | "worktree_ready"
-  | "agent_running"
-  | "waiting_for_user"
-  | "running_command"
-  | "paused"
-  | "verification_pending"
-  | "verification_passed"
-  | "verification_failed"
-  | "review_ready"
-  | "pr_opened"
-  | "archived";
-
-export type Sandbox =
-  | "read-only"
-  | "workspace-write"
-  | "danger-full-access";
-
-export interface Attempt {
-  id: string;
-  sessionId: string;
-  name: string;
-  kind: AttemptKind;
-  state: AttemptState;
-  sandbox: Sandbox;
   worktreePath: string | null;
   branch: string | null;
   baseSha: string | null;
-  isCandidate: boolean;
   codexThreadId: string | null;
+  sandbox: Sandbox;
   createdAt: number;
   updatedAt: number;
 }
@@ -91,7 +60,7 @@ export type RunState =
 
 export interface Run {
   id: string;
-  attemptId: string;
+  sessionId: string;
   kind: RunKind;
   command: string[];
   cwd: string;
@@ -109,23 +78,15 @@ export type LogStream = "stdout" | "stderr" | "system";
 export interface RunLogEntry {
   runId: string;
   stream: LogStream;
-  t: number; // ms offset from run.startedAt
+  t: number;
   message: string;
 }
 
-// ─── Profile (range.yaml) ──────────────────────────────────────────────────
-
-/**
- * A profile is the project's declaration of how Range orchestrates its
- * stack. Loaded from <repo_path>/range.yaml.
- *
- * MVP scope: project metadata + named commands. Scenarios, metrics,
- * verification rules, runners, and approvals are reserved for Phase 2.
- */
+// ─── Profile ───────────────────────────────────────────────────────────────
 
 export interface ProfileCommand {
   name: string;
-  args: string[]; // executable + args, e.g. ["pytest", "tests/"]
+  args: string[];
   description?: string;
 }
 
@@ -142,11 +103,8 @@ export interface Profile {
 
 export interface ProfileLoadResult {
   profile: Profile | null;
-  /** Absolute path of the range.yaml we tried to read. */
   path: string;
-  /** True if range.yaml existed at all. */
   found: boolean;
-  /** Parse / validation error, if any. */
   error: string | null;
 }
 
@@ -154,15 +112,7 @@ export interface GetProfileResponse {
   result: ProfileLoadResult;
 }
 
-// ─── Agent events (Codex item lifecycle) ──────────────────────────────────
-
-/**
- * Agent items as observed from Codex. The codex app-server emits
- * `item/started` → optional `item/updated` → `item/completed`, plus
- * `item/agentMessage/delta` for streaming text chunks. We translate
- * those into a small set of Range-native event types so the UI never
- * sees the raw Codex protocol shape.
- */
+// ─── Agent (Codex item lifecycle) ─────────────────────────────────────────
 
 export type AgentItemKind =
   | "message"
@@ -179,7 +129,7 @@ export interface AgentMessageItem {
   id: string;
   kind: "message";
   state: AgentItemState;
-  text: string; // accumulated text up to this point
+  text: string;
 }
 
 export interface AgentReasoningItem {
@@ -197,7 +147,7 @@ export interface AgentCommandItem {
   cwd?: string;
   exitCode?: number | null;
   durationMs?: number | null;
-  output?: string; // captured at completion
+  output?: string;
 }
 
 export interface AgentFileEditItem {
@@ -266,16 +216,6 @@ export interface ServerSessionUpdated {
   session: Session;
 }
 
-export interface ServerAttemptCreated {
-  type: "attempt_created";
-  attempt: Attempt;
-}
-
-export interface ServerAttemptUpdated {
-  type: "attempt_updated";
-  attempt: Attempt;
-}
-
 export interface ServerRunStarted {
   type: "run_started";
   run: Run;
@@ -294,49 +234,48 @@ export interface ServerRunFinished {
   run: Run;
 }
 
-// Agent / Codex events ───
 export interface ServerAgentStarted {
   type: "agent_started";
-  attemptId: string;
+  sessionId: string;
   threadId: string;
 }
 
 export interface ServerAgentStopped {
   type: "agent_stopped";
-  attemptId: string;
+  sessionId: string;
   reason?: string;
 }
 
 export interface ServerAgentTurnStarted {
   type: "agent_turn_started";
-  attemptId: string;
+  sessionId: string;
   turnId: string;
   prompt: string;
 }
 
 export interface ServerAgentTurnFinished {
   type: "agent_turn_finished";
-  attemptId: string;
+  sessionId: string;
   turnId: string;
   status: "ok" | "failed" | "aborted";
 }
 
 export interface ServerAgentItem {
   type: "agent_item";
-  attemptId: string;
+  sessionId: string;
   item: AgentItem;
 }
 
 export interface ServerAgentMessageDelta {
   type: "agent_message_delta";
-  attemptId: string;
+  sessionId: string;
   itemId: string;
   delta: string;
 }
 
 export interface ServerAgentError {
   type: "agent_error";
-  attemptId: string;
+  sessionId: string;
   message: string;
 }
 
@@ -345,8 +284,6 @@ export type ServerMessage =
   | ServerPing
   | ServerSessionCreated
   | ServerSessionUpdated
-  | ServerAttemptCreated
-  | ServerAttemptUpdated
   | ServerRunStarted
   | ServerRunLog
   | ServerRunFinished
@@ -390,27 +327,8 @@ export interface GetSessionResponse {
   session: Session;
 }
 
-export interface CreateAttemptRequest {
-  name?: string;
-  kind?: AttemptKind;
-  sandbox?: Sandbox;
-  baseBranch?: string;
-}
-
-export interface CreateAttemptResponse {
-  attempt: Attempt;
-}
-
-export interface ListAttemptsResponse {
-  attempts: Attempt[];
-}
-
-export interface GetAttemptResponse {
-  attempt: Attempt;
-}
-
 export interface CreateRunRequest {
-  command: string | string[]; // string is split on whitespace, array is used as-is
+  command: string | string[];
   kind?: RunKind;
 }
 
@@ -424,13 +342,11 @@ export interface ListRunsResponse {
 
 export interface GetRunResponse {
   run: Run;
-  logs?: RunLogEntry[]; // recent log entries, if requested
+  logs?: RunLogEntry[];
 }
 
-// Agent (Codex) endpoints ───
-
 export interface StartAgentResponse {
-  attempt: Attempt; // attempt with codexThreadId populated
+  session: Session;
 }
 
 export interface AgentMessageRequest {
@@ -439,8 +355,4 @@ export interface AgentMessageRequest {
 
 export interface AgentMessageResponse {
   turnId: string;
-}
-
-export interface ListAgentItemsResponse {
-  items: AgentItem[];
 }

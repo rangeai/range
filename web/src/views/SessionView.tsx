@@ -1,15 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
-import {
-  attemptsForSession,
-  runsForAttempt,
-  useAppStore,
-} from "../lib/store";
+import { runsForSession, useAppStore } from "../lib/store";
 import type {
   AgentItem,
-  Attempt,
-  AttemptState,
   ProfileCommand,
   ProfileLoadResult,
   Run,
@@ -21,18 +15,10 @@ import type { ConversationEntry, ConversationState } from "../lib/store";
 
 export function SessionView({ sessionId }: { sessionId: string }) {
   const session = useAppStore((s) => s.sessions.get(sessionId));
-  const attempts = useAppStore(
-    useShallow((s) => attemptsForSession(s, sessionId)),
-  );
   const profile = useAppStore((s) => s.profilesBySession.get(sessionId));
   const upsertSession = useAppStore((s) => s.upsertSession);
-  const upsertManyAttempts = useAppStore((s) => s.upsertManyAttempts);
   const setProfile = useAppStore((s) => s.setProfile);
   const goHome = useAppStore((s) => s.goHome);
-
-  const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(
-    null,
-  );
 
   useEffect(() => {
     if (!session) {
@@ -42,31 +28,10 @@ export function SessionView({ sessionId }: { sessionId: string }) {
         .catch((err) => console.error("getSession failed", err));
     }
     api
-      .listAttempts(sessionId)
-      .then((res) => upsertManyAttempts(res.attempts))
-      .catch((err) => console.error("listAttempts failed", err));
-    api
       .getProfile(sessionId)
       .then((res) => setProfile(sessionId, res.result))
       .catch((err) => console.error("getProfile failed", err));
-  }, [
-    sessionId,
-    session,
-    upsertSession,
-    upsertManyAttempts,
-    setProfile,
-  ]);
-
-  useEffect(() => {
-    if (selectedAttemptId) return;
-    const last = attempts[attempts.length - 1];
-    if (last) setSelectedAttemptId(last.id);
-  }, [attempts, selectedAttemptId]);
-
-  const selectedAttempt = useMemo(
-    () => attempts.find((a) => a.id === selectedAttemptId) ?? null,
-    [attempts, selectedAttemptId],
-  );
+  }, [sessionId, session, upsertSession, setProfile]);
 
   if (!session) {
     return (
@@ -77,117 +42,68 @@ export function SessionView({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <div className="flex-1 flex overflow-hidden min-h-0">
-      <AttemptsSidebar
-        session={session}
-        attempts={attempts}
-        profile={profile}
-        selectedAttemptId={selectedAttemptId}
-        onSelect={setSelectedAttemptId}
-        onBack={goHome}
-      />
-      <main className="flex-1 overflow-y-auto">
-        {selectedAttempt ? (
-          <AttemptDetail attempt={selectedAttempt} profile={profile} />
-        ) : (
-          <EmptyAttempts session={session} />
-        )}
-      </main>
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-3xl mx-auto px-6 py-8">
+        <BackToHome onBack={goHome} />
+        <SessionHeader session={session} profile={profile} />
+        <WorktreeBlock session={session} />
+        <ConversationBlock session={session} />
+        <RunsBlock session={session} profile={profile} />
+      </div>
     </div>
   );
 }
 
-// ─── Sidebar ────────────────────────────────────────────────────────────────
+// ─── Header ────────────────────────────────────────────────────────────────
 
-function AttemptsSidebar({
+function BackToHome({ onBack }: { onBack: () => void }) {
+  return (
+    <button
+      onClick={onBack}
+      className="text-[11px] text-fg-3 hover:text-fg-1 mb-4 flex items-center gap-1"
+    >
+      <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none">
+        <path
+          d="M7 2L3 6l4 4"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      back to home
+    </button>
+  );
+}
+
+function SessionHeader({
   session,
-  attempts,
   profile,
-  selectedAttemptId,
-  onSelect,
-  onBack,
 }: {
   session: Session;
-  attempts: Attempt[];
   profile: ProfileLoadResult | undefined;
-  selectedAttemptId: string | null;
-  onSelect: (id: string) => void;
-  onBack: () => void;
 }) {
   return (
-    <aside className="w-[300px] border-r border-[var(--br-1)] flex flex-col bg-[var(--bg-1)] flex-shrink-0">
-      <div className="p-4 border-b border-[var(--br-1)]">
-        <button
-          onClick={onBack}
-          className="text-[11px] text-fg-3 hover:text-fg-1 mb-3 flex items-center gap-1"
-        >
-          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none">
-            <path
-              d="M7 2L3 6l4 4"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          back to home
-        </button>
-        <div className="text-[10px] tracking-[0.16em] uppercase text-fg-3 mb-1.5">
+    <header className="mb-6">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[10px] tracking-[0.18em] uppercase text-fg-3">
           {labelForSessionKind(session.kind)}
-        </div>
-        <div className="font-mono text-[10.5px] text-fg-3 mb-2">
+        </span>
+        <span className="text-fg-3 text-[10px]">·</span>
+        <span className="font-mono text-[10.5px] text-fg-3">
           {session.id}
-        </div>
-        <h2 className="font-display tracking-tightest text-[15px] font-light leading-snug text-fg mb-2">
-          {session.title}
-        </h2>
-        {session.repoPath ? (
-          <div
-            className="text-[10.5px] text-fg-3 font-mono break-all"
-            title={session.repoPath}
-          >
-            {session.repoPath}
-          </div>
-        ) : (
-          <div className="text-[10.5px] text-fg-3 italic">
-            no repo attached
-          </div>
-        )}
+        </span>
         <ProfileBadge profile={profile} />
       </div>
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-          <span className="text-[10px] tracking-[0.16em] uppercase text-fg-3 font-medium">
-            attempts
-          </span>
-          <span className="text-[10.5px] font-mono text-fg-3">
-            {attempts.length}
-          </span>
-        </div>
-
-        {attempts.length === 0 ? (
-          <div className="px-4 py-2 text-[11.5px] text-fg-3 italic">
-            none yet
-          </div>
-        ) : (
-          <div className="space-y-px">
-            {attempts.map((a) => (
-              <AttemptRow
-                key={a.id}
-                attempt={a}
-                selected={a.id === selectedAttemptId}
-                onClick={() => onSelect(a.id)}
-              />
-            ))}
-          </div>
-        )}
-
-        <div className="px-4 pt-3 pb-4">
-          <CreateAttemptButton sessionId={session.id} />
-        </div>
-      </div>
-    </aside>
+      <h1 className="font-display tracking-tightest text-[28px] font-light leading-tight text-fg">
+        {session.title}
+      </h1>
+      {session.prompt && session.prompt !== session.title && (
+        <p className="mt-2 text-[13px] text-fg-2 leading-relaxed">
+          {session.prompt}
+        </p>
+      )}
+    </header>
   );
 }
 
@@ -197,272 +113,74 @@ function ProfileBadge({
   profile: ProfileLoadResult | undefined;
 }) {
   if (!profile) return null;
-  // No repoPath / no range.yaml — silent, this isn't a parse failure.
   if (!profile.found) return null;
   if (profile.error) {
     return (
-      <div
-        className="mt-2 text-[10.5px] text-[var(--err)]"
-        title={profile.error}
-      >
-        profile parse error
-      </div>
+      <>
+        <span className="text-fg-3 text-[10px]">·</span>
+        <span
+          className="text-[10.5px] text-[var(--err)]"
+          title={profile.error}
+        >
+          profile parse error
+        </span>
+      </>
     );
   }
   const count = profile.profile?.commands.length ?? 0;
   return (
-    <div className="mt-2 flex items-center gap-1.5 text-[10.5px] text-fg-2">
-      <span
-        className="w-1.5 h-1.5 rounded-full"
-        style={{ background: "var(--ok)" }}
-      />
-      <span>range.yaml</span>
-      <span className="text-fg-3">·</span>
-      <span className="font-mono">{count} commands</span>
-    </div>
-  );
-}
-
-function AttemptRow({
-  attempt,
-  selected,
-  onClick,
-}: {
-  attempt: Attempt;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  const accent = attemptStateBarClass(attempt.state);
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left px-4 py-2.5 flex gap-3 transition ${
-        selected ? "bg-[var(--bg-2)]" : "hover:bg-[var(--bg-2)]"
-      }`}
-    >
-      <div className={`w-[2px] self-stretch rounded ${accent}`} />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="font-mono text-[12px] text-fg-1 truncate">
-            {attempt.name}
-          </span>
-          {attempt.isCandidate && (
-            <span className="text-[9px] uppercase tracking-wider text-[var(--accent)] font-medium">
-              candidate
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1.5 text-[10.5px] text-fg-3 font-mono">
-          <span>{attempt.kind}</span>
-          <span>·</span>
-          <span>{attempt.state.replace(/_/g, " ")}</span>
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function CreateAttemptButton({ sessionId }: { sessionId: string }) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const onClick = async () => {
-    if (busy) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      await api.createAttempt(sessionId, {
-        kind: "freeform",
-        sandbox: "read-only",
-      });
-    } catch (e) {
-      console.error("createAttempt failed", e);
-      setErr(String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div>
-      <button
-        onClick={onClick}
-        disabled={busy}
-        className="w-full flex items-center gap-2 px-3 py-2 border border-dashed border-[var(--br-1)] hover:border-[var(--br-2)] hover:bg-[var(--bg-2)] rounded text-[12px] text-fg-2 hover:text-fg disabled:opacity-60 transition"
-      >
-        <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none">
-          <path
-            d="M2.5 6h7M6 2.5v7"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-          />
-        </svg>
-        {busy ? "creating…" : "new attempt"}
-      </button>
-      {err && (
-        <div className="mt-2 text-[10.5px] text-[var(--err)] break-words">
-          {err}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Detail pane ────────────────────────────────────────────────────────────
-
-function AttemptDetail({
-  attempt,
-  profile,
-}: {
-  attempt: Attempt;
-  profile: ProfileLoadResult | undefined;
-}) {
-  const runs = useAppStore(
-    useShallow((s) => runsForAttempt(s, attempt.id)),
-  );
-  const upsertManyRuns = useAppStore((s) => s.upsertManyRuns);
-  const appendManyLogs = useAppStore((s) => s.appendManyLogs);
-
-  useEffect(() => {
-    api
-      .listRuns(attempt.id)
-      .then((res) => upsertManyRuns(res.runs))
-      .catch((err) => console.error("listRuns failed", err));
-  }, [attempt.id, upsertManyRuns]);
-
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (runs.length === 0) {
-      setSelectedRunId(null);
-      return;
-    }
-    if (!selectedRunId || !runs.find((r) => r.id === selectedRunId)) {
-      setSelectedRunId(runs[runs.length - 1]!.id);
-    }
-  }, [runs, selectedRunId]);
-
-  // When the user selects an older run we may not have its logs in memory yet.
-  useEffect(() => {
-    if (!selectedRunId) return;
-    const haveLogs = !!useAppStore.getState().logsByRun.get(selectedRunId);
-    if (haveLogs) return;
-    api
-      .getRun(selectedRunId, true)
-      .then((res) => {
-        if (res.logs && res.logs.length > 0) appendManyLogs(res.logs);
-      })
-      .catch((err) => console.error("getRun(logs) failed", err));
-  }, [selectedRunId, appendManyLogs]);
-
-  const selectedRun = useMemo(
-    () => runs.find((r) => r.id === selectedRunId) ?? null,
-    [runs, selectedRunId],
-  );
-
-  return (
-    <div className="max-w-3xl mx-auto px-6 py-10">
-      <div className="text-[10px] tracking-[0.18em] uppercase text-fg-3 mb-2">
-        attempt
-      </div>
-      <div className="flex items-baseline gap-3 mb-6">
-        <h1 className="font-display tracking-tightest text-[28px] font-light leading-tight">
-          {attempt.name}
-        </h1>
-        {attempt.isCandidate && (
-          <span className="text-[10px] uppercase tracking-wider text-[var(--accent)] font-medium">
-            candidate
-          </span>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 mb-8">
-        <Fact label="id" value={attempt.id} mono />
-        <Fact label="kind" value={attempt.kind} />
-        <Fact
-          label="state"
-          value={attempt.state.replace(/_/g, " ")}
-          accent={attemptStateColor(attempt.state)}
+    <>
+      <span className="text-fg-3 text-[10px]">·</span>
+      <span className="text-[10.5px] text-fg-2 flex items-center gap-1">
+        <span
+          className="w-1.5 h-1.5 rounded-full"
+          style={{ background: "var(--ok)" }}
         />
-        <Fact label="sandbox" value={attempt.sandbox} />
+        range.yaml · <span className="font-mono">{count}</span>
+      </span>
+    </>
+  );
+}
+
+// ─── Worktree block ────────────────────────────────────────────────────────
+
+function WorktreeBlock({ session }: { session: Session }) {
+  if (session.worktreePath) {
+    return (
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <Fact
+          label="worktree"
+          value={session.worktreePath}
+          mono
+          breakAll
+        />
         <Fact
           label="branch"
-          value={attempt.branch ?? "—"}
-          mono={!!attempt.branch}
+          value={session.branch ?? "—"}
+          mono={!!session.branch}
         />
         <Fact
-          label="base sha"
-          value={attempt.baseSha?.slice(0, 12) ?? "—"}
-          mono={!!attempt.baseSha}
+          label="base"
+          value={session.baseSha?.slice(0, 12) ?? "—"}
+          mono={!!session.baseSha}
         />
+        <Fact label="sandbox" value={session.sandbox} />
       </div>
-
-      {attempt.worktreePath ? (
-        <div className="border border-[var(--br-1)] rounded-lg p-4 bg-[var(--bg-1)] mb-8">
-          <div className="text-[10px] tracking-[0.16em] uppercase text-fg-3 mb-2">
-            worktree
-          </div>
-          <div className="font-mono text-[12px] text-fg-1 break-all">
-            {attempt.worktreePath}
-          </div>
-          {!attempt.baseSha && (
-            <div className="text-[11px] text-[var(--warn)] mt-2">
-              worktree path reserved but not a real git worktree — attach a
-              repo to the session and recreate the attempt.
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="border border-dashed border-[var(--br-1)] rounded-lg p-4 bg-[var(--bg-1)]/40 mb-8">
-          <div className="text-[12px] text-fg-2 leading-relaxed">
-            no worktree — this session has no{" "}
-            <span className="font-mono">repo_path</span>. attach one to enable
-            real git worktrees for new attempts.
-          </div>
-        </div>
-      )}
-
-      <ConversationPanel attempt={attempt} />
-
-      <RunsPanel
-        attempt={attempt}
-        runs={runs}
-        profile={profile}
-        selectedRunId={selectedRunId}
-        onSelectRun={setSelectedRunId}
-      />
-
-      {selectedRun && <LogPanel run={selectedRun} />}
-    </div>
-  );
-}
-
-// ─── Conversation panel (Codex agent) ──────────────────────────────────────
-
-function ConversationPanel({ attempt }: { attempt: Attempt }) {
-  const conv = useAppStore(
-    (s) => s.conversationsByAttempt.get(attempt.id) ?? EMPTY_CONV,
-  );
+    );
+  }
 
   return (
-    <div className="mb-8">
-      <div className="flex items-baseline justify-between mb-3">
-        <div className="flex items-baseline gap-2">
-          <span className="text-[10px] tracking-[0.18em] uppercase text-fg-3 font-medium">
-            conversation
-          </span>
-          <ConversationStatusChip conv={conv} />
-        </div>
-        <AgentControls attempt={attempt} conv={conv} />
+    <div className="border border-dashed border-[var(--br-1)] rounded-lg p-4 bg-[var(--bg-1)]/40 mb-6">
+      <div className="text-[12.5px] text-fg-2 leading-relaxed">
+        This session has no <span className="font-mono">repo_path</span>. To
+        run commands or start Codex, create a new session with a repo
+        attached. (Re-attach support is on the roadmap.)
       </div>
-
-      <ConversationTimeline conv={conv} />
-
-      <MessageComposer attempt={attempt} conv={conv} />
     </div>
   );
 }
+
+// ─── Conversation block ────────────────────────────────────────────────────
 
 const EMPTY_CONV: ConversationState = {
   status: "stopped",
@@ -471,6 +189,28 @@ const EMPTY_CONV: ConversationState = {
   error: null,
   entries: [],
 };
+
+function ConversationBlock({ session }: { session: Session }) {
+  const conv = useAppStore(
+    (s) => s.conversationsBySession.get(session.id) ?? EMPTY_CONV,
+  );
+
+  return (
+    <section className="mb-8">
+      <div className="flex items-baseline justify-between mb-3">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] tracking-[0.18em] uppercase text-fg-3 font-medium">
+            conversation
+          </span>
+          <ConversationStatusChip conv={conv} />
+        </div>
+        <AgentControls session={session} conv={conv} />
+      </div>
+      <ConversationTimeline conv={conv} />
+      <MessageComposer session={session} conv={conv} />
+    </section>
+  );
+}
 
 function ConversationStatusChip({ conv }: { conv: ConversationState }) {
   let label = "stopped";
@@ -511,10 +251,10 @@ function ConversationStatusChip({ conv }: { conv: ConversationState }) {
 }
 
 function AgentControls({
-  attempt,
+  session,
   conv,
 }: {
-  attempt: Attempt;
+  session: Session;
   conv: ConversationState;
 }) {
   const patch = useAppStore((s) => s.patchConversation);
@@ -522,16 +262,15 @@ function AgentControls({
   const [busy, setBusy] = useState(false);
 
   const start = async () => {
-    if (busy || !attempt.worktreePath) return;
+    if (busy || !session.worktreePath) return;
     setBusy(true);
-    patch(attempt.id, { status: "starting", error: null });
+    patch(session.id, { status: "starting", error: null });
     try {
-      await api.startAgent(attempt.id);
-      // agent_started WS event will flip to "running"
+      await api.startAgent(session.id);
     } catch (e) {
       const msg = String(e instanceof Error ? e.message : e);
-      patch(attempt.id, { status: "error", error: msg });
-      pushSystem(attempt.id, `start failed · ${msg}`);
+      patch(session.id, { status: "error", error: msg });
+      pushSystem(session.id, `start failed · ${msg}`);
     } finally {
       setBusy(false);
     }
@@ -541,7 +280,7 @@ function AgentControls({
     if (busy) return;
     setBusy(true);
     try {
-      await api.stopAgent(attempt.id);
+      await api.stopAgent(session.id);
     } catch (e) {
       console.error("stop agent failed", e);
     } finally {
@@ -550,7 +289,7 @@ function AgentControls({
   };
 
   const running = conv.status === "running" || conv.status === "starting";
-  const noWorktree = !attempt.worktreePath;
+  const noWorktree = !session.worktreePath;
 
   return (
     <div className="flex items-center gap-1.5">
@@ -558,7 +297,7 @@ function AgentControls({
         <button
           onClick={start}
           disabled={busy || noWorktree}
-          title={noWorktree ? "attach a repo to enable Codex" : undefined}
+          title={noWorktree ? "session has no repo attached" : undefined}
           className="text-[11px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition flex items-center gap-1.5 font-medium"
         >
           <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="currentColor">
@@ -594,11 +333,14 @@ function ConversationTimeline({ conv }: { conv: ConversationState }) {
     return (
       <div className="border border-dashed border-[var(--br-1)] rounded-lg p-6 mb-3 bg-[var(--bg-1)]/40">
         <div className="text-[12.5px] text-fg-2 leading-relaxed">
-          Codex hasn't started for this attempt yet. Click <span className="text-fg-1 font-medium">start codex</span>{" "}
-          to spawn{" "}
-          <span className="font-mono text-[12px] text-fg-3">codex app-server</span>{" "}
-          in the attempt's worktree. Phase A: sandbox is{" "}
-          <span className="font-mono">read-only</span>, approvals are auto-accepted.
+          Codex hasn't started for this session yet. Click{" "}
+          <span className="text-fg-1 font-medium">start codex</span> to spawn{" "}
+          <span className="font-mono text-[12px] text-fg-3">
+            codex app-server
+          </span>{" "}
+          in the session's worktree. Sandbox is{" "}
+          <span className="font-mono">read-only</span>, approvals are
+          auto-accepted.
         </div>
       </div>
     );
@@ -761,10 +503,10 @@ function AgentBadge({ label }: { label: string }) {
 }
 
 function MessageComposer({
-  attempt,
+  session,
   conv,
 }: {
-  attempt: Attempt;
+  session: Session;
   conv: ConversationState;
 }) {
   const [text, setText] = useState("");
@@ -773,19 +515,22 @@ function MessageComposer({
   const patch = useAppStore((s) => s.patchConversation);
 
   const canSend =
-    conv.status === "running" && !conv.turnInFlight && text.trim().length > 0 && !busy;
+    conv.status === "running" &&
+    !conv.turnInFlight &&
+    text.trim().length > 0 &&
+    !busy;
 
   const submit = async () => {
     if (!canSend) return;
     const prompt = text.trim();
     setBusy(true);
-    pushUserMessage(attempt.id, prompt);
+    pushUserMessage(session.id, prompt);
     setText("");
     try {
-      await api.sendAgentMessage(attempt.id, prompt);
+      await api.sendAgentMessage(session.id, prompt);
     } catch (e) {
       const msg = String(e instanceof Error ? e.message : e);
-      patch(attempt.id, { error: msg, turnInFlight: false });
+      patch(session.id, { error: msg, turnInFlight: false });
     } finally {
       setBusy(false);
     }
@@ -831,22 +576,61 @@ function MessageComposer({
   );
 }
 
-function RunsPanel({
-  attempt,
-  runs,
+// ─── Runs block ────────────────────────────────────────────────────────────
+
+function RunsBlock({
+  session,
   profile,
-  selectedRunId,
-  onSelectRun,
 }: {
-  attempt: Attempt;
-  runs: Run[];
+  session: Session;
   profile: ProfileLoadResult | undefined;
-  selectedRunId: string | null;
-  onSelectRun: (id: string) => void;
 }) {
+  const runs = useAppStore(
+    useShallow((s) => runsForSession(s, session.id)),
+  );
+  const upsertManyRuns = useAppStore((s) => s.upsertManyRuns);
+  const appendManyLogs = useAppStore((s) => s.appendManyLogs);
+
+  useEffect(() => {
+    api
+      .listRuns(session.id)
+      .then((res) => upsertManyRuns(res.runs))
+      .catch((err) => console.error("listRuns failed", err));
+  }, [session.id, upsertManyRuns]);
+
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (runs.length === 0) {
+      setSelectedRunId(null);
+      return;
+    }
+    if (!selectedRunId || !runs.find((r) => r.id === selectedRunId)) {
+      setSelectedRunId(runs[runs.length - 1]!.id);
+    }
+  }, [runs, selectedRunId]);
+
+  useEffect(() => {
+    if (!selectedRunId) return;
+    const haveLogs = !!useAppStore.getState().logsByRun.get(selectedRunId);
+    if (haveLogs) return;
+    api
+      .getRun(selectedRunId, true)
+      .then((res) => {
+        if (res.logs && res.logs.length > 0) appendManyLogs(res.logs);
+      })
+      .catch((err) => console.error("getRun(logs) failed", err));
+  }, [selectedRunId, appendManyLogs]);
+
+  const selectedRun = useMemo(
+    () => runs.find((r) => r.id === selectedRunId) ?? null,
+    [runs, selectedRunId],
+  );
+
   const profileCommands = profile?.profile?.commands ?? [];
+
   return (
-    <div className="mb-8">
+    <section className="mb-8">
       <div className="flex items-baseline justify-between mb-3">
         <div className="text-[10px] tracking-[0.18em] uppercase text-fg-3 font-medium">
           runs
@@ -855,13 +639,10 @@ function RunsPanel({
       </div>
 
       {profileCommands.length > 0 && (
-        <ProfileCommandStrip
-          attempt={attempt}
-          commands={profileCommands}
-        />
+        <ProfileCommandStrip session={session} commands={profileCommands} />
       )}
 
-      <RunLauncher attempt={attempt} />
+      <RunLauncher session={session} />
 
       {runs.length > 0 && (
         <div className="space-y-1.5 mb-1">
@@ -870,31 +651,33 @@ function RunsPanel({
               key={r.id}
               run={r}
               selected={r.id === selectedRunId}
-              onClick={() => onSelectRun(r.id)}
+              onClick={() => setSelectedRunId(r.id)}
             />
           ))}
         </div>
       )}
-    </div>
+
+      {selectedRun && <LogPanel run={selectedRun} />}
+    </section>
   );
 }
 
 function ProfileCommandStrip({
-  attempt,
+  session,
   commands,
 }: {
-  attempt: Attempt;
+  session: Session;
   commands: ProfileCommand[];
 }) {
   const [busyName, setBusyName] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const launch = async (cmd: ProfileCommand) => {
-    if (!attempt.worktreePath) return;
+    if (!session.worktreePath) return;
     setBusyName(cmd.name);
     setErr(null);
     try {
-      await api.createRun(attempt.id, {
+      await api.createRun(session.id, {
         command: cmd.args,
         kind: "shell",
       });
@@ -905,7 +688,7 @@ function ProfileCommandStrip({
     }
   };
 
-  const disabled = !attempt.worktreePath;
+  const disabled = !session.worktreePath;
 
   return (
     <div className="mb-3">
@@ -947,19 +730,23 @@ function ProfileCommandStrip({
   );
 }
 
-function RunLauncher({ attempt }: { attempt: Attempt }) {
+function RunLauncher({ session }: { session: Session }) {
   const [command, setCommand] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const canRun = !!attempt.worktreePath && command.trim().length > 0 && !busy;
+  const canRun =
+    !!session.worktreePath && command.trim().length > 0 && !busy;
 
   const submit = async () => {
     if (!canRun) return;
     setBusy(true);
     setErr(null);
     try {
-      await api.createRun(attempt.id, { command: command.trim(), kind: "shell" });
+      await api.createRun(session.id, {
+        command: command.trim(),
+        kind: "shell",
+      });
       setCommand("");
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
@@ -982,10 +769,10 @@ function RunLauncher({ attempt }: { attempt: Attempt }) {
               submit();
             }
           }}
-          disabled={!attempt.worktreePath || busy}
+          disabled={!session.worktreePath || busy}
           spellCheck={false}
           placeholder={
-            attempt.worktreePath
+            session.worktreePath
               ? "ls -la · pytest · python -m foo · …"
               : "attach a repo to the session to run commands"
           }
@@ -998,12 +785,6 @@ function RunLauncher({ attempt }: { attempt: Attempt }) {
         >
           {busy ? "starting…" : "run"}
         </button>
-      </div>
-      <div className="px-3 py-1.5 text-[10.5px] text-fg-3 flex items-center gap-2">
-        <span>runs inside</span>
-        <span className="font-mono break-all">
-          {attempt.worktreePath ?? "—"}
-        </span>
       </div>
       {err && (
         <div className="px-3 py-2 text-[11px] text-[var(--err)] border-t border-[var(--br-1)] break-words">
@@ -1058,13 +839,12 @@ function RunRow({
   );
 }
 
+const EMPTY_LOGS: RunLogEntry[] = [];
+
 function LogPanel({ run }: { run: Run }) {
-  const logs = useAppStore(
-    (s) => s.logsByRun.get(run.id) ?? EMPTY_LOGS,
-  );
+  const logs = useAppStore((s) => s.logsByRun.get(run.id) ?? EMPTY_LOGS);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-scroll to bottom on new log entries
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -1072,7 +852,7 @@ function LogPanel({ run }: { run: Run }) {
   }, [logs.length]);
 
   return (
-    <div className="mb-8">
+    <div className="mt-4">
       <div className="flex items-baseline justify-between mb-2">
         <div className="text-[10px] tracking-[0.18em] uppercase text-fg-3 font-medium">
           output
@@ -1095,8 +875,6 @@ function LogPanel({ run }: { run: Run }) {
   );
 }
 
-const EMPTY_LOGS: RunLogEntry[] = [];
-
 function LogLine({ entry }: { entry: RunLogEntry }) {
   const color =
     entry.stream === "stderr"
@@ -1114,43 +892,18 @@ function LogLine({ entry }: { entry: RunLogEntry }) {
   );
 }
 
-function EmptyAttempts({ session }: { session: Session }) {
-  return (
-    <div className="max-w-2xl mx-auto px-6 py-16 text-center">
-      <div className="text-[10px] tracking-[0.18em] uppercase text-fg-3 mb-3">
-        no attempts yet
-      </div>
-      <h2 className="font-display tracking-tightest text-[28px] font-light leading-tight mb-3">
-        an attempt is{" "}
-        <span className="italic text-fg-2">where the work happens.</span>
-      </h2>
-      <p className="text-[14px] text-fg-2 leading-relaxed max-w-md mx-auto">
-        each attempt is an isolated branch of work inside this session — its
-        own git worktree, its own agent thread, its own evidence. create one to
-        begin.
-      </p>
-      {!session.repoPath && (
-        <div className="mt-6 text-[11.5px] text-fg-3 italic">
-          (this session has no repo_path — the first attempt will be
-          metadata-only)
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function Fact({
   label,
   value,
   mono,
-  accent,
+  breakAll,
 }: {
   label: string;
   value: string;
   mono?: boolean;
-  accent?: string;
+  breakAll?: boolean;
 }) {
   return (
     <div className="border border-[var(--br-1)] rounded-lg p-3 bg-[var(--bg-1)]">
@@ -1158,8 +911,7 @@ function Fact({
         {label}
       </div>
       <div
-        className={`text-[13px] break-words ${mono ? "font-mono" : ""}`}
-        style={accent ? { color: accent } : undefined}
+        className={`text-[12.5px] ${mono ? "font-mono" : ""} ${breakAll ? "break-all" : "break-words"}`}
       >
         {value}
       </div>
@@ -1172,47 +924,7 @@ function labelForSessionKind(kind: Session["kind"]): string {
     ? "tracked task"
     : kind === "pr_verification"
       ? "pr verification"
-      : "freeform session";
-}
-
-function attemptStateBarClass(state: AttemptState): string {
-  switch (state) {
-    case "verification_passed":
-    case "pr_opened":
-      return "bg-[var(--ok)]";
-    case "verification_failed":
-      return "bg-[var(--err)]";
-    case "agent_running":
-    case "running_command":
-      return "bg-[var(--accent)]";
-    case "waiting_for_user":
-    case "paused":
-    case "verification_pending":
-      return "bg-[var(--warn)]";
-    case "archived":
-      return "bg-[var(--fg-3)]";
-    default:
-      return "bg-[var(--br-2)]";
-  }
-}
-
-function attemptStateColor(state: AttemptState): string | undefined {
-  switch (state) {
-    case "verification_passed":
-    case "pr_opened":
-      return "var(--ok)";
-    case "verification_failed":
-      return "var(--err)";
-    case "agent_running":
-    case "running_command":
-      return "var(--accent)";
-    case "waiting_for_user":
-    case "paused":
-    case "verification_pending":
-      return "var(--warn)";
-    default:
-      return undefined;
-  }
+      : "freeform";
 }
 
 function runStateDotClass(state: RunState): string {

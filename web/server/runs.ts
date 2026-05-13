@@ -1,8 +1,8 @@
 /**
- * Run storage. A run is one execution of a command inside an attempt.
+ * Run storage. A run is one execution of a command inside a session.
  *
  * Logs are persisted to the filesystem (`run_dir/events.jsonl`); SQLite
- * only stores metadata (state, exit code, timestamps, command).
+ * stores metadata only (state, exit code, timestamps, command).
  */
 
 import { db } from "./db.ts";
@@ -10,7 +10,7 @@ import type { Run, RunKind, RunState } from "../shared/protocol.ts";
 
 interface RunRow {
   id: string;
-  attempt_id: string;
+  session_id: string;
   kind: string;
   command: string;
   cwd: string;
@@ -33,7 +33,7 @@ function rowToRun(row: RunRow): Run {
   }
   return {
     id: row.id,
-    attemptId: row.attempt_id,
+    sessionId: row.session_id,
     kind: row.kind as RunKind,
     command,
     cwd: row.cwd,
@@ -55,7 +55,7 @@ export function newRunId(): string {
 
 const insertStmt = db.prepare(`
   INSERT INTO runs (
-    id, attempt_id, kind, command, cwd, state,
+    id, session_id, kind, command, cwd, state,
     run_dir, created_at, updated_at
   ) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?)
 `);
@@ -64,8 +64,8 @@ const selectByIdStmt = db.prepare<RunRow, [string]>(
   "SELECT * FROM runs WHERE id = ?",
 );
 
-const selectByAttemptStmt = db.prepare<RunRow, [string]>(
-  "SELECT * FROM runs WHERE attempt_id = ? ORDER BY created_at ASC",
+const selectBySessionStmt = db.prepare<RunRow, [string]>(
+  "SELECT * FROM runs WHERE session_id = ? ORDER BY created_at ASC",
 );
 
 const updateStateStmt = db.prepare(`
@@ -82,7 +82,7 @@ const updateStateWithFinishStmt = db.prepare(`
 `);
 
 export interface CreateRunInput {
-  attemptId: string;
+  sessionId: string;
   kind: RunKind;
   command: string[];
   cwd: string;
@@ -94,7 +94,7 @@ export function createRun(input: CreateRunInput): Run {
   const now = Date.now();
   insertStmt.run(
     id,
-    input.attemptId,
+    input.sessionId,
     input.kind,
     JSON.stringify(input.command),
     input.cwd,
@@ -112,8 +112,8 @@ export function getRun(id: string): Run | null {
   return row ? rowToRun(row) : null;
 }
 
-export function listRunsByAttempt(attemptId: string): Run[] {
-  return selectByAttemptStmt.all(attemptId).map(rowToRun);
+export function listRunsBySession(sessionId: string): Run[] {
+  return selectBySessionStmt.all(sessionId).map(rowToRun);
 }
 
 export function markRunRunning(id: string, startedAt: number): Run | null {

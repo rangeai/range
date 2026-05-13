@@ -1,12 +1,12 @@
 /**
  * Git worktree management.
  *
- * For a session with a real repo_path, attempts get an isolated worktree
- * branched off a base ref. Worktrees live at:
- *   ~/.range/worktrees/<session_id>/<attempt_name>
+ * Each session with a repo_path owns one worktree at:
+ *   ~/.range/worktrees/<session_id>/<name>
  *
- * The worktree path and branch name are deterministic from the attempt id
- * so we can reconstruct after a crash without writing extra state.
+ * For MVP, `name` is always "main" — there's one worktree per session.
+ * The path is deterministic from the session id so we can reconstruct
+ * after a crash without writing extra state.
  */
 
 import { homedir } from "node:os";
@@ -20,12 +20,12 @@ export interface WorktreeInfo {
   baseSha: string;
 }
 
-export function worktreePathFor(sessionId: string, attemptName: string): string {
-  return join(homedir(), ".range", "worktrees", sessionId, attemptName);
+export function worktreePathFor(sessionId: string, name = "main"): string {
+  return join(homedir(), ".range", "worktrees", sessionId, name);
 }
 
-export function branchNameFor(sessionId: string, attemptName: string): string {
-  return `range/${sessionId}/${attemptName}`;
+export function branchNameFor(sessionId: string, name = "main"): string {
+  return `range/${sessionId}/${name}`;
 }
 
 async function fileExists(p: string): Promise<boolean> {
@@ -69,20 +69,21 @@ export async function isGitRepo(path: string): Promise<boolean> {
 export async function createWorktree(opts: {
   repoPath: string;
   sessionId: string;
-  attemptName: string;
+  /** Subdirectory + branch suffix. Defaults to "main". */
+  attemptName?: string;
   baseBranch?: string;
 }): Promise<WorktreeInfo> {
-  const { repoPath, sessionId, attemptName } = opts;
+  const { repoPath, sessionId } = opts;
+  const name = opts.attemptName ?? "main";
   const baseBranch = opts.baseBranch ?? "main";
 
   if (!(await isGitRepo(repoPath))) {
     throw new Error(`not a git repo: ${repoPath}`);
   }
 
-  const wtPath = worktreePathFor(sessionId, attemptName);
-  const branch = branchNameFor(sessionId, attemptName);
+  const wtPath = worktreePathFor(sessionId, name);
+  const branch = branchNameFor(sessionId, name);
 
-  // Resolve baseBranch → SHA (try the requested branch, fall back to HEAD).
   let baseSha: string;
   try {
     baseSha = (await git(repoPath, "rev-parse", baseBranch)).trim();
@@ -90,15 +91,12 @@ export async function createWorktree(opts: {
     baseSha = (await git(repoPath, "rev-parse", "HEAD")).trim();
   }
 
-  // Ensure parent dir exists.
   await mkdir(join(wtPath, ".."), { recursive: true });
-
-  // git worktree add -b <branch> <path> <base_sha>
   await git(repoPath, "worktree", "add", "-b", branch, wtPath, baseSha);
 
   log.info("worktree", "created", {
     sessionId,
-    attemptName,
+    name,
     path: wtPath,
     branch,
     baseSha,
@@ -114,7 +112,6 @@ export async function removeWorktree(opts: {
   try {
     await git(opts.repoPath, "worktree", "remove", "--force", opts.worktreePath);
   } catch (err) {
-    // Worktree may not exist if it was already cleaned up. Fall back to rmdir.
     log.warn("worktree", "worktree remove failed, falling back to rm", {
       err: String(err),
     });

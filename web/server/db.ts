@@ -123,6 +123,97 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE attempts ADD COLUMN codex_thread_id TEXT;
     `,
   },
+  {
+    id: 6,
+    name: "collapse_attempts_into_sessions",
+    up: `
+      ALTER TABLE sessions ADD COLUMN worktree_path TEXT;
+      ALTER TABLE sessions ADD COLUMN branch TEXT;
+      ALTER TABLE sessions ADD COLUMN base_sha TEXT;
+      ALTER TABLE sessions ADD COLUMN codex_thread_id TEXT;
+      ALTER TABLE sessions ADD COLUMN sandbox TEXT NOT NULL DEFAULT 'read-only';
+
+      UPDATE sessions
+      SET
+        worktree_path = (
+          SELECT worktree_path FROM attempts
+          WHERE attempts.session_id = sessions.id
+          ORDER BY created_at ASC LIMIT 1
+        ),
+        branch = (
+          SELECT branch FROM attempts
+          WHERE attempts.session_id = sessions.id
+          ORDER BY created_at ASC LIMIT 1
+        ),
+        base_sha = (
+          SELECT base_sha FROM attempts
+          WHERE attempts.session_id = sessions.id
+          ORDER BY created_at ASC LIMIT 1
+        ),
+        codex_thread_id = (
+          SELECT codex_thread_id FROM attempts
+          WHERE attempts.session_id = sessions.id
+          ORDER BY created_at ASC LIMIT 1
+        ),
+        sandbox = COALESCE((
+          SELECT sandbox FROM attempts
+          WHERE attempts.session_id = sessions.id
+          ORDER BY created_at ASC LIMIT 1
+        ), 'read-only')
+      WHERE EXISTS (
+        SELECT 1 FROM attempts WHERE attempts.session_id = sessions.id
+      );
+
+      ALTER TABLE runs ADD COLUMN session_id TEXT;
+      UPDATE runs SET session_id = (
+        SELECT session_id FROM attempts WHERE attempts.id = runs.attempt_id
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_runs_session ON runs(session_id, created_at DESC);
+    `,
+  },
+  {
+    id: 7,
+    name: "runs_attempt_id_nullable_and_session_id_required",
+    up: `
+      CREATE TABLE runs_new (
+        id TEXT PRIMARY KEY,
+        attempt_id TEXT,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN (
+          'reproduce', 'verify', 'evaluate', 'train', 'render', 'shell', 'agent'
+        )),
+        command TEXT NOT NULL,
+        cwd TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'queued' CHECK (state IN (
+          'queued', 'starting', 'running', 'paused',
+          'succeeded', 'failed', 'aborted', 'failed_start'
+        )),
+        exit_code INTEGER,
+        started_at INTEGER,
+        finished_at INTEGER,
+        run_dir TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      INSERT INTO runs_new (
+        id, attempt_id, session_id, kind, command, cwd, state,
+        exit_code, started_at, finished_at, run_dir, created_at, updated_at
+      )
+      SELECT
+        r.id, r.attempt_id, COALESCE(r.session_id, a.session_id),
+        r.kind, r.command, r.cwd, r.state,
+        r.exit_code, r.started_at, r.finished_at, r.run_dir,
+        r.created_at, r.updated_at
+      FROM runs r
+      LEFT JOIN attempts a ON a.id = r.attempt_id;
+
+      DROP TABLE runs;
+      ALTER TABLE runs_new RENAME TO runs;
+      CREATE INDEX idx_runs_session ON runs(session_id, created_at DESC);
+    `,
+  },
 ];
 
 function applyMigrations() {

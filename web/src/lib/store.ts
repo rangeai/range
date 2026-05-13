@@ -1,12 +1,15 @@
 import { create } from "zustand";
 import type {
   AgentItem,
-  Attempt,
   ProfileLoadResult,
   Run,
   RunLogEntry,
   Session,
 } from "@shared/protocol";
+
+export type View =
+  | { kind: "home" }
+  | { kind: "session"; id: string };
 
 export type ConversationEntry =
   | { kind: "user"; text: string; t: number }
@@ -31,52 +34,37 @@ function emptyConversation(): ConversationState {
   };
 }
 
-export type View =
-  | { kind: "home" }
-  | { kind: "session"; id: string };
-
 interface AppState {
   view: View;
 
   sessions: Map<string, Session>;
-  attemptsBySession: Map<string, Map<string, Attempt>>;
-  runsByAttempt: Map<string, Map<string, Run>>;
-  // Cap each run's logs at LOG_CAP entries to avoid unbounded growth.
+  runsBySession: Map<string, Map<string, Run>>;
   logsByRun: Map<string, RunLogEntry[]>;
   profilesBySession: Map<string, ProfileLoadResult>;
-  conversationsByAttempt: Map<string, ConversationState>;
+  conversationsBySession: Map<string, ConversationState>;
 
-  // Navigation
   goHome: () => void;
   openSession: (id: string) => void;
 
-  // Session updates
   upsertSession: (s: Session) => void;
   upsertManySessions: (s: Session[]) => void;
 
-  // Attempt updates
-  upsertAttempt: (a: Attempt) => void;
-  upsertManyAttempts: (a: Attempt[]) => void;
-
-  // Run updates
   upsertRun: (r: Run) => void;
   upsertManyRuns: (r: Run[]) => void;
   appendLog: (entry: RunLogEntry) => void;
   appendManyLogs: (entries: RunLogEntry[]) => void;
 
-  // Profile
   setProfile: (sessionId: string, result: ProfileLoadResult) => void;
 
-  // Conversation
   patchConversation: (
-    attemptId: string,
+    sessionId: string,
     patch: Partial<ConversationState>,
   ) => void;
-  pushUserMessage: (attemptId: string, text: string) => void;
-  pushSystemEntry: (attemptId: string, text: string) => void;
-  applyAgentItem: (attemptId: string, item: AgentItem) => void;
+  pushUserMessage: (sessionId: string, text: string) => void;
+  pushSystemEntry: (sessionId: string, text: string) => void;
+  applyAgentItem: (sessionId: string, item: AgentItem) => void;
   applyMessageDelta: (
-    attemptId: string,
+    sessionId: string,
     itemId: string,
     delta: string,
   ) => void;
@@ -87,11 +75,10 @@ const LOG_CAP = 5_000;
 export const useAppStore = create<AppState>((set) => ({
   view: { kind: "home" },
   sessions: new Map(),
-  attemptsBySession: new Map(),
-  runsByAttempt: new Map(),
+  runsBySession: new Map(),
   logsByRun: new Map(),
   profilesBySession: new Map(),
-  conversationsByAttempt: new Map(),
+  conversationsBySession: new Map(),
 
   goHome: () => set({ view: { kind: "home" } }),
   openSession: (id) => set({ view: { kind: "session", id } }),
@@ -109,42 +96,23 @@ export const useAppStore = create<AppState>((set) => ({
       return { sessions: next };
     }),
 
-  upsertAttempt: (a) =>
-    set((state) => {
-      const next = new Map(state.attemptsBySession);
-      const inner = new Map(next.get(a.sessionId) ?? []);
-      inner.set(a.id, a);
-      next.set(a.sessionId, inner);
-      return { attemptsBySession: next };
-    }),
-  upsertManyAttempts: (list) =>
-    set((state) => {
-      const next = new Map(state.attemptsBySession);
-      for (const a of list) {
-        const inner = new Map(next.get(a.sessionId) ?? []);
-        inner.set(a.id, a);
-        next.set(a.sessionId, inner);
-      }
-      return { attemptsBySession: next };
-    }),
-
   upsertRun: (r) =>
     set((state) => {
-      const next = new Map(state.runsByAttempt);
-      const inner = new Map(next.get(r.attemptId) ?? []);
+      const next = new Map(state.runsBySession);
+      const inner = new Map(next.get(r.sessionId) ?? []);
       inner.set(r.id, r);
-      next.set(r.attemptId, inner);
-      return { runsByAttempt: next };
+      next.set(r.sessionId, inner);
+      return { runsBySession: next };
     }),
   upsertManyRuns: (list) =>
     set((state) => {
-      const next = new Map(state.runsByAttempt);
+      const next = new Map(state.runsBySession);
       for (const r of list) {
-        const inner = new Map(next.get(r.attemptId) ?? []);
+        const inner = new Map(next.get(r.sessionId) ?? []);
         inner.set(r.id, r);
-        next.set(r.attemptId, inner);
+        next.set(r.sessionId, inner);
       }
-      return { runsByAttempt: next };
+      return { runsBySession: next };
     }),
 
   appendLog: (entry) =>
@@ -182,19 +150,19 @@ export const useAppStore = create<AppState>((set) => ({
       return { profilesBySession: next };
     }),
 
-  patchConversation: (attemptId, patch) =>
+  patchConversation: (sessionId, patch) =>
     set((state) => {
-      const next = new Map(state.conversationsByAttempt);
-      const prev = next.get(attemptId) ?? emptyConversation();
-      next.set(attemptId, { ...prev, ...patch });
-      return { conversationsByAttempt: next };
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId) ?? emptyConversation();
+      next.set(sessionId, { ...prev, ...patch });
+      return { conversationsBySession: next };
     }),
 
-  pushUserMessage: (attemptId, text) =>
+  pushUserMessage: (sessionId, text) =>
     set((state) => {
-      const next = new Map(state.conversationsByAttempt);
-      const prev = next.get(attemptId) ?? emptyConversation();
-      next.set(attemptId, {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId) ?? emptyConversation();
+      next.set(sessionId, {
         ...prev,
         entries: [
           ...prev.entries,
@@ -202,29 +170,27 @@ export const useAppStore = create<AppState>((set) => ({
         ],
         turnInFlight: true,
       });
-      return { conversationsByAttempt: next };
+      return { conversationsBySession: next };
     }),
 
-  pushSystemEntry: (attemptId, text) =>
+  pushSystemEntry: (sessionId, text) =>
     set((state) => {
-      const next = new Map(state.conversationsByAttempt);
-      const prev = next.get(attemptId) ?? emptyConversation();
-      next.set(attemptId, {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId) ?? emptyConversation();
+      next.set(sessionId, {
         ...prev,
         entries: [
           ...prev.entries,
           { kind: "system", text, t: Date.now() },
         ],
       });
-      return { conversationsByAttempt: next };
+      return { conversationsBySession: next };
     }),
 
-  applyAgentItem: (attemptId, item) =>
+  applyAgentItem: (sessionId, item) =>
     set((state) => {
-      const next = new Map(state.conversationsByAttempt);
-      const prev = next.get(attemptId) ?? emptyConversation();
-      // If we already have an agent_item with this id, replace it
-      // (handles started → updated → completed lifecycle).
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId) ?? emptyConversation();
       const idx = prev.entries.findIndex(
         (e) => e.kind === "agent_item" && e.item.id === item.id,
       );
@@ -240,14 +206,14 @@ export const useAppStore = create<AppState>((set) => ({
       } else {
         entries = [...prev.entries, entry];
       }
-      next.set(attemptId, { ...prev, entries });
-      return { conversationsByAttempt: next };
+      next.set(sessionId, { ...prev, entries });
+      return { conversationsBySession: next };
     }),
 
-  applyMessageDelta: (attemptId, itemId, delta) =>
+  applyMessageDelta: (sessionId, itemId, delta) =>
     set((state) => {
-      const next = new Map(state.conversationsByAttempt);
-      const prev = next.get(attemptId) ?? emptyConversation();
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId) ?? emptyConversation();
       const idx = prev.entries.findIndex(
         (e) => e.kind === "agent_item" && e.item.id === itemId,
       );
@@ -270,7 +236,6 @@ export const useAppStore = create<AppState>((set) => ({
           };
         }
       } else {
-        // No matching item yet — synthesize a streaming message item.
         entries = [
           ...entries,
           {
@@ -285,8 +250,8 @@ export const useAppStore = create<AppState>((set) => ({
           },
         ];
       }
-      next.set(attemptId, { ...prev, entries });
-      return { conversationsByAttempt: next };
+      next.set(sessionId, { ...prev, entries });
+      return { conversationsBySession: next };
     }),
 }));
 
@@ -294,20 +259,11 @@ export function sessionsByRecency(map: Map<string, Session>): Session[] {
   return [...map.values()].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export function attemptsForSession(
+export function runsForSession(
   state: AppState,
   sessionId: string,
-): Attempt[] {
-  const inner = state.attemptsBySession.get(sessionId);
-  if (!inner) return [];
-  return [...inner.values()].sort((a, b) => a.createdAt - b.createdAt);
-}
-
-export function runsForAttempt(
-  state: AppState,
-  attemptId: string,
 ): Run[] {
-  const inner = state.runsByAttempt.get(attemptId);
+  const inner = state.runsBySession.get(sessionId);
   if (!inner) return [];
   return [...inner.values()].sort((a, b) => a.createdAt - b.createdAt);
 }

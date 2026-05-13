@@ -1,10 +1,9 @@
 /**
- * Local runner.
+ * Local runner — one command at a time inside a session's worktree.
  *
- * Spawns a subprocess inside an attempt's worktree (or any explicit cwd),
- * captures stdout/stderr line-by-line, broadcasts events over WS, and
- * persists everything as JSONL in the run's directory so we can replay
- * later.
+ * Spawns a subprocess, captures stdout/stderr line-by-line, broadcasts
+ * events over WS, and persists everything as JSONL in the run's
+ * directory so we can replay later.
  */
 
 import type { Subprocess } from "bun";
@@ -22,7 +21,7 @@ import {
   newRunId,
   setRunState,
 } from "./runs.ts";
-import { getAttempt } from "./attempts.ts";
+import { getSession } from "./sessions.ts";
 import type {
   LogStream,
   Run,
@@ -31,7 +30,7 @@ import type {
 } from "../shared/protocol.ts";
 
 export interface StartRunInput {
-  attemptId: string;
+  sessionId: string;
   command: string[];
   kind?: RunKind;
 }
@@ -61,8 +60,6 @@ async function pipeStream(
 ): Promise<void> {
   const decoder = new TextDecoder();
   let buf = "";
-  // Bun's ReadableStream is async-iterable; cast loosely to keep TS happy
-  // without pulling extra polyfills.
   for await (const chunk of reader as unknown as AsyncIterable<Uint8Array>) {
     buf += decoder.decode(chunk, { stream: true });
     let nl;
@@ -80,7 +77,6 @@ async function pipeStream(
       broadcastLog(event);
     }
   }
-  // Flush trailing bytes if process exited without a final newline.
   buf += decoder.decode();
   if (buf.length > 0) {
     const event: ServerRunLog = {
@@ -96,22 +92,22 @@ async function pipeStream(
 }
 
 export async function startRun(input: StartRunInput): Promise<Run> {
-  const attempt = getAttempt(input.attemptId);
-  if (!attempt) {
-    throw new Error(`attempt not found: ${input.attemptId}`);
+  const session = getSession(input.sessionId);
+  if (!session) {
+    throw new Error(`session not found: ${input.sessionId}`);
   }
   if (input.command.length === 0) {
     throw new Error("command is empty");
   }
 
-  const cwd = attempt.worktreePath ?? process.cwd();
+  const cwd = session.worktreePath ?? process.cwd();
   const kind: RunKind = input.kind ?? "shell";
   const runId = newRunId();
   const runDir = runDirFor(runId);
   await mkdir(runDir, { recursive: true });
 
   const run = createRun({
-    attemptId: input.attemptId,
+    sessionId: input.sessionId,
     kind,
     command: input.command,
     cwd,
@@ -121,7 +117,6 @@ export async function startRun(input: StartRunInput): Promise<Run> {
   broadcast({ type: "run_started", run });
   log.info("runner", "queued", { runId, cwd, command: input.command });
 
-  // Spawn asynchronously so the API can return immediately.
   void runInBackground(run).catch((err) => {
     log.error("runner", "background failed", {
       runId,
@@ -149,7 +144,6 @@ async function runInBackground(initialRun: Run): Promise<void> {
     broadcastLog(event);
   };
 
-  // Mark running.
   const startedAt = Date.now();
   const running = markRunRunning(runId, startedAt);
   if (running) broadcast({ type: "run_started", run: running });
@@ -180,7 +174,6 @@ async function runInBackground(initialRun: Run): Promise<void> {
   const ctxRun = getRun(runId);
   if (ctxRun) active.set(runId, { run: ctxRun, proc, abort });
 
-  // Pipe stdout and stderr in parallel.
   await Promise.all([
     pipeStream(proc.stdout, runId, "stdout", startedAt, eventFile),
     pipeStream(proc.stderr, runId, "stderr", startedAt, eventFile),
@@ -246,7 +239,6 @@ export async function readRunEvents(
     const slice = file.slice(start, size);
     const text = await slice.text();
     const lines = text.split("\n").filter(Boolean);
-    // If we sliced into the middle of a line, drop the first partial.
     if (start > 0 && lines.length > 0) lines.shift();
     const out: ServerRunLog[] = [];
     for (const line of lines) {
@@ -267,5 +259,4 @@ export async function readRunEvents(
   }
 }
 
-// touch import to keep the type-only import valid
 void appendFile;

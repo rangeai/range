@@ -5,12 +5,6 @@ import type {
 } from "@shared/protocol";
 import { useAppStore } from "./store";
 
-/**
- * Minimal WebSocket client with auto-reconnect and an external-store API
- * so React can subscribe via `useSyncExternalStore` (no extra re-renders
- * on unrelated state changes).
- */
-
 type ConnectionState =
   | { phase: "connecting" }
   | { phase: "open"; openedAt: number }
@@ -77,10 +71,6 @@ class WsStore {
       case "session_updated":
         useAppStore.getState().upsertSession(msg.session);
         break;
-      case "attempt_created":
-      case "attempt_updated":
-        useAppStore.getState().upsertAttempt(msg.attempt);
-        break;
       case "run_started":
       case "run_finished":
         useAppStore.getState().upsertRun(msg.run);
@@ -94,7 +84,7 @@ class WsStore {
         });
         break;
       case "agent_started":
-        useAppStore.getState().patchConversation(msg.attemptId, {
+        useAppStore.getState().patchConversation(msg.sessionId, {
           status: msg.threadId === "<initializing>" ? "starting" : "running",
           threadId: msg.threadId,
           error: null,
@@ -102,42 +92,45 @@ class WsStore {
         if (msg.threadId !== "<initializing>") {
           useAppStore
             .getState()
-            .pushSystemEntry(msg.attemptId, `Codex thread started · ${msg.threadId}`);
+            .pushSystemEntry(
+              msg.sessionId,
+              `Codex thread started · ${msg.threadId}`,
+            );
         }
         break;
       case "agent_stopped":
-        useAppStore.getState().patchConversation(msg.attemptId, {
+        useAppStore.getState().patchConversation(msg.sessionId, {
           status: "stopped",
           threadId: null,
           turnInFlight: false,
         });
-        useAppStore.getState().pushSystemEntry(
-          msg.attemptId,
-          `Codex stopped${msg.reason ? ` · ${msg.reason}` : ""}`,
-        );
+        useAppStore
+          .getState()
+          .pushSystemEntry(
+            msg.sessionId,
+            `Codex stopped${msg.reason ? ` · ${msg.reason}` : ""}`,
+          );
         break;
       case "agent_turn_started":
-        useAppStore.getState().patchConversation(msg.attemptId, {
+        useAppStore.getState().patchConversation(msg.sessionId, {
           turnInFlight: true,
         });
         break;
       case "agent_turn_finished":
-        useAppStore.getState().patchConversation(msg.attemptId, {
+        useAppStore.getState().patchConversation(msg.sessionId, {
           turnInFlight: false,
         });
         break;
       case "agent_item":
-        useAppStore.getState().applyAgentItem(msg.attemptId, msg.item);
+        useAppStore.getState().applyAgentItem(msg.sessionId, msg.item);
         break;
       case "agent_message_delta":
-        useAppStore.getState().applyMessageDelta(
-          msg.attemptId,
-          msg.itemId,
-          msg.delta,
-        );
+        useAppStore
+          .getState()
+          .applyMessageDelta(msg.sessionId, msg.itemId, msg.delta);
         break;
       case "agent_error":
-        useAppStore.getState().patchConversation(msg.attemptId, {
+        useAppStore.getState().patchConversation(msg.sessionId, {
           status: "error",
           error: msg.message,
           turnInFlight: false,
