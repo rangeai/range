@@ -67,6 +67,7 @@ import { listDirectory, homeDir } from "./fs_browse.ts";
 import {
   composeBaseInstructions,
   isAgentRunning,
+  readAgentHistory,
   respondToApproval,
   sendUserMessage,
   startAgent,
@@ -358,6 +359,18 @@ app.get("/api/sessions/:id/agent/context", async (c) => {
   if (!session) return c.json({ error: "session not found" }, 404);
   const text = await composeBaseInstructions(session);
   return c.json({ baseInstructions: text });
+});
+
+app.get("/api/sessions/:id/agent/history", async (c) => {
+  const id = c.req.param("id");
+  const session = getSession(id);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  const { events } = await readAgentHistory(id);
+  return c.json({
+    events,
+    alive: isAgentRunning(id),
+    threadId: session.codexThreadId,
+  });
 });
 
 const VALID_SANDBOXES: ReadonlySet<Sandbox> = new Set<Sandbox>([

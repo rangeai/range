@@ -57,115 +57,19 @@ class WsStore {
   }
 
   private handleMessage(msg: ServerMessage) {
-    switch (msg.type) {
-      case "hello":
-        this.setState({ lastServerHello: msg });
-        break;
-      case "ping": {
-        const pong: ClientMessage = { type: "pong", t: msg.t };
-        this.ws?.send(JSON.stringify(pong));
-        this.setState({ latencyMs: Date.now() - msg.t });
-        break;
-      }
-      case "session_created":
-      case "session_updated":
-        useAppStore.getState().upsertSession(msg.session);
-        break;
-      case "session_deleted":
-        useAppStore.getState().removeSession(msg.sessionId);
-        break;
-      case "run_started":
-      case "run_finished":
-        useAppStore.getState().upsertRun(msg.run);
-        break;
-      case "run_log":
-        useAppStore.getState().appendLog({
-          runId: msg.runId,
-          stream: msg.stream,
-          t: msg.t,
-          message: msg.message,
-        });
-        break;
-      case "agent_started":
-        useAppStore.getState().patchConversation(msg.sessionId, {
-          status: msg.threadId === "<initializing>" ? "starting" : "running",
-          threadId: msg.threadId,
-          error: null,
-        });
-        if (msg.threadId !== "<initializing>") {
-          useAppStore
-            .getState()
-            .pushSystemEntry(
-              msg.sessionId,
-              `Codex thread started · ${msg.threadId}`,
-            );
-        }
-        break;
-      case "agent_stopped":
-        useAppStore.getState().patchConversation(msg.sessionId, {
-          status: "stopped",
-          threadId: null,
-          turnInFlight: false,
-        });
-        useAppStore
-          .getState()
-          .pushSystemEntry(
-            msg.sessionId,
-            `Codex stopped${msg.reason ? ` · ${msg.reason}` : ""}`,
-          );
-        break;
-      case "agent_turn_started": {
-        const store = useAppStore.getState();
-        // If the user hasn't sent any message yet for this session,
-        // this turn was kicked off server-side (e.g. the initial prompt
-        // from the home composer). Push the prompt into the timeline so
-        // the user sees what they originally typed.
-        const conv = store.conversationsBySession.get(msg.sessionId);
-        const hasUser = conv?.entries.some((e) => e.kind === "user");
-        if (!hasUser && msg.prompt) {
-          store.pushUserMessage(msg.sessionId, msg.prompt);
-        } else {
-          store.patchConversation(msg.sessionId, { turnInFlight: true });
-        }
-        break;
-      }
-      case "agent_turn_finished":
-        useAppStore.getState().patchConversation(msg.sessionId, {
-          turnInFlight: false,
-        });
-        break;
-      case "agent_item":
-        useAppStore.getState().applyAgentItem(msg.sessionId, msg.item);
-        break;
-      case "agent_message_delta":
-        useAppStore
-          .getState()
-          .applyMessageDelta(msg.sessionId, msg.itemId, msg.delta);
-        break;
-      case "agent_error":
-        useAppStore.getState().patchConversation(msg.sessionId, {
-          status: "error",
-          error: msg.message,
-          turnInFlight: false,
-        });
-        break;
-      case "agent_approval_request":
-        useAppStore.getState().appendApproval(msg.sessionId, {
-          requestId: msg.requestId,
-          kind: msg.kind,
-          payload: msg.payload,
-          decision: null,
-        });
-        break;
-      case "agent_approval_resolved":
-        useAppStore
-          .getState()
-          .resolveApproval(msg.sessionId, msg.requestId, msg.decision);
-        break;
-      case "verification_result":
-        useAppStore.getState().applyVerificationResult(msg.result);
-        break;
+    // hello + ping are connection-level: they need the live socket
+    // (pong reply) and direct state mutation, so they stay here.
+    if (msg.type === "hello") {
+      this.setState({ lastServerHello: msg });
+      return;
     }
+    if (msg.type === "ping") {
+      const pong: ClientMessage = { type: "pong", t: msg.t };
+      this.ws?.send(JSON.stringify(pong));
+      this.setState({ latencyMs: Date.now() - msg.t });
+      return;
+    }
+    applyServerMessage(msg);
   }
 
   private connect() {
@@ -233,3 +137,116 @@ export function useWsSend(): (msg: ClientMessage) => void {
 }
 
 export type { StoreState as WsState };
+
+/**
+ * Apply a single ServerMessage to the app store. Exported so other
+ * paths (e.g. session-view history rehydration) can route persisted
+ * events through the same code as live WS events.
+ */
+export function applyServerMessage(msg: ServerMessage): void {
+  switch (msg.type) {
+    case "hello":
+    case "ping":
+      // Connection-level — handled by the live socket, not by this
+      // generic dispatcher.
+      break;
+    case "session_created":
+    case "session_updated":
+      useAppStore.getState().upsertSession(msg.session);
+      break;
+    case "session_deleted":
+      useAppStore.getState().removeSession(msg.sessionId);
+      break;
+    case "run_started":
+    case "run_finished":
+      useAppStore.getState().upsertRun(msg.run);
+      break;
+    case "run_log":
+      useAppStore.getState().appendLog({
+        runId: msg.runId,
+        stream: msg.stream,
+        t: msg.t,
+        message: msg.message,
+      });
+      break;
+    case "agent_started":
+      useAppStore.getState().patchConversation(msg.sessionId, {
+        status: msg.threadId === "<initializing>" ? "starting" : "running",
+        threadId: msg.threadId,
+        error: null,
+      });
+      if (msg.threadId !== "<initializing>") {
+        useAppStore
+          .getState()
+          .pushSystemEntry(
+            msg.sessionId,
+            `Codex thread started · ${msg.threadId}`,
+          );
+      }
+      break;
+    case "agent_stopped":
+      useAppStore.getState().patchConversation(msg.sessionId, {
+        status: "stopped",
+        threadId: null,
+        turnInFlight: false,
+      });
+      useAppStore
+        .getState()
+        .pushSystemEntry(
+          msg.sessionId,
+          `Codex stopped${msg.reason ? ` · ${msg.reason}` : ""}`,
+        );
+      break;
+    case "agent_turn_started": {
+      const store = useAppStore.getState();
+      // If the user hasn't sent any message yet for this session,
+      // this turn was kicked off server-side (e.g. the initial prompt
+      // from the home composer). Push the prompt into the timeline so
+      // the user sees what they originally typed.
+      const conv = store.conversationsBySession.get(msg.sessionId);
+      const hasUser = conv?.entries.some((e) => e.kind === "user");
+      if (!hasUser && msg.prompt) {
+        store.pushUserMessage(msg.sessionId, msg.prompt);
+      } else {
+        store.patchConversation(msg.sessionId, { turnInFlight: true });
+      }
+      break;
+    }
+    case "agent_turn_finished":
+      useAppStore.getState().patchConversation(msg.sessionId, {
+        turnInFlight: false,
+      });
+      break;
+    case "agent_item":
+      useAppStore.getState().applyAgentItem(msg.sessionId, msg.item);
+      break;
+    case "agent_message_delta":
+      useAppStore
+        .getState()
+        .applyMessageDelta(msg.sessionId, msg.itemId, msg.delta);
+      break;
+    case "agent_error":
+      useAppStore.getState().patchConversation(msg.sessionId, {
+        status: "error",
+        error: msg.message,
+        turnInFlight: false,
+      });
+      break;
+    case "agent_approval_request":
+      useAppStore.getState().appendApproval(msg.sessionId, {
+        requestId: msg.requestId,
+        kind: msg.kind,
+        payload: msg.payload,
+        decision: null,
+      });
+      break;
+    case "agent_approval_resolved":
+      useAppStore
+        .getState()
+        .resolveApproval(msg.sessionId, msg.requestId, msg.decision);
+      break;
+    case "verification_result":
+      useAppStore.getState().applyVerificationResult(msg.result);
+      break;
+  }
+}

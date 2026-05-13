@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
 import { runsForSession, useAppStore } from "../lib/store";
-import { useWsSend } from "../lib/ws";
+import { applyServerMessage, useWsSend } from "../lib/ws";
 import { Markdown } from "./Markdown";
 import type {
   AgentItem,
@@ -39,6 +39,30 @@ export function SessionView({ sessionId }: { sessionId: string }) {
       .getProfile(sessionId)
       .then((res) => setProfile(sessionId, res.result))
       .catch((err) => console.error("getProfile failed", err));
+
+    // Rehydrate the conversation from the server's persisted event log.
+    // Only do this if the in-memory conversation is empty (avoids
+    // double-applying on quick re-mounts).
+    const conv = useAppStore.getState().conversationsBySession.get(sessionId);
+    if (!conv || conv.entries.length === 0) {
+      api
+        .getAgentHistory(sessionId)
+        .then(({ events, alive, threadId }) => {
+          for (const ev of events) applyServerMessage(ev);
+          // The event log might end on agent_stopped even though the
+          // server has since spawned a new live thread (and vice versa).
+          // Trust the server's current state as the source of truth.
+          if (alive) {
+            useAppStore.getState().patchConversation(sessionId, {
+              status: "running",
+              threadId,
+              error: null,
+            });
+          }
+        })
+        .catch((err) => console.error("getAgentHistory failed", err));
+    }
+
     // Codex starts implicitly when a session is opened. The server's
     // startAgent is idempotent: if a thread is already running for this
     // session it just returns the existing thread id.
@@ -788,7 +812,7 @@ function MessageComposer({
 
   const placeholder =
     conv.status === "stopped"
-      ? "start Codex to send a message"
+      ? "Codex is warming up… hang tight"
       : conv.status === "starting"
         ? "Codex is starting…"
         : conv.turnInFlight

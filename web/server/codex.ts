@@ -129,6 +129,43 @@ export function isAgentRunning(sessionId: string): boolean {
   return sessions.has(sessionId);
 }
 
+/**
+ * Read persisted agent events for a session. Returns the tail of the
+ * thread's events.jsonl so we don't ship huge histories — sessions
+ * with very long output get truncated to the last MAX bytes.
+ */
+export async function readAgentHistory(
+  sessionId: string,
+): Promise<{ events: ServerMessage[] }> {
+  const MAX = 512 * 1024;
+  const path = join(threadDir(sessionId), "events.jsonl");
+  try {
+    const file = Bun.file(path);
+    if (!(await file.exists())) return { events: [] };
+    const size = file.size;
+    const start = Math.max(0, size - MAX);
+    const slice = file.slice(start, size);
+    const text = await slice.text();
+    const lines = text.split("\n").filter((l) => l.length > 0);
+    if (start > 0 && lines.length > 0) lines.shift();
+    const events: ServerMessage[] = [];
+    for (const line of lines) {
+      try {
+        events.push(JSON.parse(line) as ServerMessage);
+      } catch {
+        // skip malformed
+      }
+    }
+    return { events };
+  } catch (err) {
+    log.warn("codex", "readAgentHistory failed", {
+      sessionId,
+      err: String(err instanceof Error ? err.message : err),
+    });
+    return { events: [] };
+  }
+}
+
 export interface StartAgentOptions {
   /** Override the session.sandbox for this start. */
   sandbox?: Sandbox;

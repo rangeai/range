@@ -166,6 +166,18 @@ export function getAgentContext(
   );
 }
 
+export function getAgentHistory(
+  sessionId: string,
+): Promise<{
+  events: import("@shared/protocol").ServerMessage[];
+  alive: boolean;
+  threadId: string | null;
+}> {
+  return jsonRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/agent/history`,
+  );
+}
+
 // ─── PRs ──────────────────────────────────────────────────────────────────
 
 export function draftPr(sessionId: string): Promise<PrDraftResponse> {
