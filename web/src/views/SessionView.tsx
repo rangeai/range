@@ -194,14 +194,18 @@ function ProfileBadge({
   profile: ProfileLoadResult | undefined;
 }) {
   if (!profile) return null;
+  // No repoPath / no range.yaml — silent, this isn't a parse failure.
+  if (!profile.found) return null;
   if (profile.error) {
     return (
-      <div className="mt-2 text-[10.5px] text-[var(--err)]" title={profile.error}>
+      <div
+        className="mt-2 text-[10.5px] text-[var(--err)]"
+        title={profile.error}
+      >
         profile parse error
       </div>
     );
   }
-  if (!profile.found) return null;
   const count = profile.profile?.commands.length ?? 0;
   return (
     <div className="mt-2 flex items-center gap-1.5 text-[10.5px] text-fg-2">
