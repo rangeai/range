@@ -114,11 +114,21 @@ class WsStore {
             `Codex stopped${msg.reason ? ` · ${msg.reason}` : ""}`,
           );
         break;
-      case "agent_turn_started":
-        useAppStore.getState().patchConversation(msg.sessionId, {
-          turnInFlight: true,
-        });
+      case "agent_turn_started": {
+        const store = useAppStore.getState();
+        // If the user hasn't sent any message yet for this session,
+        // this turn was kicked off server-side (e.g. the initial prompt
+        // from the home composer). Push the prompt into the timeline so
+        // the user sees what they originally typed.
+        const conv = store.conversationsBySession.get(msg.sessionId);
+        const hasUser = conv?.entries.some((e) => e.kind === "user");
+        if (!hasUser && msg.prompt) {
+          store.pushUserMessage(msg.sessionId, msg.prompt);
+        } else {
+          store.patchConversation(msg.sessionId, { turnInFlight: true });
+        }
         break;
+      }
       case "agent_turn_finished":
         useAppStore.getState().patchConversation(msg.sessionId, {
           turnInFlight: false,

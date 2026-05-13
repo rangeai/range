@@ -127,13 +127,23 @@ app.post("/api/sessions", async (c) => {
   broadcast({ type: "session_created", session });
 
   // Auto-start Codex. Best-effort: failures here don't fail session
-  // creation — the user can retry from the session view.
-  void startAgent(session.id).catch((err) => {
-    log.warn("sessions", "auto-start of codex failed", {
-      sessionId: session.id,
-      err: String(err instanceof Error ? err.message : err),
-    });
-  });
+  // creation — the user can retry from the session view. If the session
+  // was created with a prompt, send it as the first turn so the user's
+  // initial message gets a reply (without it the prompt only lives in
+  // Codex's base instructions and goes unanswered).
+  void (async () => {
+    try {
+      await startAgent(session.id);
+      if (session.prompt && session.prompt.trim().length > 0) {
+        await sendUserMessage(session.id, session.prompt);
+      }
+    } catch (err) {
+      log.warn("sessions", "auto-start or initial prompt failed", {
+        sessionId: session.id,
+        err: String(err instanceof Error ? err.message : err),
+      });
+    }
+  })();
 
   const response: CreateSessionResponse = { session };
   return c.json(response, 201);
