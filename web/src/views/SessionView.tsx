@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
 import {
   attemptsForSession,
@@ -20,7 +21,9 @@ import type { ConversationEntry, ConversationState } from "../lib/store";
 
 export function SessionView({ sessionId }: { sessionId: string }) {
   const session = useAppStore((s) => s.sessions.get(sessionId));
-  const attempts = useAppStore((s) => attemptsForSession(s, sessionId));
+  const attempts = useAppStore(
+    useShallow((s) => attemptsForSession(s, sessionId)),
+  );
   const profile = useAppStore((s) => s.profilesBySession.get(sessionId));
   const upsertSession = useAppStore((s) => s.upsertSession);
   const upsertManyAttempts = useAppStore((s) => s.upsertManyAttempts);
@@ -315,7 +318,9 @@ function AttemptDetail({
   attempt: Attempt;
   profile: ProfileLoadResult | undefined;
 }) {
-  const runs = useAppStore((s) => runsForAttempt(s, attempt.id));
+  const runs = useAppStore(
+    useShallow((s) => runsForAttempt(s, attempt.id)),
+  );
   const upsertManyRuns = useAppStore((s) => s.upsertManyRuns);
   const appendManyLogs = useAppStore((s) => s.appendManyLogs);
 
