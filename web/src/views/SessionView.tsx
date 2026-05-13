@@ -38,6 +38,12 @@ export function SessionView({ sessionId }: { sessionId: string }) {
       .getProfile(sessionId)
       .then((res) => setProfile(sessionId, res.result))
       .catch((err) => console.error("getProfile failed", err));
+    // Codex starts implicitly when a session is opened. The server's
+    // startAgent is idempotent: if a thread is already running for this
+    // session it just returns the existing thread id.
+    api.startAgent(sessionId).catch((err) => {
+      console.error("auto-start codex failed", err);
+    });
   }, [sessionId, session, upsertSession, setProfile]);
 
   if (!session) {
@@ -366,9 +372,10 @@ function AgentControls({
   session: Session;
   conv: ConversationState;
 }) {
-  const patch = useAppStore((s) => s.patchConversation);
-  const pushSystem = useAppStore((s) => s.pushSystemEntry);
   const [busy, setBusy] = useState(false);
+
+  const running = conv.status === "running" || conv.status === "starting";
+  if (!running) return null;
 
   const stop = async () => {
     if (busy) return;
@@ -382,49 +389,16 @@ function AgentControls({
     }
   };
 
-  const restart = async () => {
-    if (busy) return;
-    setBusy(true);
-    patch(session.id, { status: "starting", error: null });
-    try {
-      await api.startAgent(session.id);
-    } catch (e) {
-      const msg = String(e instanceof Error ? e.message : e);
-      patch(session.id, { status: "error", error: msg });
-      pushSystem(session.id, `start failed · ${msg}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const running = conv.status === "running" || conv.status === "starting";
-
-  if (running) {
-    return (
-      <button
-        onClick={stop}
-        disabled={busy}
-        className="text-[11px] text-fg-1 border border-[var(--br-1)] hover:border-[var(--br-2)] hover:bg-[var(--bg-2)] px-2.5 py-1 rounded transition flex items-center gap-1.5"
-      >
-        <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="currentColor">
-          <rect x="3" y="3" width="6" height="6" rx="1" />
-        </svg>
-        {busy ? "stopping…" : "stop"}
-      </button>
-    );
-  }
-
-  // Stopped or error — offer a manual restart.
   return (
     <button
-      onClick={restart}
+      onClick={stop}
       disabled={busy}
-      className="text-[11px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition flex items-center gap-1.5 font-medium"
+      className="text-[11px] text-fg-1 border border-[var(--br-1)] hover:border-[var(--br-2)] hover:bg-[var(--bg-2)] px-2.5 py-1 rounded transition flex items-center gap-1.5"
     >
       <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="currentColor">
-        <path d="M3 2v8l7-4z" />
+        <rect x="3" y="3" width="6" height="6" rx="1" />
       </svg>
-      {busy ? "starting…" : "start codex"}
+      {busy ? "stopping…" : "stop"}
     </button>
   );
 }
@@ -447,9 +421,7 @@ function ConversationTimeline({
     return (
       <div className="border border-dashed border-[var(--br-1)] rounded-lg p-6 mb-3 bg-[var(--bg-1)]/40">
         <div className="text-[12.5px] text-fg-2 leading-relaxed">
-          Codex isn't running. Click{" "}
-          <span className="text-fg-1 font-medium">start codex</span> to spawn
-          a fresh thread.
+          Codex is warming up… the thread will appear here once it's ready.
         </div>
       </div>
     );
