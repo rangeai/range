@@ -425,3 +425,23 @@ export interface AgentMessageRequest {
 export interface AgentMessageResponse {
   turnId: string;
 }
+
+// ─── PRs ───────────────────────────────────────────────────────────────────
+
+export interface PrDraftResponse {
+  title: string;
+  body: string;
+  commitCount: number;
+  filesChanged: string[];
+  base: string;
+}
+
+export interface OpenPrRequest {
+  title: string;
+  body: string;
+}
+
+export interface OpenPrResponse {
+  url: string;
+  branch: string;
+}

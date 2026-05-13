@@ -55,6 +55,7 @@ export function SessionView({ sessionId }: { sessionId: string }) {
       <WorktreeBlock session={session} />
       <ConversationBlock session={session} />
       <RunsBlock session={session} profile={profile} />
+      <PrBlock session={session} />
     </div>
   );
 }
@@ -1190,6 +1191,163 @@ function LogLine({ entry }: { entry: RunLogEntry }) {
       </span>
       <span style={{ color }}>{entry.message}</span>
     </div>
+  );
+}
+
+// ─── PR block ──────────────────────────────────────────────────────────────
+
+function PrBlock({ session }: { session: Session }) {
+  const [draft, setDraft] = useState<{
+    title: string;
+    body: string;
+    commitCount: number;
+    filesChanged: string[];
+    base: string;
+  } | null>(null);
+  const [busy, setBusy] = useState<"draft" | "open" | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+
+  if (!session.worktreePath) return null;
+
+  const onDraft = async () => {
+    setBusy("draft");
+    setErr(null);
+    try {
+      const d = await api.draftPr(session.id);
+      setDraft(d);
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onOpen = async () => {
+    if (!draft) return;
+    setBusy("open");
+    setErr(null);
+    try {
+      const r = await api.openPr(session.id, {
+        title: draft.title,
+        body: draft.body,
+      });
+      setUrl(r.url);
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section className="mb-8">
+      <div className="flex items-baseline justify-between mb-3">
+        <div className="text-[10px] tracking-[0.18em] uppercase text-fg-3 font-medium">
+          pull request
+        </div>
+        {draft && (
+          <span className="text-[10.5px] font-mono text-fg-3">
+            {draft.commitCount} commit · base {draft.base.replace(/^origin\//, "")}
+          </span>
+        )}
+      </div>
+
+      {!draft ? (
+        <button
+          onClick={onDraft}
+          disabled={busy !== null}
+          className="text-[11.5px] text-fg-1 border border-[var(--br-2)] hover:border-[var(--br-3)] hover:bg-[var(--bg-2)] disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded transition flex items-center gap-1.5"
+        >
+          <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none">
+            <path
+              d="M3 2v6a2 2 0 002 2h2M9 4v6"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+            <circle cx="3" cy="2" r="1.2" fill="currentColor" />
+            <circle cx="9" cy="4" r="1.2" fill="currentColor" />
+            <circle cx="9" cy="10" r="1.2" fill="currentColor" />
+          </svg>
+          {busy === "draft" ? "drafting…" : "draft pull request"}
+        </button>
+      ) : (
+        <div className="border border-[var(--br-1)] rounded-lg bg-[var(--bg-1)] overflow-hidden">
+          <div className="px-3 py-2 border-b border-[var(--br-1)]">
+            <input
+              type="text"
+              value={draft.title}
+              onChange={(e) =>
+                setDraft({ ...draft, title: e.target.value })
+              }
+              className="w-full bg-transparent outline-none text-[14px] font-medium text-fg"
+              placeholder="PR title"
+            />
+          </div>
+          <textarea
+            value={draft.body}
+            onChange={(e) =>
+              setDraft({ ...draft, body: e.target.value })
+            }
+            rows={14}
+            spellCheck={false}
+            className="w-full bg-transparent outline-none resize-y font-mono text-[12px] text-fg-1 leading-relaxed px-3 py-2"
+          />
+          <div className="px-3 py-2 border-t border-[var(--br-1)] flex items-center gap-1.5 bg-[var(--bg)]">
+            <button
+              onClick={onOpen}
+              disabled={busy !== null || url !== null}
+              className="text-[11.5px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded transition font-medium"
+            >
+              {busy === "open"
+                ? "opening…"
+                : url
+                  ? "opened"
+                  : "push + open PR"}
+            </button>
+            <button
+              onClick={onDraft}
+              disabled={busy !== null}
+              className="text-[11.5px] text-fg-1 border border-[var(--br-2)] hover:border-[var(--br-3)] hover:bg-[var(--bg-2)] disabled:opacity-50 px-2.5 py-1.5 rounded transition"
+            >
+              re-draft
+            </button>
+            <div className="flex-1"></div>
+            <button
+              onClick={() => {
+                setDraft(null);
+                setUrl(null);
+                setErr(null);
+              }}
+              disabled={busy !== null}
+              className="text-[11.5px] text-fg-3 hover:text-fg-1 px-2 py-1.5 rounded transition"
+            >
+              discard
+            </button>
+          </div>
+          {url && (
+            <div className="px-3 py-2 border-t border-[var(--br-1)] text-[11.5px]">
+              opened ·{" "}
+              <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[var(--accent)] hover:underline font-mono break-all"
+              >
+                {url}
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+
+      {err && (
+        <div className="mt-2 text-[11px] text-[var(--err)] break-words">
+          {err}
+        </div>
+      )}
+    </section>
   );
 }
 

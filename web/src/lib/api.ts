@@ -9,6 +9,9 @@ import type {
   GetSessionResponse,
   ListRunsResponse,
   ListSessionsResponse,
+  OpenPrRequest,
+  OpenPrResponse,
+  PrDraftResponse,
   StartAgentRequest,
   StartAgentResponse,
   VerificationResult,
@@ -141,5 +144,27 @@ export function getAgentContext(
 ): Promise<{ baseInstructions: string }> {
   return jsonRequest(
     `/api/sessions/${encodeURIComponent(sessionId)}/agent/context`,
+  );
+}
+
+// ─── PRs ──────────────────────────────────────────────────────────────────
+
+export function draftPr(sessionId: string): Promise<PrDraftResponse> {
+  return jsonRequest<PrDraftResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/pr/draft`,
+    { method: "POST" },
+  );
+}
+
+export function openPr(
+  sessionId: string,
+  body: OpenPrRequest,
+): Promise<OpenPrResponse> {
+  return jsonRequest<OpenPrResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/pr/open`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
   );
 }

@@ -37,6 +37,9 @@ import type {
   GetSessionResponse,
   ListRunsResponse,
   ListSessionsResponse,
+  OpenPrRequest,
+  OpenPrResponse,
+  PrDraftResponse,
   RunKind,
   Sandbox,
   ServerMessage,
@@ -57,6 +60,7 @@ import {
 import { abortRun, readRunEvents, startRun } from "./runner.ts";
 import { loadProfile } from "./profile.ts";
 import { getLatestResults } from "./verification.ts";
+import { draftPr, openPr } from "./pr.ts";
 import {
   composeBaseInstructions,
   isAgentRunning,
@@ -337,6 +341,45 @@ app.post("/api/sessions/:id/agent/stop", async (c) => {
   if (!ok)
     return c.json({ error: "agent not running for this session" }, 404);
   return c.json({ ok: true });
+});
+
+// ─── PRs ──────────────────────────────────────────────────────────────────
+
+app.post("/api/sessions/:id/pr/draft", async (c) => {
+  const sessionId = c.req.param("id");
+  try {
+    const draft = await draftPr(sessionId);
+    const response: PrDraftResponse = draft;
+    return c.json(response);
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      400,
+    );
+  }
+});
+
+app.post("/api/sessions/:id/pr/open", async (c) => {
+  const sessionId = c.req.param("id");
+  let body: OpenPrRequest;
+  try {
+    body = (await c.req.json()) as OpenPrRequest;
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  if (!body?.title || !body?.body) {
+    return c.json({ error: "title and body are required" }, 400);
+  }
+  try {
+    const result = await openPr(sessionId, body);
+    const response: OpenPrResponse = result;
+    return c.json(response, 201);
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      400,
+    );
+  }
 });
 
 // ─── WebSocket ─────────────────────────────────────────────────────────────
