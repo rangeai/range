@@ -161,28 +161,126 @@ function ProfileBadge({
 // ─── Worktree block ────────────────────────────────────────────────────────
 
 function WorktreeBlock({ session }: { session: Session }) {
+  const [open, setOpen] = useState(false);
   if (!session.worktreePath) return null;
+
+  const projectName = projectNameFromPath(session.repoPath);
+
   return (
-    <div className="grid grid-cols-2 gap-3 mb-6">
-      <Fact
-        label="worktree"
-        value={session.worktreePath}
-        mono
-        breakAll
-      />
-      <Fact
-        label="branch"
-        value={session.branch ?? "—"}
-        mono={!!session.branch}
-      />
-      <Fact
-        label="base"
-        value={session.baseSha?.slice(0, 12) ?? "—"}
-        mono={!!session.baseSha}
-      />
-      <Fact label="sandbox" value={session.sandbox} />
+    <div className="border border-[var(--br-1)] rounded-lg bg-[var(--bg-1)] mb-6 overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-[var(--bg-2)] transition"
+      >
+        <svg
+          className="w-3.5 h-3.5 text-[var(--accent)] flex-shrink-0"
+          viewBox="0 0 14 14"
+          fill="none"
+        >
+          <path
+            d="M1.5 3.5h3.5l1 1H12a.5.5 0 01.5.5V11a.5.5 0 01-.5.5H2a.5.5 0 01-.5-.5V4a.5.5 0 01.5-.5z"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="text-[13.5px] text-fg font-medium truncate">
+          {projectName}
+        </span>
+        {session.repoPath && (
+          <span
+            className="text-[11px] text-fg-3 font-mono truncate min-w-0 hidden sm:inline"
+            title={session.repoPath}
+          >
+            {session.repoPath}
+          </span>
+        )}
+        <div className="flex-1"></div>
+        <Pill>{session.sandbox}</Pill>
+        {session.branch && (
+          <Pill mono title={session.branch}>
+            {compactBranch(session.branch)}
+          </Pill>
+        )}
+        <svg
+          className={`w-2.5 h-2.5 text-fg-3 flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+          viewBox="0 0 12 12"
+          fill="none"
+        >
+          <path
+            d="M4 2l4 4-4 4"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div className="border-t border-[var(--br-1)] px-3 py-3 grid grid-cols-2 gap-3 bg-[var(--bg)]">
+          <Fact
+            label="project path"
+            value={session.repoPath ?? "—"}
+            mono={!!session.repoPath}
+            breakAll
+          />
+          <Fact
+            label="branch"
+            value={session.branch ?? "—"}
+            mono={!!session.branch}
+            breakAll
+          />
+          <Fact
+            label="worktree (range internal)"
+            value={session.worktreePath}
+            mono
+            breakAll
+          />
+          <Fact
+            label="base sha"
+            value={session.baseSha?.slice(0, 12) ?? "—"}
+            mono={!!session.baseSha}
+          />
+        </div>
+      )}
     </div>
   );
+}
+
+function Pill({
+  children,
+  mono,
+  title,
+}: {
+  children: React.ReactNode;
+  mono?: boolean;
+  title?: string;
+}) {
+  return (
+    <span
+      title={title}
+      className={`flex-shrink-0 text-[10.5px] px-1.5 py-0.5 rounded border border-[var(--br-1)] bg-[var(--bg)] text-fg-2 ${
+        mono ? "font-mono" : "uppercase tracking-[0.12em]"
+      }`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function projectNameFromPath(p: string | null): string {
+  if (!p) return "no project";
+  const parts = p.replace(/\/$/, "").split("/");
+  return parts[parts.length - 1] || p;
+}
+
+function compactBranch(branch: string): string {
+  // Range branches look like "range/ssn_xxx/main"; collapse the middle
+  // session id so the chip is glanceable.
+  const m = branch.match(/^range\/ssn_[^/]+\/(.+)$/);
+  if (m) return `range/…/${m[1]}`;
+  if (branch.length > 28) return branch.slice(0, 25) + "…";
+  return branch;
 }
 
 // ─── Conversation block ────────────────────────────────────────────────────
