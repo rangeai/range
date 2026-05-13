@@ -3,6 +3,7 @@ import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
 import { runsForSession, useAppStore } from "../lib/store";
 import { useWsSend } from "../lib/ws";
+import { Markdown } from "./Markdown";
 import type {
   AgentItem,
   ProfileCommand,
@@ -535,8 +536,14 @@ function AgentItemView({ item }: { item: AgentItem }) {
       return (
         <div className="flex gap-3">
           <AgentBadge label="cdx" />
-          <div className="flex-1 min-w-0 text-[13.5px] text-fg-1 leading-relaxed whitespace-pre-wrap break-words">
-            {item.text || (inProgress ? "…" : "")}
+          <div className="flex-1 min-w-0 text-[13.5px] text-fg-1 break-words">
+            {item.text ? (
+              <Markdown>{item.text}</Markdown>
+            ) : inProgress ? (
+              "…"
+            ) : (
+              ""
+            )}
             {inProgress && item.text && (
               <span className="inline-block w-[2px] h-[14px] bg-[var(--accent)] ml-0.5 align-middle pulse-live" />
             )}
@@ -547,8 +554,14 @@ function AgentItemView({ item }: { item: AgentItem }) {
       return (
         <div className="flex gap-3">
           <AgentBadge label="·" />
-          <div className="flex-1 min-w-0 text-[12px] text-fg-3 italic leading-relaxed whitespace-pre-wrap break-words">
-            {item.text || (inProgress ? "thinking…" : "")}
+          <div className="flex-1 min-w-0 text-[12px] text-fg-3 italic break-words">
+            {item.text ? (
+              <Markdown>{item.text}</Markdown>
+            ) : inProgress ? (
+              "thinking…"
+            ) : (
+              ""
+            )}
           </div>
         </div>
       );
