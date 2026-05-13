@@ -661,13 +661,11 @@ function CommandItemView({
   item: Extract<AgentItem, { kind: "command" }>;
   inProgress: boolean;
 }) {
-  // Collapsed by default for completed commands; auto-open while running
-  // so the user can see what Codex is doing live.
-  const [open, setOpen] = useState(inProgress);
-  // Re-open on transition into in-progress (rare, but safe).
-  useEffect(() => {
-    if (inProgress) setOpen(true);
-  }, [inProgress]);
+  // Always start collapsed. While the command is still running we
+  // auto-expand so the user can watch live output; once it completes
+  // we collapse back unless the user explicitly opened it.
+  const [userOpen, setUserOpen] = useState(false);
+  const expanded = userOpen || inProgress;
 
   const cmd =
     typeof item.command === "string"
@@ -686,11 +684,11 @@ function CommandItemView({
       <AgentBadge label="$" />
       <div className="flex-1 min-w-0">
         <button
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => setUserOpen((o) => !o)}
           className="w-full flex items-center gap-2 text-left group"
         >
           <svg
-            className={`w-2.5 h-2.5 text-fg-3 flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+            className={`w-2.5 h-2.5 text-fg-3 flex-shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
             viewBox="0 0 12 12"
             fill="none"
           >
@@ -723,7 +721,7 @@ function CommandItemView({
             </span>
           )}
         </button>
-        {open && (
+        {expanded && (
           <div className="mt-1.5">
             {shortCmd !== cmd && (
               <pre className="font-mono text-[11.5px] text-fg-2 bg-[var(--bg)] border border-[var(--br-1)] rounded p-2 mb-2 whitespace-pre-wrap break-words">
