@@ -85,7 +85,7 @@ const insertStmt = db.prepare(`
   INSERT INTO sessions (
     id, kind, title, prompt, repo, repo_path, task_ref,
     status, sandbox, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'read-only', ?, ?)
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'workspace-write', ?, ?)
 `);
 
 const selectByIdStmt = db.prepare<SessionRow, [string]>(
@@ -112,6 +112,40 @@ export async function validateRepoPath(repoPath: string): Promise<void> {
       `repoPath "${repoPath}" is not a git repository (or does not exist)`,
     );
   }
+}
+
+const updateRepoPathStmt = db.prepare(`
+  UPDATE sessions SET repo_path = ?, updated_at = ? WHERE id = ?
+`);
+
+/**
+ * Attach a repo to an existing session that previously had none. Validates
+ * the path, sets repo_path, spawns a worktree, and persists worktree
+ * metadata. The caller is responsible for restarting Codex if needed.
+ */
+export async function attachRepo(
+  sessionId: string,
+  repoPath: string,
+): Promise<Session> {
+  const existing = getSession(sessionId);
+  if (!existing) throw new Error(`session not found: ${sessionId}`);
+  if (existing.worktreePath) {
+    throw new Error("session already has a worktree attached");
+  }
+  await validateRepoPath(repoPath);
+
+  updateRepoPathStmt.run(repoPath, Date.now(), sessionId);
+
+  const wt = await createWorktree({
+    repoPath,
+    sessionId,
+    attemptName: "main",
+  });
+  setWorktreeStmt.run(wt.path, wt.branch, wt.baseSha, Date.now(), sessionId);
+
+  const fresh = getSession(sessionId);
+  if (!fresh) throw new Error("session disappeared after attach");
+  return fresh;
 }
 
 export async function createSession(

@@ -73,6 +73,10 @@ export async function composeBaseInstructions(
   lines.push(`Title:   ${session.title}`);
   if (session.repoPath) {
     lines.push(`Repo:    ${session.repoPath}`);
+  } else {
+    lines.push(
+      "Repo:    (none attached — this session is freeform. If the user asks you to work on code, ask them to attach a repo from the UI.)",
+    );
   }
   if (session.worktreePath) {
     lines.push(`Worktree: ${session.worktreePath}`);
@@ -141,11 +145,6 @@ export async function startAgent(
 
   const session = getSession(sessionId);
   if (!session) throw new Error(`session not found: ${sessionId}`);
-  if (!session.worktreePath) {
-    throw new Error(
-      `session ${sessionId} has no worktree — create it with a repoPath`,
-    );
-  }
 
   const sandbox: Sandbox = options.sandbox ?? session.sandbox;
   // workspace-write gates risky ops behind approvals; read-only auto-approves
@@ -161,11 +160,14 @@ export async function startAgent(
     flags: "a",
   });
 
-  log.info("codex", "spawning", { sessionId, cwd: session.worktreePath });
+  // Codex always needs a cwd. For sessions without a worktree, fall back
+  // to the session's thread dir — a private scratch space Range owns.
+  const cwd = session.worktreePath ?? dir;
+  log.info("codex", "spawning", { sessionId, cwd });
   let proc: Subprocess<"pipe", "pipe", "pipe">;
   try {
     proc = Bun.spawn(["codex", "app-server"], {
-      cwd: session.worktreePath,
+      cwd,
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
@@ -212,7 +214,7 @@ export async function startAgent(
 
     const baseInstructions = await composeBaseInstructions(session);
     const threadResp = (await sendRequest(cs, "thread/start", {
-      cwd: session.worktreePath,
+      cwd,
       approvalPolicy,
       sandbox,
       baseInstructions,

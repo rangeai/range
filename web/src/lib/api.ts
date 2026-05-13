@@ -56,6 +56,19 @@ export function getSession(id: string): Promise<GetSessionResponse> {
   );
 }
 
+export function attachRepo(
+  sessionId: string,
+  repoPath: string,
+): Promise<GetSessionResponse> {
+  return jsonRequest<GetSessionResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/attach-repo`,
+    {
+      method: "POST",
+      body: JSON.stringify({ repoPath }),
+    },
+  );
+}
+
 export function getProfile(sessionId: string): Promise<GetProfileResponse> {
   return jsonRequest<GetProfileResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/profile`,

@@ -10,7 +10,6 @@ import type {
   Run,
   RunLogEntry,
   RunState,
-  Sandbox,
   Session,
   VerificationGate,
   VerificationResult,
@@ -155,13 +154,69 @@ function WorktreeBlock({ session }: { session: Session }) {
     );
   }
 
+  return <AttachRepoForm session={session} />;
+}
+
+function AttachRepoForm({ session }: { session: Session }) {
+  const upsertSession = useAppStore((s) => s.upsertSession);
+  const [path, setPath] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async () => {
+    const trimmed = path.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await api.attachRepo(session.id, trimmed);
+      upsertSession(res.session);
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="border border-dashed border-[var(--br-1)] rounded-lg p-4 bg-[var(--bg-1)]/40 mb-6">
-      <div className="text-[12.5px] text-fg-2 leading-relaxed">
-        This session has no <span className="font-mono">repo_path</span>. To
-        run commands or start Codex, create a new session with a repo
-        attached. (Re-attach support is on the roadmap.)
+      <div className="text-[10px] tracking-[0.18em] uppercase text-fg-3 font-medium mb-2">
+        attach a repo
       </div>
+      <div className="text-[12.5px] text-fg-2 leading-relaxed mb-3">
+        This session is freeform. Attach a local git repo to spawn a worktree
+        and let Codex work against it. Codex will restart with the new
+        context.
+      </div>
+      <div className="flex items-stretch gap-2">
+        <input
+          type="text"
+          value={path}
+          onChange={(e) => setPath(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          disabled={busy}
+          spellCheck={false}
+          placeholder="/Users/you/code/project"
+          className="flex-1 bg-[var(--bg-1)] border border-[var(--br-1)] rounded px-3 py-1.5 outline-none text-[13px] font-mono text-fg placeholder:text-fg-3 focus:border-[var(--br-3)] disabled:opacity-60"
+        />
+        <button
+          onClick={submit}
+          disabled={busy || path.trim().length === 0}
+          className="text-[11.5px] font-medium text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded transition"
+        >
+          {busy ? "attaching…" : "attach"}
+        </button>
+      </div>
+      {err && (
+        <div className="mt-2 text-[11px] text-[var(--err)] break-words">
+          {err}
+        </div>
+      )}
     </div>
   );
 }
@@ -315,21 +370,6 @@ function AgentControls({
   const pushSystem = useAppStore((s) => s.pushSystemEntry);
   const [busy, setBusy] = useState(false);
 
-  const start = async (sandbox: Sandbox) => {
-    if (busy || !session.worktreePath) return;
-    setBusy(true);
-    patch(session.id, { status: "starting", error: null });
-    try {
-      await api.startAgent(session.id, { sandbox });
-    } catch (e) {
-      const msg = String(e instanceof Error ? e.message : e);
-      patch(session.id, { status: "error", error: msg });
-      pushSystem(session.id, `start failed · ${msg}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const stop = async () => {
     if (busy) return;
     setBusy(true);
@@ -342,66 +382,50 @@ function AgentControls({
     }
   };
 
-  const running = conv.status === "running" || conv.status === "starting";
-  const noWorktree = !session.worktreePath;
+  const restart = async () => {
+    if (busy) return;
+    setBusy(true);
+    patch(session.id, { status: "starting", error: null });
+    try {
+      await api.startAgent(session.id);
+    } catch (e) {
+      const msg = String(e instanceof Error ? e.message : e);
+      patch(session.id, { status: "error", error: msg });
+      pushSystem(session.id, `start failed · ${msg}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
+  const running = conv.status === "running" || conv.status === "starting";
+
+  if (running) {
+    return (
+      <button
+        onClick={stop}
+        disabled={busy}
+        className="text-[11px] text-fg-1 border border-[var(--br-1)] hover:border-[var(--br-2)] hover:bg-[var(--bg-2)] px-2.5 py-1 rounded transition flex items-center gap-1.5"
+      >
+        <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="currentColor">
+          <rect x="3" y="3" width="6" height="6" rx="1" />
+        </svg>
+        {busy ? "stopping…" : "stop"}
+      </button>
+    );
+  }
+
+  // Stopped or error — offer a manual restart.
   return (
-    <div className="flex items-center gap-1.5">
-      {!running ? (
-        <>
-          <button
-            onClick={() => start("read-only")}
-            disabled={busy || noWorktree}
-            title={
-              noWorktree
-                ? "session has no repo attached"
-                : "read-only: Codex can read + run safe commands; no file edits"
-            }
-            className="text-[11px] text-fg-1 border border-[var(--br-2)] hover:border-[var(--br-3)] hover:bg-[var(--bg-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition flex items-center gap-1.5"
-          >
-            <svg
-              className="w-2.5 h-2.5"
-              viewBox="0 0 12 12"
-              fill="currentColor"
-            >
-              <path d="M3 2v8l7-4z" />
-            </svg>
-            start · read-only
-          </button>
-          <button
-            onClick={() => start("workspace-write")}
-            disabled={busy || noWorktree}
-            title={
-              noWorktree
-                ? "session has no repo attached"
-                : "workspace-write: Codex can edit files; you approve each write"
-            }
-            className="text-[11px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition flex items-center gap-1.5 font-medium"
-          >
-            <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none">
-              <path
-                d="M2 8.5L6.5 4l1.5 1.5L3.5 10H2v-1.5z"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                strokeLinejoin="round"
-              />
-            </svg>
-            {busy ? "starting…" : "start · workspace-write"}
-          </button>
-        </>
-      ) : (
-        <button
-          onClick={stop}
-          disabled={busy}
-          className="text-[11px] text-fg-1 border border-[var(--br-1)] hover:border-[var(--br-2)] hover:bg-[var(--bg-2)] px-2.5 py-1 rounded transition flex items-center gap-1.5"
-        >
-          <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="currentColor">
-            <rect x="3" y="3" width="6" height="6" rx="1" />
-          </svg>
-          {busy ? "stopping…" : "stop"}
-        </button>
-      )}
-    </div>
+    <button
+      onClick={restart}
+      disabled={busy}
+      className="text-[11px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition flex items-center gap-1.5 font-medium"
+    >
+      <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="currentColor">
+        <path d="M3 2v8l7-4z" />
+      </svg>
+      {busy ? "starting…" : "start codex"}
+    </button>
   );
 }
 
@@ -423,11 +447,9 @@ function ConversationTimeline({
     return (
       <div className="border border-dashed border-[var(--br-1)] rounded-lg p-6 mb-3 bg-[var(--bg-1)]/40">
         <div className="text-[12.5px] text-fg-2 leading-relaxed">
-          Codex hasn't started for this session yet. Pick{" "}
-          <span className="text-fg-1 font-medium">read-only</span> to let Codex
-          inspect, or{" "}
-          <span className="text-fg-1 font-medium">workspace-write</span> to let
-          it edit (each write asks for your approval).
+          Codex isn't running. Click{" "}
+          <span className="text-fg-1 font-medium">start codex</span> to spawn
+          a fresh thread.
         </div>
       </div>
     );

@@ -48,6 +48,7 @@ import type {
 } from "../shared/protocol.ts";
 import "./db.ts";
 import {
+  attachRepo,
   createSession,
   getSession,
   listSessions,
@@ -123,6 +124,16 @@ app.post("/api/sessions", async (c) => {
     hasWorktree: !!session.worktreePath,
   });
   broadcast({ type: "session_created", session });
+
+  // Auto-start Codex. Best-effort: failures here don't fail session
+  // creation — the user can retry from the session view.
+  void startAgent(session.id).catch((err) => {
+    log.warn("sessions", "auto-start of codex failed", {
+      sessionId: session.id,
+      err: String(err instanceof Error ? err.message : err),
+    });
+  });
+
   const response: CreateSessionResponse = { session };
   return c.json(response, 201);
 });
@@ -139,6 +150,42 @@ app.get("/api/sessions/:id", (c) => {
   if (!session) return c.json({ error: "session not found" }, 404);
   const response: GetSessionResponse = { session };
   return c.json(response);
+});
+
+app.post("/api/sessions/:id/attach-repo", async (c) => {
+  const sessionId = c.req.param("id");
+  let body: { repoPath?: string };
+  try {
+    body = (await c.req.json()) as { repoPath?: string };
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  if (!body.repoPath || typeof body.repoPath !== "string") {
+    return c.json({ error: "repoPath is required" }, 400);
+  }
+  try {
+    const session = await attachRepo(sessionId, body.repoPath);
+    broadcast({ type: "session_updated", session });
+
+    // If Codex is running, restart it so the new cwd + baseInstructions
+    // take effect immediately.
+    if (isAgentRunning(sessionId)) {
+      await stopAgent(sessionId);
+    }
+    void startAgent(sessionId).catch((err) => {
+      log.warn("sessions", "restart after attach failed", {
+        sessionId,
+        err: String(err instanceof Error ? err.message : err),
+      });
+    });
+
+    return c.json({ session });
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      400,
+    );
+  }
 });
 
 app.get("/api/sessions/:id/verification", (c) => {
