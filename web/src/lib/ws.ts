@@ -136,6 +136,19 @@ class WsStore {
           turnInFlight: false,
         });
         break;
+      case "agent_approval_request":
+        useAppStore.getState().appendApproval(msg.sessionId, {
+          requestId: msg.requestId,
+          kind: msg.kind,
+          payload: msg.payload,
+          decision: null,
+        });
+        break;
+      case "agent_approval_resolved":
+        useAppStore
+          .getState()
+          .resolveApproval(msg.sessionId, msg.requestId, msg.decision);
+        break;
     }
   }
 

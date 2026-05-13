@@ -27,6 +27,8 @@ import { loadProfile } from "./profile.ts";
 import type {
   AgentItem,
   AgentItemState,
+  Sandbox,
+  ServerAgentApprovalRequest,
   ServerMessage,
   Session,
 } from "../shared/protocol.ts";
@@ -41,6 +43,9 @@ interface CodexSession {
   proc: Subprocess<"pipe", "pipe", "pipe">;
   nextRequestId: number;
   pendingRequests: Map<number, Pending>;
+  /** Codex → us approval requests awaiting browser decision, keyed by the
+   *  Codex JSON-RPC request id (which is what we must echo on response). */
+  pendingApprovals: Map<number, { method: string }>;
   threadId: string | null;
   itemTexts: Map<string, string>;
   itemMeta: Map<string, { kind: string }>;
@@ -120,9 +125,15 @@ export function isAgentRunning(sessionId: string): boolean {
   return sessions.has(sessionId);
 }
 
-export async function startAgent(sessionId: string): Promise<{
-  threadId: string;
-}> {
+export interface StartAgentOptions {
+  /** Override the session.sandbox for this start. */
+  sandbox?: Sandbox;
+}
+
+export async function startAgent(
+  sessionId: string,
+  options: StartAgentOptions = {},
+): Promise<{ threadId: string }> {
   if (sessions.has(sessionId)) {
     const s = sessions.get(sessionId)!;
     return { threadId: s.threadId ?? "" };
@@ -135,6 +146,14 @@ export async function startAgent(sessionId: string): Promise<{
       `session ${sessionId} has no worktree — create it with a repoPath`,
     );
   }
+
+  const sandbox: Sandbox = options.sandbox ?? session.sandbox;
+  // workspace-write gates risky ops behind approvals; read-only auto-approves
+  // (there's nothing dangerous to do).
+  const approvalPolicy =
+    sandbox === "workspace-write" || sandbox === "danger-full-access"
+      ? "on-request"
+      : "never";
 
   const dir = threadDir(sessionId);
   await mkdir(dir, { recursive: true });
@@ -161,6 +180,7 @@ export async function startAgent(sessionId: string): Promise<{
     proc,
     nextRequestId: 1,
     pendingRequests: new Map(),
+    pendingApprovals: new Map(),
     threadId: null,
     itemTexts: new Map(),
     itemMeta: new Map(),
@@ -193,8 +213,8 @@ export async function startAgent(sessionId: string): Promise<{
     const baseInstructions = await composeBaseInstructions(session);
     const threadResp = (await sendRequest(cs, "thread/start", {
       cwd: session.worktreePath,
-      approvalPolicy: "never",
-      sandbox: "read-only",
+      approvalPolicy,
+      sandbox,
       baseInstructions,
     })) as { thread?: { id?: string }; threadId?: string };
 
@@ -401,12 +421,81 @@ function handleResponse(cs: CodexSession, msg: JsonRpcResponse): void {
 }
 
 function handleIncomingRequest(cs: CodexSession, msg: JsonRpcRequest): void {
-  log.info("codex", "incoming request (auto-declining)", {
+  log.info("codex", "incoming request", {
     sessionId: cs.sessionId,
     method: msg.method,
     id: msg.id,
   });
-  sendRaw(cs, { id: msg.id, result: { decision: "decline" } });
+  cs.pendingApprovals.set(msg.id, { method: msg.method });
+
+  const params = (msg.params ?? {}) as Record<string, unknown>;
+  const kind = classifyApproval(msg.method);
+  const payload: ServerAgentApprovalRequest["payload"] = {};
+  const raw = (params.item ?? params) as Record<string, unknown>;
+
+  if (typeof raw.command !== "undefined") {
+    payload.command = raw.command as string | string[];
+  }
+  if (typeof raw.cwd === "string") payload.cwd = raw.cwd;
+  if (typeof raw.path === "string") payload.path = raw.path;
+  const k = raw.kind;
+  if (typeof k === "string") {
+    payload.changeKind = k as ServerAgentApprovalRequest["payload"]["changeKind"];
+  } else if (
+    k &&
+    typeof k === "object" &&
+    typeof (k as Record<string, unknown>).type === "string"
+  ) {
+    payload.changeKind = (k as { type: string })
+      .type as ServerAgentApprovalRequest["payload"]["changeKind"];
+  }
+  if (typeof raw.description === "string") payload.description = raw.description;
+  payload.raw = params;
+
+  emit({
+    type: "agent_approval_request",
+    sessionId: cs.sessionId,
+    requestId: msg.id,
+    kind,
+    payload,
+  });
+}
+
+function classifyApproval(
+  method: string,
+): ServerAgentApprovalRequest["kind"] {
+  if (method.includes("commandExecution")) return "command";
+  if (method.includes("execCommand")) return "exec";
+  if (method.includes("fileChange") || method.includes("applyPatch"))
+    return "file_edit";
+  if (method.includes("permissions")) return "permissions";
+  return "unknown";
+}
+
+export function respondToApproval(
+  sessionId: string,
+  requestId: number,
+  decision: "accept" | "decline",
+): boolean {
+  const cs = sessions.get(sessionId);
+  if (!cs) return false;
+  const pending = cs.pendingApprovals.get(requestId);
+  if (!pending) return false;
+  cs.pendingApprovals.delete(requestId);
+  sendRaw(cs, { id: requestId, result: { decision } });
+  emit({
+    type: "agent_approval_resolved",
+    sessionId,
+    requestId,
+    decision,
+  });
+  log.info("codex", "approval resolved", {
+    sessionId,
+    requestId,
+    method: pending.method,
+    decision,
+  });
+  return true;
 }
 
 function handleNotification(

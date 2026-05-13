@@ -27,6 +27,7 @@ import { log } from "./log.ts";
 import type {
   AgentMessageRequest,
   AgentMessageResponse,
+  ClientAgentApprovalResponse,
   CreateRunRequest,
   CreateRunResponse,
   CreateSessionRequest,
@@ -37,7 +38,9 @@ import type {
   ListRunsResponse,
   ListSessionsResponse,
   RunKind,
+  Sandbox,
   ServerMessage,
+  StartAgentRequest,
   StartAgentResponse,
 } from "../shared/protocol.ts";
 import "./db.ts";
@@ -56,6 +59,7 @@ import { loadProfile } from "./profile.ts";
 import {
   composeBaseInstructions,
   isAgentRunning,
+  respondToApproval,
   sendUserMessage,
   startAgent,
   stopAgent,
@@ -257,12 +261,27 @@ app.get("/api/sessions/:id/agent/context", async (c) => {
   return c.json({ baseInstructions: text });
 });
 
+const VALID_SANDBOXES: ReadonlySet<Sandbox> = new Set<Sandbox>([
+  "read-only",
+  "workspace-write",
+  "danger-full-access",
+]);
+
 app.post("/api/sessions/:id/agent/start", async (c) => {
   const sessionId = c.req.param("id");
   const session = getSession(sessionId);
   if (!session) return c.json({ error: "session not found" }, 404);
+  let body: StartAgentRequest = {};
   try {
-    await startAgent(sessionId);
+    body = (await c.req.json().catch(() => ({}))) as StartAgentRequest;
+  } catch {
+    body = {};
+  }
+  if (body.sandbox && !VALID_SANDBOXES.has(body.sandbox)) {
+    return c.json({ error: `invalid sandbox: ${body.sandbox}` }, 400);
+  }
+  try {
+    await startAgent(sessionId, { sandbox: body.sandbox });
     const fresh = getSession(sessionId);
     const response: StartAgentResponse = { session: fresh! };
     return c.json(response, 201);
@@ -346,8 +365,22 @@ app.get(
         const raw = event.data;
         if (typeof raw !== "string") return;
         try {
-          const msg = JSON.parse(raw) as { type?: string };
+          const msg = JSON.parse(raw) as { type?: string } & Record<string, unknown>;
           log.debug("ws", "message", { type: msg.type });
+          if (msg.type === "agent_approval_response") {
+            const r = msg as unknown as ClientAgentApprovalResponse;
+            const ok = respondToApproval(
+              r.sessionId,
+              r.requestId,
+              r.decision,
+            );
+            if (!ok) {
+              log.warn("ws", "approval response had no pending", {
+                sessionId: r.sessionId,
+                requestId: r.requestId,
+              });
+            }
+          }
         } catch {
           log.warn("ws", "non-JSON message", { len: raw.length });
         }

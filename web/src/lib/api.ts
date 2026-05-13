@@ -9,6 +9,7 @@ import type {
   GetSessionResponse,
   ListRunsResponse,
   ListSessionsResponse,
+  StartAgentRequest,
   StartAgentResponse,
 } from "@shared/protocol";
 
@@ -93,10 +94,16 @@ export function abortRun(id: string): Promise<{ ok: boolean }> {
 
 // ─── Agent (Codex) ────────────────────────────────────────────────────────
 
-export function startAgent(sessionId: string): Promise<StartAgentResponse> {
+export function startAgent(
+  sessionId: string,
+  body: StartAgentRequest = {},
+): Promise<StartAgentResponse> {
   return jsonRequest<StartAgentResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/agent/start`,
-    { method: "POST" },
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
   );
 }
 

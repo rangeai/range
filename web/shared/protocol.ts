@@ -279,6 +279,29 @@ export interface ServerAgentError {
   message: string;
 }
 
+export interface ServerAgentApprovalRequest {
+  type: "agent_approval_request";
+  sessionId: string;
+  requestId: number;
+  kind: "command" | "file_edit" | "patch" | "exec" | "permissions" | "unknown";
+  // Loose payload — varies by kind
+  payload: {
+    command?: string | string[];
+    cwd?: string;
+    path?: string;
+    changeKind?: "create" | "edit" | "delete" | "modify";
+    description?: string;
+    raw?: unknown;
+  };
+}
+
+export interface ServerAgentApprovalResolved {
+  type: "agent_approval_resolved";
+  sessionId: string;
+  requestId: number;
+  decision: "accept" | "decline";
+}
+
 export type ServerMessage =
   | ServerHello
   | ServerPing
@@ -293,7 +316,9 @@ export type ServerMessage =
   | ServerAgentTurnFinished
   | ServerAgentItem
   | ServerAgentMessageDelta
-  | ServerAgentError;
+  | ServerAgentError
+  | ServerAgentApprovalRequest
+  | ServerAgentApprovalResolved;
 
 // ─── Browser → Server ──────────────────────────────────────────────────────
 
@@ -302,7 +327,14 @@ export interface ClientPong {
   t: number;
 }
 
-export type ClientMessage = ClientPong;
+export interface ClientAgentApprovalResponse {
+  type: "agent_approval_response";
+  sessionId: string;
+  requestId: number;
+  decision: "accept" | "decline";
+}
+
+export type ClientMessage = ClientPong | ClientAgentApprovalResponse;
 
 // ─── REST API request/response shapes ─────────────────────────────────────
 
@@ -343,6 +375,10 @@ export interface ListRunsResponse {
 export interface GetRunResponse {
   run: Run;
   logs?: RunLogEntry[];
+}
+
+export interface StartAgentRequest {
+  sandbox?: Sandbox;
 }
 
 export interface StartAgentResponse {

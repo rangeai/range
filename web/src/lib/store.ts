@@ -4,8 +4,16 @@ import type {
   ProfileLoadResult,
   Run,
   RunLogEntry,
+  ServerAgentApprovalRequest,
   Session,
 } from "@shared/protocol";
+
+export interface PendingApproval {
+  requestId: number;
+  kind: ServerAgentApprovalRequest["kind"];
+  payload: ServerAgentApprovalRequest["payload"];
+  decision: "accept" | "decline" | null;
+}
 
 export type View =
   | { kind: "home" }
@@ -14,6 +22,7 @@ export type View =
 export type ConversationEntry =
   | { kind: "user"; text: string; t: number }
   | { kind: "agent_item"; item: AgentItem; t: number }
+  | { kind: "approval"; approval: PendingApproval; t: number }
   | { kind: "system"; text: string; t: number };
 
 export interface ConversationState {
@@ -67,6 +76,15 @@ interface AppState {
     sessionId: string,
     itemId: string,
     delta: string,
+  ) => void;
+  appendApproval: (
+    sessionId: string,
+    approval: PendingApproval,
+  ) => void;
+  resolveApproval: (
+    sessionId: string,
+    requestId: number,
+    decision: "accept" | "decline",
   ) => void;
 }
 
@@ -206,6 +224,33 @@ export const useAppStore = create<AppState>((set) => ({
       } else {
         entries = [...prev.entries, entry];
       }
+      next.set(sessionId, { ...prev, entries });
+      return { conversationsBySession: next };
+    }),
+
+  appendApproval: (sessionId, approval) =>
+    set((state) => {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId) ?? emptyConversation();
+      next.set(sessionId, {
+        ...prev,
+        entries: [
+          ...prev.entries,
+          { kind: "approval", approval, t: Date.now() },
+        ],
+      });
+      return { conversationsBySession: next };
+    }),
+
+  resolveApproval: (sessionId, requestId, decision) =>
+    set((state) => {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId) ?? emptyConversation();
+      const entries = prev.entries.map((e) =>
+        e.kind === "approval" && e.approval.requestId === requestId
+          ? { ...e, approval: { ...e.approval, decision } }
+          : e,
+      );
       next.set(sessionId, { ...prev, entries });
       return { conversationsBySession: next };
     }),

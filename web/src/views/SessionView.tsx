@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
 import { runsForSession, useAppStore } from "../lib/store";
+import { useWsSend } from "../lib/ws";
 import type {
   AgentItem,
   ProfileCommand,
@@ -9,9 +10,14 @@ import type {
   Run,
   RunLogEntry,
   RunState,
+  Sandbox,
   Session,
 } from "@shared/protocol";
-import type { ConversationEntry, ConversationState } from "../lib/store";
+import type {
+  ConversationEntry,
+  ConversationState,
+  PendingApproval,
+} from "../lib/store";
 
 export function SessionView({ sessionId }: { sessionId: string }) {
   const session = useAppStore((s) => s.sessions.get(sessionId));
@@ -183,7 +189,7 @@ function ConversationBlock({ session }: { session: Session }) {
         <AgentControls session={session} conv={conv} />
       </div>
       <ContextCard session={session} />
-      <ConversationTimeline conv={conv} />
+      <ConversationTimeline conv={conv} sessionId={session.id} />
       <MessageComposer session={session} conv={conv} />
     </section>
   );
@@ -305,12 +311,12 @@ function AgentControls({
   const pushSystem = useAppStore((s) => s.pushSystemEntry);
   const [busy, setBusy] = useState(false);
 
-  const start = async () => {
+  const start = async (sandbox: Sandbox) => {
     if (busy || !session.worktreePath) return;
     setBusy(true);
     patch(session.id, { status: "starting", error: null });
     try {
-      await api.startAgent(session.id);
+      await api.startAgent(session.id, { sandbox });
     } catch (e) {
       const msg = String(e instanceof Error ? e.message : e);
       patch(session.id, { status: "error", error: msg });
@@ -338,17 +344,47 @@ function AgentControls({
   return (
     <div className="flex items-center gap-1.5">
       {!running ? (
-        <button
-          onClick={start}
-          disabled={busy || noWorktree}
-          title={noWorktree ? "session has no repo attached" : undefined}
-          className="text-[11px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition flex items-center gap-1.5 font-medium"
-        >
-          <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="currentColor">
-            <path d="M3 2v8l7-4z" />
-          </svg>
-          {busy ? "starting…" : "start codex"}
-        </button>
+        <>
+          <button
+            onClick={() => start("read-only")}
+            disabled={busy || noWorktree}
+            title={
+              noWorktree
+                ? "session has no repo attached"
+                : "read-only: Codex can read + run safe commands; no file edits"
+            }
+            className="text-[11px] text-fg-1 border border-[var(--br-2)] hover:border-[var(--br-3)] hover:bg-[var(--bg-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition flex items-center gap-1.5"
+          >
+            <svg
+              className="w-2.5 h-2.5"
+              viewBox="0 0 12 12"
+              fill="currentColor"
+            >
+              <path d="M3 2v8l7-4z" />
+            </svg>
+            start · read-only
+          </button>
+          <button
+            onClick={() => start("workspace-write")}
+            disabled={busy || noWorktree}
+            title={
+              noWorktree
+                ? "session has no repo attached"
+                : "workspace-write: Codex can edit files; you approve each write"
+            }
+            className="text-[11px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition flex items-center gap-1.5 font-medium"
+          >
+            <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none">
+              <path
+                d="M2 8.5L6.5 4l1.5 1.5L3.5 10H2v-1.5z"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinejoin="round"
+              />
+            </svg>
+            {busy ? "starting…" : "start · workspace-write"}
+          </button>
+        </>
       ) : (
         <button
           onClick={stop}
@@ -365,7 +401,13 @@ function AgentControls({
   );
 }
 
-function ConversationTimeline({ conv }: { conv: ConversationState }) {
+function ConversationTimeline({
+  conv,
+  sessionId,
+}: {
+  conv: ConversationState;
+  sessionId: string;
+}) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = ref.current;
@@ -377,14 +419,11 @@ function ConversationTimeline({ conv }: { conv: ConversationState }) {
     return (
       <div className="border border-dashed border-[var(--br-1)] rounded-lg p-6 mb-3 bg-[var(--bg-1)]/40">
         <div className="text-[12.5px] text-fg-2 leading-relaxed">
-          Codex hasn't started for this session yet. Click{" "}
-          <span className="text-fg-1 font-medium">start codex</span> to spawn{" "}
-          <span className="font-mono text-[12px] text-fg-3">
-            codex app-server
-          </span>{" "}
-          in the session's worktree. Sandbox is{" "}
-          <span className="font-mono">read-only</span>, approvals are
-          auto-accepted.
+          Codex hasn't started for this session yet. Pick{" "}
+          <span className="text-fg-1 font-medium">read-only</span> to let Codex
+          inspect, or{" "}
+          <span className="text-fg-1 font-medium">workspace-write</span> to let
+          it edit (each write asks for your approval).
         </div>
       </div>
     );
@@ -396,7 +435,7 @@ function ConversationTimeline({ conv }: { conv: ConversationState }) {
       className="border border-[var(--br-1)] rounded-lg bg-[var(--bg-1)] mb-3 overflow-y-auto max-h-[460px] p-4 space-y-4"
     >
       {conv.entries.map((entry, i) => (
-        <ConversationEntryView key={i} entry={entry} />
+        <ConversationEntryView key={i} entry={entry} sessionId={sessionId} />
       ))}
       {conv.status === "error" && conv.error && (
         <div className="text-[11.5px] text-[var(--err)] border border-[var(--err)]/40 bg-[var(--err)]/10 rounded p-2 break-words">
@@ -407,7 +446,13 @@ function ConversationTimeline({ conv }: { conv: ConversationState }) {
   );
 }
 
-function ConversationEntryView({ entry }: { entry: ConversationEntry }) {
+function ConversationEntryView({
+  entry,
+  sessionId,
+}: {
+  entry: ConversationEntry;
+  sessionId: string;
+}) {
   if (entry.kind === "user") {
     return (
       <div className="flex gap-3">
@@ -425,7 +470,131 @@ function ConversationEntryView({ entry }: { entry: ConversationEntry }) {
       <div className="text-[10.5px] text-fg-3 italic">{entry.text}</div>
     );
   }
+  if (entry.kind === "approval") {
+    return (
+      <ApprovalCard approval={entry.approval} sessionId={sessionId} />
+    );
+  }
   return <AgentItemView item={entry.item} />;
+}
+
+function ApprovalCard({
+  approval,
+  sessionId,
+}: {
+  approval: PendingApproval;
+  sessionId: string;
+}) {
+  const wsSend = useWsSend();
+  const resolveApproval = useAppStore((s) => s.resolveApproval);
+
+  const decide = (decision: "accept" | "decline") => {
+    if (approval.decision) return;
+    resolveApproval(sessionId, approval.requestId, decision);
+    wsSend({
+      type: "agent_approval_response",
+      sessionId,
+      requestId: approval.requestId,
+      decision,
+    });
+  };
+
+  const headline = approvalHeadline(approval);
+  const body = approvalBody(approval);
+  const resolved = approval.decision !== null;
+
+  return (
+    <div className="flex gap-3">
+      <AgentBadge label="!" />
+      <div
+        className={`flex-1 min-w-0 border rounded-lg overflow-hidden ${
+          resolved
+            ? "border-[var(--br-1)] bg-[var(--bg-1)]"
+            : "border-[var(--warn)]/60 bg-[var(--warn)]/8"
+        }`}
+      >
+        <div className="px-3 py-2 flex items-center gap-2 border-b border-[var(--br-1)]">
+          <span
+            className="text-[10px] tracking-[0.16em] uppercase font-medium"
+            style={{
+              color: resolved ? "var(--fg-3)" : "var(--warn)",
+            }}
+          >
+            approval · {approval.kind}
+          </span>
+          <span className="text-fg-3 text-[10px]">·</span>
+          <span className="text-[11.5px] text-fg-1 truncate flex-1">
+            {headline}
+          </span>
+        </div>
+        {body && (
+          <pre className="font-mono text-[11.5px] text-fg-2 px-3 py-2 max-h-[160px] overflow-y-auto whitespace-pre-wrap break-words">
+            {body}
+          </pre>
+        )}
+        <div className="px-3 py-2 flex items-center gap-1.5 border-t border-[var(--br-1)]">
+          {resolved ? (
+            <span
+              className="text-[11px] font-medium"
+              style={{
+                color:
+                  approval.decision === "accept"
+                    ? "var(--ok)"
+                    : "var(--err)",
+              }}
+            >
+              {approval.decision === "accept" ? "accepted" : "declined"}
+            </span>
+          ) : (
+            <>
+              <button
+                onClick={() => decide("accept")}
+                className="text-[11px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] px-2.5 py-1 rounded transition font-medium"
+              >
+                accept
+              </button>
+              <button
+                onClick={() => decide("decline")}
+                className="text-[11px] text-fg-1 border border-[var(--br-2)] hover:border-[var(--br-3)] hover:bg-[var(--bg-2)] px-2.5 py-1 rounded transition"
+              >
+                decline
+              </button>
+              <span className="text-[10.5px] text-fg-3 italic ml-1">
+                Codex is waiting
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function approvalHeadline(approval: PendingApproval): string {
+  const { kind, payload } = approval;
+  if (payload.path) {
+    const change = payload.changeKind ?? "edit";
+    return `${change} ${payload.path}`;
+  }
+  if (payload.command) {
+    return Array.isArray(payload.command)
+      ? payload.command.join(" ")
+      : payload.command;
+  }
+  if (payload.description) return payload.description;
+  return kind;
+}
+
+function approvalBody(approval: PendingApproval): string | null {
+  const parts: string[] = [];
+  if (approval.payload.cwd) parts.push(`cwd: ${approval.payload.cwd}`);
+  if (
+    approval.payload.description &&
+    approval.payload.description !== approvalHeadline(approval)
+  ) {
+    parts.push(approval.payload.description);
+  }
+  return parts.length ? parts.join("\n") : null;
 }
 
 function AgentItemView({ item }: { item: AgentItem }) {
