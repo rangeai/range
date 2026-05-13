@@ -461,7 +461,7 @@ function ApprovalCard({
 
   return (
     <div className="flex gap-3">
-      <AgentBadge label="!" />
+      <AgentBadge label="!" tone="warn" />
       <div
         className={`flex-1 min-w-0 border rounded-lg overflow-hidden ${
           resolved
@@ -594,7 +594,7 @@ function AgentItemView({ item }: { item: AgentItem }) {
     case "file_edit":
       return (
         <div className="flex gap-3">
-          <AgentBadge label="✎" />
+          <AgentBadge label="✎" tone="tool" />
           <div className="flex-1 min-w-0">
             <div className="text-[12px] text-fg-1 font-mono break-words">
               {item.changeKind} {item.path}
@@ -610,7 +610,7 @@ function AgentItemView({ item }: { item: AgentItem }) {
     case "mcp_tool":
       return (
         <div className="flex gap-3">
-          <AgentBadge label="t" />
+          <AgentBadge label="t" tone="tool" />
           <div className="flex-1 min-w-0 text-[12px] text-fg-1 font-mono">
             mcp · {item.server ?? "?"}:{item.tool ?? "?"}
           </div>
@@ -619,7 +619,7 @@ function AgentItemView({ item }: { item: AgentItem }) {
     case "web_search":
       return (
         <div className="flex gap-3">
-          <AgentBadge label="?" />
+          <AgentBadge label="?" tone="tool" />
           <div className="flex-1 min-w-0 text-[12px] text-fg-1">
             web search · {item.query ?? "(no query)"}
           </div>
@@ -681,7 +681,7 @@ function CommandItemView({
 
   return (
     <div className="flex gap-3">
-      <AgentBadge label="$" />
+      <AgentBadge label="$" tone="tool" />
       <div className="flex-1 min-w-0">
         <button
           onClick={() => setUserOpen((o) => !o)}
@@ -753,9 +753,40 @@ function prettyCommand(cmd: string): string {
   return cmd;
 }
 
-function AgentBadge({ label }: { label: string }) {
+type BadgeTone = "talk" | "tool" | "warn";
+
+function AgentBadge({
+  label,
+  tone = "talk",
+}: {
+  label: string;
+  tone?: BadgeTone;
+}) {
+  const style =
+    tone === "tool"
+      ? {
+          background: "color-mix(in oklch, var(--accent) 14%, var(--bg-2))",
+          borderColor: "color-mix(in oklch, var(--accent) 30%, var(--br-2))",
+          color: "var(--accent)",
+        }
+      : tone === "warn"
+        ? {
+            background: "color-mix(in oklch, var(--warn) 14%, var(--bg-2))",
+            borderColor: "color-mix(in oklch, var(--warn) 30%, var(--br-2))",
+            color: "var(--warn)",
+          }
+        : undefined;
   return (
-    <div className="w-7 h-7 flex-shrink-0 rounded bg-[var(--bg-2)] border border-[var(--br-2)] text-[10.5px] flex items-center justify-center font-mono text-fg-1">
+    <div
+      className="w-7 h-7 flex-shrink-0 rounded border text-[10.5px] flex items-center justify-center font-mono"
+      style={
+        style ?? {
+          background: "var(--bg-2)",
+          borderColor: "var(--br-2)",
+          color: "var(--fg-1)",
+        }
+      }
+    >
       {label}
     </div>
   );
