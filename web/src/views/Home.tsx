@@ -1,27 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import * as api from "../lib/api";
 import { sessionsByRecency, useAppStore } from "../lib/store";
 import type { Session, SessionKind } from "@shared/protocol";
 
+/**
+ * Home is "no session selected" — just the composer. The session list
+ * lives in the left nav so it's always reachable; nothing to repeat
+ * here.
+ */
 export function Home() {
   const sessions = useAppStore((s) => s.sessions);
-  const upsertManySessions = useAppStore((s) => s.upsertManySessions);
-  const openSession = useAppStore((s) => s.openSession);
-
-  useEffect(() => {
-    api
-      .listSessions()
-      .then((res) => upsertManySessions(res.sessions))
-      .catch((err) => console.error("listSessions failed", err));
-  }, [upsertManySessions]);
-
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="min-h-full">
       <Hero sessions={sessions} />
-      <RecentSessions
-        sessions={sessionsByRecency(sessions)}
-        onOpen={openSession}
-      />
     </div>
   );
 }
@@ -66,13 +57,14 @@ function Hero({ sessions }: { sessions: Map<string, Session> }) {
     } catch (err) {
       console.error("createSession failed", err);
       setError(String(err instanceof Error ? err.message : err));
+    } finally {
       setBusy(false);
     }
   };
 
   return (
-    <section className="relative overflow-hidden border-b border-[var(--br-1)]">
-      <div className="absolute inset-0 grid-faint opacity-50"></div>
+    <section className="relative overflow-hidden min-h-full flex flex-col">
+      <div className="absolute inset-0 grid-faint opacity-50 pointer-events-none"></div>
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -81,7 +73,7 @@ function Hero({ sessions }: { sessions: Map<string, Session> }) {
         }}
       ></div>
 
-      <div className="max-w-3xl mx-auto px-6 pt-16 pb-12 relative">
+      <div className="max-w-3xl mx-auto w-full px-6 pt-16 pb-12 relative">
         <div className="text-[10px] tracking-[0.18em] uppercase text-fg-3 mb-3">
           {new Date()
             .toLocaleDateString(undefined, {
@@ -100,7 +92,8 @@ function Hero({ sessions }: { sessions: Map<string, Session> }) {
         <div
           className="rounded-xl overflow-hidden mb-4 border border-[var(--br-2)]"
           style={{
-            background: "linear-gradient(180deg, var(--bg-1) 0%, var(--bg) 100%)",
+            background:
+              "linear-gradient(180deg, var(--bg-1) 0%, var(--bg) 100%)",
             boxShadow:
               "0 1px 0 oklch(1 0 0 / 0.04) inset, 0 20px 60px -20px oklch(0 0 0 / 0.5), 0 0 0 1px var(--accent-soft)",
           }}
@@ -188,10 +181,7 @@ function Hero({ sessions }: { sessions: Map<string, Session> }) {
           <QuickChip onClick={() => submit("freeform")} disabled={busy}>
             freeform
           </QuickChip>
-          <QuickChip
-            onClick={() => submit("tracked_task")}
-            disabled={busy}
-          >
+          <QuickChip onClick={() => submit("tracked_task")} disabled={busy}>
             tracked task
           </QuickChip>
           <QuickChip
@@ -263,115 +253,4 @@ function QuickChip({
       {children}
     </button>
   );
-}
-
-function RecentSessions({
-  sessions,
-  onOpen,
-}: {
-  sessions: Session[];
-  onOpen: (id: string) => void;
-}) {
-  if (sessions.length === 0) {
-    return (
-      <section className="max-w-3xl mx-auto px-6 py-10">
-        <div className="text-[10px] tracking-[0.18em] uppercase text-fg-3 mb-3">
-          recent
-        </div>
-        <div className="text-[13px] text-fg-3 italic">
-          no sessions yet. start one above.
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section className="max-w-3xl mx-auto px-6 py-10">
-      <div className="flex items-center justify-between mb-4">
-        <div className="text-[10px] tracking-[0.18em] uppercase text-fg-3">
-          recent
-        </div>
-        <span className="text-fg-3 text-[11px] font-mono">
-          {sessions.length}
-        </span>
-      </div>
-      <div className="space-y-2">
-        {sessions.map((s) => (
-          <SessionRow key={s.id} session={s} onOpen={onOpen} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function SessionRow({
-  session,
-  onOpen,
-}: {
-  session: Session;
-  onOpen: (id: string) => void;
-}) {
-  const ageLabel = formatRelativeTime(session.updatedAt);
-  return (
-    <button
-      onClick={() => onOpen(session.id)}
-      className="w-full text-left border border-[var(--br-1)] hover:border-[var(--br-2)] hover:bg-[var(--bg-2)] bg-[var(--bg-1)] rounded-lg p-4 transition"
-    >
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-[10px] font-mono text-fg-3">
-          {session.id}
-        </span>
-        <span className="text-fg-3 text-[10px]">·</span>
-        <span className="text-[10px] font-mono text-fg-3">
-          {labelForKind(session.kind)}
-        </span>
-        {session.repoPath && (
-          <>
-            <span className="text-fg-3 text-[10px]">·</span>
-            <span
-              className="text-[10px] font-mono text-fg-3 truncate max-w-[300px]"
-              title={session.repoPath}
-            >
-              {shortenPath(session.repoPath)}
-            </span>
-          </>
-        )}
-      </div>
-      <div className="text-[14px] text-fg leading-snug mb-1.5 truncate">
-        {session.title}
-      </div>
-      <div className="text-[11px] text-fg-3 font-mono">
-        {session.status} · {ageLabel}
-      </div>
-    </button>
-  );
-}
-
-function labelForKind(kind: SessionKind): string {
-  return kind === "tracked_task"
-    ? "tracked"
-    : kind === "pr_verification"
-      ? "pr verify"
-      : "freeform";
-}
-
-function formatRelativeTime(t: number): string {
-  const diff = Date.now() - t;
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-function shortenPath(p: string): string {
-  const home = "/Users/";
-  if (!p.startsWith(home)) return p;
-  const rest = p.slice(home.length);
-  const slash = rest.indexOf("/");
-  if (slash === -1) return p;
-  return `~/${rest.slice(slash + 1)}`;
 }

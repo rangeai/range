@@ -18,7 +18,6 @@ export function SessionView({ sessionId }: { sessionId: string }) {
   const profile = useAppStore((s) => s.profilesBySession.get(sessionId));
   const upsertSession = useAppStore((s) => s.upsertSession);
   const setProfile = useAppStore((s) => s.setProfile);
-  const goHome = useAppStore((s) => s.goHome);
 
   useEffect(() => {
     if (!session) {
@@ -42,39 +41,16 @@ export function SessionView({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        <BackToHome onBack={goHome} />
-        <SessionHeader session={session} profile={profile} />
-        <WorktreeBlock session={session} />
-        <ConversationBlock session={session} />
-        <RunsBlock session={session} profile={profile} />
-      </div>
+    <div className="max-w-3xl mx-auto px-6 py-8">
+      <SessionHeader session={session} profile={profile} />
+      <WorktreeBlock session={session} />
+      <ConversationBlock session={session} />
+      <RunsBlock session={session} profile={profile} />
     </div>
   );
 }
 
 // ─── Header ────────────────────────────────────────────────────────────────
-
-function BackToHome({ onBack }: { onBack: () => void }) {
-  return (
-    <button
-      onClick={onBack}
-      className="text-[11px] text-fg-3 hover:text-fg-1 mb-4 flex items-center gap-1"
-    >
-      <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none">
-        <path
-          d="M7 2L3 6l4 4"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      back to home
-    </button>
-  );
-}
 
 function SessionHeader({
   session,

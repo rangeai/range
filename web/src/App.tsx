@@ -1,6 +1,7 @@
 import { useWsState } from "./lib/ws";
 import { useAppStore } from "./lib/store";
 import { Home } from "./views/Home";
+import { LeftNav } from "./views/LeftNav";
 import { SessionView } from "./views/SessionView";
 
 export function App() {
@@ -9,13 +10,22 @@ export function App() {
   const ws = useWsState();
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <Header
         onHome={goHome}
         connection={ws.connection.phase}
         latencyMs={ws.latencyMs}
       />
-      {view.kind === "home" ? <Home /> : <SessionView sessionId={view.id} />}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        <LeftNav />
+        <main className="flex-1 overflow-y-auto min-w-0">
+          {view.kind === "home" ? (
+            <Home />
+          ) : (
+            <SessionView sessionId={view.id} />
+          )}
+        </main>
+      </div>
     </div>
   );
 }
