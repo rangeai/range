@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>05 · Reproduce CI — Range mock</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <h1>Range</h1>
+    <div class="sub">agentic sim harness</div>
+    <button class="nav-cta">＋ new session</button>
+
+    <div class="nav-section">sessions</div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>warehouse pick failures</div>
+      <span class="ts">yest</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>anymal stair Kp sweep</div>
+      <span class="ts">yest</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>warp solver regression</div>
+      <span class="ts">yest</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>UR10 conveyor scenario</div>
+      <span class="ts">yest</span>
+    </div>
+    <div class="nav-item active">
+      <span class="dot"></span>
+      <div>walker CI repro #2914</div>
+      <span class="ts">now</span>
+    </div>
+  </aside>
+
+  <div class="main">
+
+    <div class="header">
+      <span class="proj">locomotion-rl</span>
+      <span class="path">~/code/locomotion-rl</span>
+      <span class="spacer"></span>
+      <span class="pill accent">workspace-write</span>
+      <span class="pill">range/&hellip;/ci-walker-repro</span>
+      <span class="pill">mujoco 3.2.6</span>
+    </div>
+
+    <div class="conv">
+      <div class="conv-inner">
+
+        <!-- User -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar">you</div>
+            <div class="body user-text">
+              Walker CI failed overnight. Find out why.<br>
+              <code style="font-size:11.5px;">https://gitlab.../-/jobs/2914556</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent reasoning -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>
+                Pulling the job log via <code>glab</code>… failure is in
+                <code>tests/sim/test_walker_gait_stability.py::test_seed_42</code>:
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- CI failure card -->
+        <div class="turn">
+          <div class="card">
+            <div class="card-head">
+              <span class="badge err">ci failure · job #2914556</span>
+              <span class="title">test_walker_gait_stability · seed 42</span>
+              <span class="meta">stage: integration · exit 1</span>
+            </div>
+            <div class="diff">
+              <div class="hd">tests/sim/test_walker_gait_stability.py · last 14 lines</div>
+              <div class="line ctx">     for t in range(env.cfg.episode_steps):</div>
+              <div class="line ctx">         action = policy(obs)</div>
+              <div class="line ctx">         obs, _, done, info = env.step(action)</div>
+              <div class="line ctx"> </div>
+              <div class="line ctx">         max_torque = float(np.abs(info["torque"]).max())</div>
+              <div class="line del">&gt;       assert max_torque &lt; 50.0, f"max_torque={max_torque:.1f}"</div>
+              <div class="line err" style="color:var(--err);padding:0 12px;">E       AssertionError: max_torque=58.3</div>
+              <div class="line err" style="color:var(--err);padding:0 12px;">E         at step 1450 (t=2.90s, hip_R)</div>
+              <div class="line ctx"> </div>
+              <div class="line ctx"> ─── captured stdout ───</div>
+              <div class="line ctx"> [walker] seed=42 reward_mean=8.4 ep_len=1450</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent: reproduce locally -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>Reproducing locally with the same seed:</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="turn">
+          <div class="card">
+            <div class="card-head">
+              <span class="badge err">run · reproduce</span>
+              <span class="title">walker_gait_stability · seed 42</span>
+              <span class="meta">12s · exit 1</span>
+            </div>
+            <div class="chips">
+              <span class="chip err"><span class="k">repro</span>confirmed</span>
+              <span class="chip err"><span class="k">max_torque</span>58.3 Nm</span>
+              <span class="chip"><span class="k">fail_step</span>1450 / 2000</span>
+              <span class="chip"><span class="k">joint</span>hip_R</span>
+              <span class="chip muted"><span class="k">seed</span>42</span>
+              <span class="chip muted"><span class="k">device</span>cpu</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent: bisect commit -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>
+                Same failure locally. Bisecting against last week's green build
+                (<code>3 days ago · a91c4f2</code>) to find what changed:
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="turn">
+          <div class="card">
+            <div class="card-head">
+              <span class="badge warn">bisect · 11 commits</span>
+              <span class="title">first bad commit</span>
+              <span class="meta">4 binary steps · 47s</span>
+            </div>
+            <table class="cmp">
+              <thead>
+                <tr><th>commit</th><th>author</th><th>summary</th><th style="text-align:right">max_torque</th><th style="text-align:right">verdict</th></tr>
+              </thead>
+              <tbody>
+                <tr class="imp"><td class="num">a91c4f2</td><td>—</td><td>baseline (3d ago, green)</td><td class="num">42.1</td><td style="text-align:right;"><span class="chip ok">pass</span></td></tr>
+                <tr class="imp"><td class="num">d8e2a01</td><td>priya</td><td>refactor reward shaping</td><td class="num">43.9</td><td style="text-align:right;"><span class="chip ok">pass</span></td></tr>
+                <tr class="imp"><td class="num">5f7b39e</td><td>karthik</td><td>Anymal URDF link masses</td><td class="num">44.2</td><td style="text-align:right;"><span class="chip ok">pass</span></td></tr>
+                <tr class="reg"><td class="num">c4f12bd</td><td>soum</td><td><strong>tune walker pd gains for harder terrain</strong></td><td class="num">58.6</td><td style="text-align:right;"><span class="chip err">first bad</span></td></tr>
+                <tr><td class="num">2af11b9</td><td>anika</td><td>warp version bump 1.13 → 1.14</td><td class="num">58.4</td><td class="num" style="text-align:right;color:var(--fg-3)">—</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Agent diagnosis -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>
+                <strong style="color:var(--fg);font-weight:600;">First bad commit:
+                <code>c4f12bd</code> by Soum</strong> — "tune walker pd gains for
+                harder terrain." The hip joint <code>Kp</code> went from 35 → 60.
+                That's why max_torque jumped past the 50 Nm assertion.
+              </p>
+              <p>Two reasonable fixes:</p>
+              <ul>
+                <li><strong>Raise the assertion threshold to 65 Nm</strong> if the new gains
+                  are intentional (Soum's commit says terrain is harder, so this is
+                  plausible).</li>
+                <li><strong>Revert the hip Kp</strong> from 60 → 35 if the new gains were
+                  exploratory and shouldn't have landed.</li>
+              </ul>
+              <p>
+                I don't have signal on which is correct. Defaulting to option 1
+                (raise threshold) since the commit was approved by Soum and merged
+                two days ago — looks intentional. Diff:
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Diff -->
+        <div class="turn">
+          <div class="card">
+            <div class="card-head">
+              <span class="badge warn">proposed diff</span>
+              <span class="title">tests/sim/test_walker_gait_stability.py</span>
+              <span class="meta">+2 / −1</span>
+            </div>
+            <div class="diff">
+              <div class="hd">@@ -47,7 +47,8 @@ def test_seed_42(env):</div>
+              <div class="line ctx">         obs, _, done, info = env.step(action)</div>
+              <div class="line ctx">         max_torque = float(np.abs(info["torque"]).max())</div>
+              <div class="line del">-    assert max_torque &lt; 50.0, f"max_torque={max_torque:.1f}"</div>
+              <div class="line add">+    # Raised from 50 → 65 after c4f12bd retuned hip PD gains for harder terrain.</div>
+              <div class="line add">+    assert max_torque &lt; 65.0, f"max_torque={max_torque:.1f}"</div>
+              <div class="line ctx"> </div>
+              <div class="line ctx">     assert info["fall_count"] == 0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Approval -->
+        <div class="turn">
+          <div class="card approval">
+            <div class="card-head">
+              <span class="badge warn">approval</span>
+              <span class="title">apply this and open PR?</span>
+            </div>
+            <div class="card-body" style="font-size:12.5px;color:var(--fg-2);">
+              Re-runs the full <code>test_walker_gait_stability</code> module first
+              (~30s). If it passes, drafts a PR referencing job
+              <code>#2914556</code> and Soum's commit <code>c4f12bd</code>.
+            </div>
+            <div class="actions">
+              <button class="btn primary">apply · re-run · open PR</button>
+              <button class="btn ghost">revert Soum's commit instead</button>
+              <button class="btn ghost">ping Soum, don't merge anything</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Activity bar: in-flight feel -->
+    <div class="activity">
+      <span class="spinner"></span>
+      <span><span class="scenario">walker_gait_stability</span> · awaiting your call · &nbsp;<span style="color:var(--fg-3)">5 commits bisected · 3 reruns</span></span>
+      <span class="live-line">[bisect] c4f12bd · seed 42 · step 1450 · hip_R torque=58.6 · &gt; threshold</span>
+    </div>
+
+    <div class="composer">
+      <div class="ta-wrap">
+        <textarea placeholder="reply, or describe what you want next…"></textarea>
+        <button class="send">↵ send</button>
+      </div>
+      <div class="hint">
+        <span>⏎ to send · ⇧⏎ for newline</span>
+        <span>workspace-write · approvals required</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

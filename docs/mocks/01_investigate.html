@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>01 · Investigate — Range mock</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <h1>Range</h1>
+    <div class="sub">agentic sim harness</div>
+
+    <button class="nav-cta">＋ new session</button>
+
+    <div class="nav-section">sessions</div>
+    <div class="nav-item active">
+      <span class="dot"></span>
+      <div>warehouse pick failures</div>
+      <span class="ts">2m</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>anymal stair Kp sweep</div>
+      <span class="ts">1h</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>warp solver regression</div>
+      <span class="ts">3h</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>UR10 conveyor scenario</div>
+      <span class="ts">yest</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>walker CI repro #2914</div>
+      <span class="ts">yest</span>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- Header -->
+    <div class="header">
+      <span class="proj">franka-warehouse</span>
+      <span class="path">~/code/franka-warehouse</span>
+      <span class="spacer"></span>
+      <span class="pill accent">workspace-write</span>
+      <span class="pill">range/&hellip;/pick-fail-investigation</span>
+      <span class="pill">mujoco 3.2.6</span>
+    </div>
+
+    <!-- Conversation -->
+    <div class="conv">
+      <div class="conv-inner">
+
+        <!-- User turn -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar">you</div>
+            <div class="body user-text">
+              The franka warehouse pick is failing 3/10 runs lately and I can't repro
+              it locally. Dig in — figure out what's going on and propose a fix.
+              Scenario is <code>pick_from_bin</code>.
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent reasoning + plan -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>
+                Intermittent failure on <code>pick_from_bin</code> — most likely a
+                contact / seed-dependent issue rather than a logic bug, since the
+                scenario passed in CI two weeks ago and the only changes since are
+                in the gripper finger asset.
+              </p>
+              <p>
+                Plan: rerun the scenario over 20 seeds with extra
+                instrumentation (contact depth, gripper closure offset, time-to-grasp),
+                cluster the failures, then narrow down.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sweep card (completed) -->
+        <div class="turn">
+          <div class="card">
+            <div class="card-head">
+              <span class="badge">sweep · seeds</span>
+              <span class="title">pick_from_bin · 20 seeds · instrumented</span>
+              <span class="meta">2:48 · 20/20 done</span>
+            </div>
+            <div class="card-body">
+              <div class="row mono">
+                <span style="color:var(--fg-3)">scenario</span>
+                <span>pick_from_bin</span>
+              </div>
+              <div class="row mono">
+                <span style="color:var(--fg-3)">command</span>
+                <span>uv run tools/range_shim.py manipulation.pick_from_bin --instrument contact,gripper,ttg</span>
+              </div>
+              <div class="row mono">
+                <span style="color:var(--fg-3)">sweep</span>
+                <span>RANGE_SEED ∈ {0..19}</span>
+              </div>
+            </div>
+            <div class="chips">
+              <span class="chip ok"><span class="k">success</span>13/20</span>
+              <span class="chip err"><span class="k">fail</span>7/20</span>
+              <span class="chip"><span class="k">ttg</span>1.42–2.86s</span>
+              <span class="chip"><span class="k">max_contact_depth</span>0.008–0.034m</span>
+              <span class="chip muted"><span class="k">device</span>cpu</span>
+            </div>
+
+            <!-- Inline failure plot -->
+            <div style="padding: 16px 12px 8px; border-top: 1px solid var(--br-1); background: var(--bg);">
+              <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--fg-3);margin-bottom:10px;">
+                max contact depth (m) · per seed · red = grasp failed
+              </div>
+              <svg viewBox="0 0 600 160" width="100%" preserveAspectRatio="none" style="display:block">
+                <!-- axes -->
+                <line x1="40" y1="130" x2="580" y2="130" stroke="#262c35" stroke-width="1"/>
+                <line x1="40" y1="20" x2="40" y2="130" stroke="#262c35" stroke-width="1"/>
+
+                <!-- threshold line -->
+                <line x1="40" y1="62" x2="580" y2="62" stroke="#d4a657" stroke-width="1" stroke-dasharray="4 4" opacity="0.6"/>
+                <text x="540" y="58" font-family="JetBrains Mono" font-size="9" fill="#d4a657" text-anchor="end">solver tolerance · 0.020m</text>
+
+                <!-- bars -->
+                <!-- Successes (green): mostly low contact depth -->
+                <g fill="#7cb98c">
+                  <rect x="55"  y="115" width="14" height="15"/><!-- seed 0  d=0.009 -->
+                  <rect x="80"  y="118" width="14" height="12"/><!-- seed 1  d=0.008 -->
+                  <rect x="105" y="111" width="14" height="19"/><!-- seed 2  d=0.012 -->
+                  <rect x="130" y="106" width="14" height="24"/><!-- seed 3  d=0.014 -->
+                  <rect x="155" y="113" width="14" height="17"/><!-- seed 4  d=0.011 -->
+                  <rect x="180" y="118" width="14" height="12"/><!-- seed 5  d=0.008 -->
+                  <rect x="205" y="103" width="14" height="27"/><!-- seed 7  d=0.015 -->
+                  <rect x="280" y="111" width="14" height="19"/><!-- seed 11 -->
+                  <rect x="305" y="118" width="14" height="12"/><!-- seed 12 -->
+                  <rect x="330" y="106" width="14" height="24"/><!-- seed 13 -->
+                  <rect x="380" y="118" width="14" height="12"/><!-- seed 15 -->
+                  <rect x="405" y="113" width="14" height="17"/><!-- seed 16 -->
+                  <rect x="455" y="108" width="14" height="22"/><!-- seed 18 -->
+                </g>
+                <!-- Failures (red): cluster above threshold -->
+                <g fill="#e07a7a">
+                  <rect x="230" y="56" width="14" height="74"/><!-- seed 8  d=0.030 -->
+                  <rect x="255" y="42" width="14" height="88"/><!-- seed 9  d=0.034 -->
+                  <rect x="355" y="60" width="14" height="70"/><!-- seed 14 d=0.028 -->
+                  <rect x="430" y="48" width="14" height="82"/><!-- seed 17 d=0.032 -->
+                  <rect x="480" y="55" width="14" height="75"/><!-- seed 19 d=0.029 -->
+                  <rect x="505" y="58" width="14" height="72"/><!-- seed 19+ -->
+                  <rect x="530" y="46" width="14" height="84"/><!-- seed 19++ -->
+                </g>
+
+                <!-- x labels -->
+                <text x="60"  y="148" font-family="JetBrains Mono" font-size="9" fill="#5a6068">0</text>
+                <text x="285" y="148" font-family="JetBrains Mono" font-size="9" fill="#5a6068">10</text>
+                <text x="535" y="148" font-family="JetBrains Mono" font-size="9" fill="#5a6068">19</text>
+                <text x="22"  y="135" font-family="JetBrains Mono" font-size="9" fill="#5a6068">0</text>
+                <text x="22"  y="65"  font-family="JetBrains Mono" font-size="9" fill="#5a6068">.02</text>
+                <text x="22"  y="25"  font-family="JetBrains Mono" font-size="9" fill="#5a6068">.04</text>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent diagnosis -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>
+                Clear cluster. <strong style="color:var(--fg);font-weight:600;">All 7 failures have
+                <code>max_contact_depth</code> &gt; 0.020m</strong>, the tolerance the contact
+                solver was tuned for. Successes stay under 0.018m. The fingertip
+                is penetrating the cube on certain initial gripper orientations
+                (yaw ≈ -0.3 rad on seeds 9, 14, 17, 19).
+              </p>
+              <p>
+                Two likely causes:
+              </p>
+              <ul>
+                <li>The new fingertip mesh from PR #284 has a flat collision face
+                that's catching at corners.</li>
+                <li>Or the warp solver's contact iteration budget (currently 10) is
+                  insufficient for the new mesh's contact count.</li>
+              </ul>
+              <p>
+                Cheaper to test the second hypothesis first. Bumping iterations
+                from 10 → 20 in <code>scenarios/manipulation/pick_from_bin/scene.xml</code>:
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Diff card -->
+        <div class="turn">
+          <div class="card">
+            <div class="card-head">
+              <span class="badge warn">proposed diff</span>
+              <span class="title">scenarios/manipulation/pick_from_bin/scene.xml</span>
+              <span class="meta">+1 / −1</span>
+            </div>
+            <div class="diff">
+              <div class="hd">@@ -42,7 +42,7 @@ &lt;option timestep="0.002"&gt;</div>
+              <div class="line ctx">     &lt;flag warmstart="enable" /&gt;</div>
+              <div class="line ctx">     &lt;solver type="newton" /&gt;</div>
+              <div class="line del">-    &lt;option iterations="10" tolerance="0.020"/&gt;</div>
+              <div class="line add">+    &lt;option iterations="20" tolerance="0.020"/&gt;</div>
+              <div class="line ctx">   &lt;/option&gt;</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Approval card (sticky-ish at bottom of conversation) -->
+        <div class="turn">
+          <div class="card approval">
+            <div class="card-head">
+              <span class="badge warn">approval</span>
+              <span class="title">apply this change + re-run 20-seed sweep?</span>
+            </div>
+            <div class="card-body" style="font-size:12.5px;color:var(--fg-2);">
+              If it holds (no failures above 0.020m), I'll mark this as the fix.
+              If it doesn't, I'll fall back to the fingertip mesh hypothesis and
+              bisect against PR #284.
+            </div>
+            <div class="actions">
+              <button class="btn primary">apply &amp; re-run</button>
+              <button class="btn ghost">apply only</button>
+              <button class="btn ghost">decline · try mesh hypothesis instead</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Activity bar -->
+    <div class="activity">
+      <span class="idle" style="font-family:var(--mono);font-size:11px;">◦ idle · waiting on approval</span>
+      <span class="live-line"></span>
+    </div>
+
+    <!-- Composer -->
+    <div class="composer">
+      <div class="ta-wrap">
+        <textarea placeholder="reply, or describe what you want next…"></textarea>
+        <button class="send">↵ send</button>
+      </div>
+      <div class="hint">
+        <span>⏎ to send · ⇧⏎ for newline</span>
+        <span>workspace-write · approvals required</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>03 · Regression — Range mock</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <h1>Range</h1>
+    <div class="sub">agentic sim harness</div>
+    <button class="nav-cta">＋ new session</button>
+
+    <div class="nav-section">sessions</div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>warehouse pick failures</div>
+      <span class="ts">12m</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>anymal stair Kp sweep</div>
+      <span class="ts">1h</span>
+    </div>
+    <div class="nav-item active">
+      <span class="dot"></span>
+      <div>warp solver regression</div>
+      <span class="ts">now</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>UR10 conveyor scenario</div>
+      <span class="ts">yest</span>
+    </div>
+  </aside>
+
+  <div class="main">
+
+    <div class="header">
+      <span class="proj">warp</span>
+      <span class="path">~/code/warp</span>
+      <span class="spacer"></span>
+      <span class="pill accent">workspace-write</span>
+      <span class="pill">range/&hellip;/contact-solver-tweak</span>
+      <span class="pill">warp 1.14.0.dev</span>
+    </div>
+
+    <div class="conv">
+      <div class="conv-inner">
+
+        <!-- User -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar">you</div>
+            <div class="body user-text">
+              I tweaked the contact solver in <code>warp/native/contact.cu</code> —
+              loosened the depth-clamp epsilon from 1e-6 → 1e-4 to fix the cloth
+              jitter on the bunny demo. Run the baseline regression suite against
+              <code>main@a3f2c91</code> and tell me what broke.
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent plan -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>
+                Running the 8-scenario baseline suite on both
+                <code>main@a3f2c91</code> and <code>HEAD@7b1d4e2</code>. Each
+                scenario uses 10 fixed seeds; metrics from <code>range.yaml</code>
+                are <code>success_rate</code> and <code>ttg_s</code>.
+              </p>
+              <p>
+                Building Warp native lib once per branch (~2 min each), then 8 × 10
+                = 80 runs. Total: ~9 min.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Comparison card -->
+        <div class="turn">
+          <div class="card">
+            <div class="card-head">
+              <span class="badge ok">comparison · baseline suite</span>
+              <span class="title">HEAD@7b1d4e2 vs main@a3f2c91</span>
+              <span class="meta">8 scenarios · 80 runs · 9:12 elapsed</span>
+            </div>
+            <table class="cmp">
+              <thead>
+                <tr>
+                  <th>scenario</th>
+                  <th style="text-align:right">base success</th>
+                  <th style="text-align:right">new success</th>
+                  <th style="text-align:right">Δ success</th>
+                  <th style="text-align:right">base ttg (s)</th>
+                  <th style="text-align:right">new ttg (s)</th>
+                  <th style="text-align:right">Δ ttg</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>franka.pick_from_bin</td>
+                  <td class="num">100%</td><td class="num">100%</td>
+                  <td class="num delta" style="color:var(--fg-3)">±0</td>
+                  <td class="num">1.42</td><td class="num">1.41</td>
+                  <td class="num delta pos">−0.7%</td>
+                </tr>
+                <tr class="imp">
+                  <td>cloth.bunny_drape</td>
+                  <td class="num">70%</td><td class="num">100%</td>
+                  <td class="num delta pos">+30%</td>
+                  <td class="num">3.18</td><td class="num">2.94</td>
+                  <td class="num delta pos">−7.5%</td>
+                </tr>
+                <tr class="imp">
+                  <td>cloth.flag_wave</td>
+                  <td class="num">90%</td><td class="num">100%</td>
+                  <td class="num delta pos">+10%</td>
+                  <td class="num">2.10</td><td class="num">2.04</td>
+                  <td class="num delta pos">−2.9%</td>
+                </tr>
+                <tr>
+                  <td>locomotion.flat_walk</td>
+                  <td class="num">100%</td><td class="num">100%</td>
+                  <td class="num delta" style="color:var(--fg-3)">±0</td>
+                  <td class="num">4.05</td><td class="num">4.07</td>
+                  <td class="num delta neg">+0.5%</td>
+                </tr>
+                <tr class="reg">
+                  <td>locomotion.stair_climb</td>
+                  <td class="num">92%</td><td class="num">78%</td>
+                  <td class="num delta neg">−14%</td>
+                  <td class="num">5.41</td><td class="num">5.83</td>
+                  <td class="num delta neg">+7.8%</td>
+                </tr>
+                <tr>
+                  <td>granular.dem_pile</td>
+                  <td class="num">100%</td><td class="num">100%</td>
+                  <td class="num delta" style="color:var(--fg-3)">±0</td>
+                  <td class="num">1.86</td><td class="num">1.84</td>
+                  <td class="num delta pos">−1.1%</td>
+                </tr>
+                <tr>
+                  <td>fluid.dam_break</td>
+                  <td class="num">100%</td><td class="num">100%</td>
+                  <td class="num delta" style="color:var(--fg-3)">±0</td>
+                  <td class="num">2.55</td><td class="num">2.59</td>
+                  <td class="num delta neg">+1.6%</td>
+                </tr>
+                <tr>
+                  <td>manipulation.cube_stack</td>
+                  <td class="num">90%</td><td class="num">90%</td>
+                  <td class="num delta" style="color:var(--fg-3)">±0</td>
+                  <td class="num">3.74</td><td class="num">3.71</td>
+                  <td class="num delta pos">−0.8%</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="chips">
+              <span class="chip ok"><span class="k">improved</span>2 scenarios</span>
+              <span class="chip err"><span class="k">regressed</span>1 scenario</span>
+              <span class="chip"><span class="k">unchanged</span>5 scenarios</span>
+              <span class="chip muted"><span class="k">base sha</span>a3f2c91</span>
+              <span class="chip muted"><span class="k">head sha</span>7b1d4e2</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent analysis -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>
+                Good news first: <strong style="color:var(--ok);font-weight:600;">cloth scenarios are clearly better.</strong>
+                Bunny goes from 70 → 100% and is also faster. The jitter fix is real.
+              </p>
+              <p>
+                <strong style="color:var(--err);font-weight:600;">But</strong> <code>locomotion.stair_climb</code>
+                regressed from 92% → 78%. Looking at the failing rollouts: in 14 of
+                the new failures, the rear foot penetrates the riser by ~3mm before
+                the solver corrects. Your looser epsilon is letting the foot
+                penetrate further before the contact constraint kicks in, and
+                the swing-leg controller compensates by overshooting.
+              </p>
+              <p>I bisected the epsilon to find the worst threshold for stair_climb:</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bisect card -->
+        <div class="turn">
+          <div class="card">
+            <div class="card-head">
+              <span class="badge warn">bisect · stair_climb only</span>
+              <span class="title">epsilon vs success rate</span>
+              <span class="meta">5 epsilon × 20 seeds</span>
+            </div>
+            <table class="cmp">
+              <thead>
+                <tr><th>epsilon</th><th style="text-align:right">success</th><th style="text-align:right">mean foot penetration</th><th style="text-align:right">verdict</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="num">1e-6 (main)</td><td class="num">92%</td><td class="num">0.4mm</td><td><span class="chip ok">baseline</span></td></tr>
+                <tr><td class="num">5e-6</td><td class="num">94%</td><td class="num">0.6mm</td><td><span class="chip ok">acceptable</span></td></tr>
+                <tr><td class="num">1e-5</td><td class="num">88%</td><td class="num">1.2mm</td><td><span class="chip warn">marginal</span></td></tr>
+                <tr><td class="num">5e-5</td><td class="num">81%</td><td class="num">2.1mm</td><td><span class="chip err">degraded</span></td></tr>
+                <tr><td class="num">1e-4 (head)</td><td class="num">78%</td><td class="num">3.0mm</td><td><span class="chip err">regressed</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Agent proposal -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>
+                You can keep most of the cloth win at <code>epsilon = 5e-6</code>:
+                bunny still passes 100% in a separate 20-seed check, and stair_climb
+                stays at 94%. The 1e-4 you used was overkill.
+              </p>
+              <p>Proposed diff (just the constant):</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Diff -->
+        <div class="turn">
+          <div class="card">
+            <div class="card-head">
+              <span class="badge warn">proposed diff</span>
+              <span class="title">warp/native/contact.cu</span>
+              <span class="meta">+1 / −1</span>
+            </div>
+            <div class="diff">
+              <div class="hd">@@ -118,7 +118,7 @@ __device__ inline float contact_clamp_depth(float d) {</div>
+              <div class="line ctx">     // clamp negative depths to a small positive epsilon so the</div>
+              <div class="line ctx">     // constraint solver has a finite Jacobian.</div>
+              <div class="line del">-    constexpr float CONTACT_EPS = 1e-4f;</div>
+              <div class="line add">+    constexpr float CONTACT_EPS = 5e-6f;</div>
+              <div class="line ctx">     return fmaxf(d, CONTACT_EPS);</div>
+              <div class="line ctx"> }</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Approval -->
+        <div class="turn">
+          <div class="card approval">
+            <div class="card-head">
+              <span class="badge warn">approval</span>
+              <span class="title">apply the 5e-6 compromise + open PR?</span>
+            </div>
+            <div class="card-body" style="font-size:12.5px;color:var(--fg-2);">
+              Re-runs the full baseline suite first (expected: cloth wins kept,
+              stair_climb back to 94%). Drafts a PR with this comparison table in
+              the body. PR target branch <code>main</code>.
+            </div>
+            <div class="actions">
+              <button class="btn primary">re-run · approve · open PR</button>
+              <button class="btn ghost">just commit locally</button>
+              <button class="btn ghost">decline · keep 1e-4 for now</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Activity bar -->
+    <div class="activity">
+      <span class="idle" style="font-family:var(--mono);font-size:11px;">◦ idle · awaiting approval</span>
+      <span class="live-line">last log line: [bisect] eps=1e-4 · seed 19 · stair_climb · fail (foot penetration 3.4mm)</span>
+    </div>
+
+    <div class="composer">
+      <div class="ta-wrap">
+        <textarea placeholder="reply, or describe what you want next…"></textarea>
+        <button class="send">↵ send</button>
+      </div>
+      <div class="hint">
+        <span>⏎ to send · ⇧⏎ for newline</span>
+        <span>workspace-write · approvals required</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

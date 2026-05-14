@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>04 · Author scenario — Range mock</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <h1>Range</h1>
+    <div class="sub">agentic sim harness</div>
+    <button class="nav-cta">＋ new session</button>
+
+    <div class="nav-section">sessions</div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>warehouse pick failures</div>
+      <span class="ts">2h</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>anymal stair Kp sweep</div>
+      <span class="ts">3h</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>warp solver regression</div>
+      <span class="ts">5h</span>
+    </div>
+    <div class="nav-item active">
+      <span class="dot"></span>
+      <div>UR10 conveyor scenario</div>
+      <span class="ts">now</span>
+    </div>
+  </aside>
+
+  <div class="main">
+
+    <div class="header">
+      <span class="proj">factory-scenarios</span>
+      <span class="path">~/code/factory-scenarios</span>
+      <span class="spacer"></span>
+      <span class="pill accent">workspace-write</span>
+      <span class="pill">range/&hellip;/ur10-conveyor</span>
+      <span class="pill">mujoco 3.2.6</span>
+    </div>
+
+    <div class="conv">
+      <div class="conv-inner">
+
+        <!-- User -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar">you</div>
+            <div class="body user-text">
+              Create a scenario where a UR10 picks 5cm wooden cubes off a moving
+              conveyor at 0.2 m/s. Cubes arrive every 1.5s, randomized orientation.
+              Target: 80% pick success over 50 trials. Reuse the
+              <code>ur10e_robot.urdf</code> from <code>assets/arms/</code>.
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent reasoning + plan -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>
+                Building this as a new scenario at
+                <code>scenarios/manipulation/ur10_conveyor/</code>. Three files:
+              </p>
+              <ul>
+                <li><code>scene.xml</code> — UR10 mounted, conveyor primitive
+                  (kinematic body translating along x), spawn region 1.2m
+                  upstream of the workspace.</li>
+                <li><code>task.py</code> — cube spawner, success rule
+                  (cube in tote, gripper closed, EE in target zone), reset rule.</li>
+                <li><code>config.yaml</code> — params: conveyor speed,
+                  spawn interval, cube size, orientation distribution.</li>
+              </ul>
+              <p>
+                Controller: I'll start with the existing <code>arms.pick_predictive</code>
+                policy — it has a velocity-feedforward branch from the prior
+                "moving target" scenario. Smoke at 10 trials first to confirm
+                the geometry works, then scale to 50.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- File edit cards -->
+        <div class="turn">
+          <div class="card">
+            <div class="card-head">
+              <span class="badge">file · create</span>
+              <span class="title">scenarios/manipulation/ur10_conveyor/scene.xml</span>
+              <span class="meta">142 lines</span>
+            </div>
+            <div class="diff">
+              <div class="hd">@@ new file @@</div>
+              <div class="line add">+&lt;mujoco model="ur10_conveyor"&gt;</div>
+              <div class="line add">+  &lt;include file="../../../assets/arms/ur10e_robot.xml"/&gt;</div>
+              <div class="line add">+  &lt;option timestep="0.002" gravity="0 0 -9.81"/&gt;</div>
+              <div class="line add">+  &lt;worldbody&gt;</div>
+              <div class="line add">+    &lt;body name="conveyor" pos="0.6 0 0.40"&gt;</div>
+              <div class="line add">+      &lt;geom type="box" size="1.5 0.25 0.02" rgba="0.2 0.2 0.22 1"/&gt;</div>
+              <div class="line add">+      &lt;joint name="conveyor_slide" type="slide" axis="1 0 0" range="-3 3"/&gt;</div>
+              <div class="line add">+    &lt;/body&gt;</div>
+              <div class="line ctx">     &hellip; (134 more lines)</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <span class="badge">file · create</span>
+              <span class="title">scenarios/manipulation/ur10_conveyor/task.py</span>
+              <span class="meta">98 lines</span>
+            </div>
+            <div class="diff">
+              <div class="hd">@@ new file @@</div>
+              <div class="line add">+import warp as wp</div>
+              <div class="line add">+from range.task import Task, Trial, SuccessRule</div>
+              <div class="line add">+</div>
+              <div class="line add">+class UR10ConveyorPick(Task):</div>
+              <div class="line add">+    """Pick wooden cubes off a moving conveyor and place in tote."""</div>
+              <div class="line add">+</div>
+              <div class="line add">+    def spawn_cube(self, t: float) -&gt; None:</div>
+              <div class="line add">+        if t % self.cfg.spawn_interval &lt; 0.002 and len(self.cubes) &lt; 8:</div>
+              <div class="line add">+            yaw = self.rng.uniform(-math.pi, math.pi)</div>
+              <div class="line add">+            self.model.bodies["cube"].xpos = (-1.5, 0.0, 0.42)</div>
+              <div class="line ctx">     &hellip; (88 more lines)</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <span class="badge">file · create</span>
+              <span class="title">scenarios/manipulation/ur10_conveyor/config.yaml</span>
+              <span class="meta">14 lines</span>
+            </div>
+            <div class="diff">
+              <div class="hd">@@ new file @@</div>
+              <div class="line add">+conveyor_speed_mps: 0.2</div>
+              <div class="line add">+spawn_interval_s: 1.5</div>
+              <div class="line add">+cube_size_m: 0.05</div>
+              <div class="line add">+cube_mass_kg: 0.06</div>
+              <div class="line add">+yaw_dist: uniform_full</div>
+              <div class="line add">+controller: arms.pick_predictive</div>
+              <div class="line add">+success_rule: cube_in_tote</div>
+              <div class="line add">+max_trial_s: 6.0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent: smoke run -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>10-trial smoke to confirm the geometry doesn't have collisions
+                I missed:</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Smoke run card -->
+        <div class="turn">
+          <div class="card">
+            <div class="card-head">
+              <span class="badge ok">run · smoke</span>
+              <span class="title">ur10_conveyor · 10 trials · seed 0–9</span>
+              <span class="meta">42s · exit 0</span>
+            </div>
+            <div class="chips">
+              <span class="chip ok"><span class="k">success</span>8/10</span>
+              <span class="chip"><span class="k">mean_cycle</span>1.42s</span>
+              <span class="chip"><span class="k">ttg</span>1.18–1.74s</span>
+              <span class="chip warn"><span class="k">fails</span>seed 3, seed 7 · cube yaw &gt; 1.2 rad</span>
+              <span class="chip muted"><span class="k">device</span>cpu</span>
+            </div>
+            <div class="artifact-preview">
+              <div class="video-placeholder">
+                <div class="play"></div>
+                <div class="frame">rollout.mp4 · seed 1 · success · 1.18s · 600×400@30fps</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent message -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>
+                <strong style="color:var(--fg);font-weight:600;">8/10 at 80% target —
+                clears the bar on the smoke.</strong>
+                The two failures both had cube yaw &gt; 1.2 rad, where the
+                pick_predictive policy can't reorient in time before the cube
+                leaves the workspace.
+              </p>
+              <p>Three options:</p>
+              <ul>
+                <li><strong>Ship as-is</strong> — meets the 80% target. Failures are
+                  a known weakness of pick_predictive.</li>
+                <li><strong>Run the full 50-trial eval first</strong> to make sure
+                  the 80% holds on a larger sample.</li>
+                <li><strong>Tighten the yaw distribution</strong> to ±0.8 rad so
+                  the scenario only tests the pick, not the reorientation. Better
+                  isolated, easier to grade.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Approval -->
+        <div class="turn">
+          <div class="card approval">
+            <div class="card-head">
+              <span class="badge warn">approval</span>
+              <span class="title">what's next?</span>
+            </div>
+            <div class="actions">
+              <button class="btn primary">run 50-trial eval</button>
+              <button class="btn ghost">commit scenario + ship</button>
+              <button class="btn ghost">tighten yaw to ±0.8 rad &amp; re-smoke</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Activity bar -->
+    <div class="activity">
+      <span class="idle" style="font-family:var(--mono);font-size:11px;">◦ idle · smoke done</span>
+      <span class="live-line">last: trial 10/10 · seed 9 · place success · ee_zone_dist=0.012m · 1.41s</span>
+    </div>
+
+    <div class="composer">
+      <div class="ta-wrap">
+        <textarea placeholder="reply, or describe what you want next…"></textarea>
+        <button class="send">↵ send</button>
+      </div>
+      <div class="hint">
+        <span>⏎ to send · ⇧⏎ for newline</span>
+        <span>workspace-write · approvals required</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

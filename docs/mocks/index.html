@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Range mocks — agentic harness for robot sim devs</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="index-shell">
+    <div style="font-family:var(--mono);font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:var(--fg-3);margin-bottom:14px;">range · static mocks · v0</div>
+    <h1>An agentic harness, not an IDE.</h1>
+    <p class="lede">
+      Range is the chat surface for robot sim work. Tell it what you want
+      investigated, tuned, or verified. It picks the scenarios, runs the
+      sweeps, reads the metrics, previews the outputs, and drafts the diff.
+      You watch progress in a live tail pinned above the composer, and
+      approve what matters.
+    </p>
+
+    <div style="font-family:var(--mono);font-size:10.5px;letter-spacing:0.18em;text-transform:uppercase;color:var(--fg-3);margin:0 0 14px;">five critical flows</div>
+
+    <a class="index-flow" href="01_investigate.html">
+      <div class="num">01 · investigate</div>
+      <div class="name">Diagnose a failing scenario.</div>
+      <div class="desc">Franka pick-place fails 3/10 in MuJoCo. Range sweeps 20 seeds with contact-depth instrumentation, isolates the failure cluster, proposes a solver-iteration bump.</div>
+      <div class="persona">priya · robotics dev · franka panda · mujoco</div>
+    </a>
+
+    <a class="index-flow" href="02_tune_sweep.html">
+      <div class="num">02 · tune</div>
+      <div class="name">Sweep a controller across conditions.</div>
+      <div class="desc">Anymal-D stair climb · find best PID Kp across 4 slope angles × 4 mass perturbations × 25 seeds. Range fans out 400 runs, renders a heatmap, picks the sweet spot.</div>
+      <div class="persona">karthik · controls · anymal-d · mujoco</div>
+    </a>
+
+    <a class="index-flow" href="03_regress.html">
+      <div class="num">03 · regress</div>
+      <div class="name">Check 8 baselines before merging.</div>
+      <div class="desc">Changes to the Warp contact solver. Range runs the baseline scenario suite against this branch and <code>main</code>, surfaces deltas, and traces the one regression.</div>
+      <div class="persona">anika · platform · warp · custom mjcf compiler</div>
+    </a>
+
+    <a class="index-flow" href="04_author_scenario.html">
+      <div class="num">04 · author</div>
+      <div class="name">Write a new scenario from a description.</div>
+      <div class="desc">"UR10 picks 5cm cubes off a conveyor at 0.2 m/s." Range writes scene.xml + task.py, runs a 10-trial smoke, previews the rollout video, and asks where to iterate.</div>
+      <div class="persona">priya · robotics dev · ur10 · mujoco</div>
+    </a>
+
+    <a class="index-flow" href="05_reproduce_ci.html">
+      <div class="num">05 · reproduce</div>
+      <div class="name">Reproduce a teammate's CI failure.</div>
+      <div class="desc">A walker gait test failed in CI at seed 42. Paste the job URL; Range pulls the failure, reproduces locally, bisects to the commit that introduced it, drafts a fix.</div>
+      <div class="persona">karthik · controls · walker · mujoco</div>
+    </a>
+
+    <div style="margin-top:48px;padding-top:24px;border-top:1px solid var(--br-1);font-size:12.5px;color:var(--fg-2);line-height:1.6;">
+      <strong style="color:var(--fg);font-weight:500;">Layout note.</strong> Every mock uses the same shell:
+      a slim left rail with sessions, a header with the project, the
+      conversation as the scrollable main, a live-activity bar pinned
+      above the composer, and the composer pinned to the bottom of the
+      viewport. Runs, sweeps, comparisons, artifacts, diffs, and
+      approvals render as <em>inline cards</em> inside the conversation
+      — never as separate panels.
+    </div>
+  </div>
+</body>
+</html>

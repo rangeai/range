@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>02 · Tune — Range mock</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <h1>Range</h1>
+    <div class="sub">agentic sim harness</div>
+    <button class="nav-cta">＋ new session</button>
+
+    <div class="nav-section">sessions</div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>warehouse pick failures</div>
+      <span class="ts">12m</span>
+    </div>
+    <div class="nav-item active">
+      <span class="dot"></span>
+      <div>anymal stair Kp sweep</div>
+      <span class="ts">now</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>warp solver regression</div>
+      <span class="ts">3h</span>
+    </div>
+    <div class="nav-item">
+      <span class="dot idle"></span>
+      <div>UR10 conveyor scenario</div>
+      <span class="ts">yest</span>
+    </div>
+  </aside>
+
+  <div class="main">
+
+    <div class="header">
+      <span class="proj">anymal-locomotion</span>
+      <span class="path">~/code/anymal-locomotion</span>
+      <span class="spacer"></span>
+      <span class="pill accent">workspace-write</span>
+      <span class="pill">range/&hellip;/stair-kp-tune</span>
+      <span class="pill">mujoco 3.2.6 · anymal-d</span>
+    </div>
+
+    <div class="conv">
+      <div class="conv-inner">
+
+        <!-- User -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar">you</div>
+            <div class="body user-text">
+              Find the best PID Kp for the anymal stair climb across slope
+              angles 5°, 10°, 15°, 20° and four torso mass perturbations
+              (−15%, −5%, +5%, +15%). 25 seeds per cell. Score by success rate,
+              tiebreak by mean time-to-summit.
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent plan -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>
+                16 cells × 25 seeds = <strong style="color:var(--fg);font-weight:600;">400 runs</strong>.
+                Mac CPU at ~6&nbsp;s/run = ~40 min. Acceptable.
+              </p>
+              <p>
+                I'll Kp-sweep across {80, 120, 160, 200} since the current default
+                is 140. Scenario:
+                <code>locomotion.stair_climb</code> with <code>RANGE_KP</code>,
+                <code>RANGE_SLOPE_DEG</code>, <code>RANGE_TORSO_MASS_PERT</code>
+                exposed as env vars.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sweep card (running → completed shown together) -->
+        <div class="turn">
+          <div class="card">
+            <div class="card-head">
+              <span class="badge ok">sweep · param grid</span>
+              <span class="title">anymal · stair_climb · Kp × slope × mass</span>
+              <span class="meta">37:12 · 400/400 · 14.7% fail</span>
+            </div>
+            <div class="card-body">
+              <div class="row mono"><span style="color:var(--fg-3)">scenario</span><span>locomotion.stair_climb</span></div>
+              <div class="row mono"><span style="color:var(--fg-3)">robot</span><span>anymal-d (mjcf · 19 dof)</span></div>
+              <div class="row mono"><span style="color:var(--fg-3)">grid</span><span>Kp{80,120,160,200} × slope{5,10,15,20°} × mass{-15,-5,+5,+15%}</span></div>
+              <div class="row mono"><span style="color:var(--fg-3)">seeds</span><span>25 per cell · 400 total runs</span></div>
+            </div>
+
+            <!-- Heatmap: Kp (rows) × slope (cols), one panel per mass perturbation -->
+            <div style="padding: 16px 12px 4px; border-top: 1px solid var(--br-1); background: var(--bg);">
+              <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--fg-3);margin-bottom:14px;">
+                success rate · across 4 mass perturbations
+              </div>
+              <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 18px;">
+
+                <!-- Panel: mass -15% -->
+                <div>
+                  <div style="font-family:var(--mono);font-size:10px;color:var(--fg-2);margin-bottom:6px;">mass −15%</div>
+                  <div style="display:grid;grid-template-columns: 22px repeat(4, 1fr); gap: 2px;">
+                    <!-- corner -->
+                    <div></div>
+                    <div class="axis-label">5°</div><div class="axis-label">10°</div><div class="axis-label">15°</div><div class="axis-label">20°</div>
+                    <!-- Kp=200 row -->
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">200</div>
+                    <div class="cell" style="background:#3a6e54">88</div>
+                    <div class="cell" style="background:#4a8164">92</div>
+                    <div class="cell" style="background:#3a6e54">84</div>
+                    <div class="cell" style="background:#243d2a">52</div>
+                    <!-- Kp=160 -->
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">160</div>
+                    <div class="cell" style="background:#4a8164">96</div>
+                    <div class="cell" style="background:#4a8164">100</div>
+                    <div class="cell" style="background:#3a6e54">88</div>
+                    <div class="cell" style="background:#2c4a36">60</div>
+                    <!-- Kp=120 -->
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">120</div>
+                    <div class="cell" style="background:#4a8164">92</div>
+                    <div class="cell" style="background:#3a6e54">84</div>
+                    <div class="cell" style="background:#2c4a36">68</div>
+                    <div class="cell" style="background:#3d2628">28</div>
+                    <!-- Kp=80 -->
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">80</div>
+                    <div class="cell" style="background:#2c4a36">64</div>
+                    <div class="cell" style="background:#3d2628">36</div>
+                    <div class="cell" style="background:#4a2e2f">16</div>
+                    <div class="cell" style="background:#5a2425">4</div>
+                  </div>
+                </div>
+
+                <!-- Panel: mass -5% -->
+                <div>
+                  <div style="font-family:var(--mono);font-size:10px;color:var(--fg-2);margin-bottom:6px;">mass −5%</div>
+                  <div style="display:grid;grid-template-columns: 22px repeat(4, 1fr); gap: 2px;">
+                    <div></div>
+                    <div class="axis-label">5°</div><div class="axis-label">10°</div><div class="axis-label">15°</div><div class="axis-label">20°</div>
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">200</div>
+                    <div class="cell" style="background:#4a8164">92</div>
+                    <div class="cell" style="background:#4a8164">100</div>
+                    <div class="cell" style="background:#3a6e54">88</div>
+                    <div class="cell" style="background:#2c4a36">60</div>
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">160</div>
+                    <div class="cell" style="background:#4a8164">100</div>
+                    <div class="cell" style="background:#4a8164">100</div>
+                    <div class="cell" style="background:#4a8164">92</div>
+                    <div class="cell" style="background:#3a6e54">76</div>
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">120</div>
+                    <div class="cell" style="background:#4a8164">96</div>
+                    <div class="cell" style="background:#3a6e54">88</div>
+                    <div class="cell" style="background:#2c4a36">68</div>
+                    <div class="cell" style="background:#3d2628">36</div>
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">80</div>
+                    <div class="cell" style="background:#3a6e54">76</div>
+                    <div class="cell" style="background:#2c4a36">48</div>
+                    <div class="cell" style="background:#3d2628">20</div>
+                    <div class="cell" style="background:#5a2425">8</div>
+                  </div>
+                </div>
+
+                <!-- Panel: mass +5% -->
+                <div>
+                  <div style="font-family:var(--mono);font-size:10px;color:var(--fg-2);margin-bottom:6px;">mass +5%</div>
+                  <div style="display:grid;grid-template-columns: 22px repeat(4, 1fr); gap: 2px;">
+                    <div></div>
+                    <div class="axis-label">5°</div><div class="axis-label">10°</div><div class="axis-label">15°</div><div class="axis-label">20°</div>
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">200</div>
+                    <div class="cell" style="background:#4a8164">96</div>
+                    <div class="cell" style="background:#4a8164">96</div>
+                    <div class="cell" style="background:#3a6e54">80</div>
+                    <div class="cell" style="background:#2c4a36">52</div>
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">160</div>
+                    <div class="cell" style="background:#4a8164">100</div>
+                    <div class="cell" style="background:#4a8164">96</div>
+                    <div class="cell" style="background:#4a8164">88</div>
+                    <div class="cell" style="background:#3a6e54">72</div>
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">120</div>
+                    <div class="cell" style="background:#4a8164">88</div>
+                    <div class="cell" style="background:#3a6e54">80</div>
+                    <div class="cell" style="background:#2c4a36">60</div>
+                    <div class="cell" style="background:#3d2628">24</div>
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">80</div>
+                    <div class="cell" style="background:#3a6e54">72</div>
+                    <div class="cell" style="background:#2c4a36">44</div>
+                    <div class="cell" style="background:#3d2628">12</div>
+                    <div class="cell" style="background:#5a2425">0</div>
+                  </div>
+                </div>
+
+                <!-- Panel: mass +15% -->
+                <div>
+                  <div style="font-family:var(--mono);font-size:10px;color:var(--fg-2);margin-bottom:6px;">mass +15%</div>
+                  <div style="display:grid;grid-template-columns: 22px repeat(4, 1fr); gap: 2px;">
+                    <div></div>
+                    <div class="axis-label">5°</div><div class="axis-label">10°</div><div class="axis-label">15°</div><div class="axis-label">20°</div>
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">200</div>
+                    <div class="cell" style="background:#3a6e54">84</div>
+                    <div class="cell" style="background:#3a6e54">80</div>
+                    <div class="cell" style="background:#2c4a36">64</div>
+                    <div class="cell" style="background:#3d2628">36</div>
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">160</div>
+                    <div class="cell" style="background:#4a8164">92</div>
+                    <div class="cell" style="background:#3a6e54">84</div>
+                    <div class="cell" style="background:#3a6e54">72</div>
+                    <div class="cell" style="background:#2c4a36">52</div>
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">120</div>
+                    <div class="cell" style="background:#3a6e54">76</div>
+                    <div class="cell" style="background:#2c4a36">64</div>
+                    <div class="cell" style="background:#3d2628">36</div>
+                    <div class="cell" style="background:#5a2425">12</div>
+                    <div class="axis-label" style="text-align:right;padding-right:4px;">80</div>
+                    <div class="cell" style="background:#2c4a36">48</div>
+                    <div class="cell" style="background:#3d2628">28</div>
+                    <div class="cell" style="background:#5a2425">8</div>
+                    <div class="cell" style="background:#5a2425">0</div>
+                  </div>
+                </div>
+
+              </div>
+              <div style="display:flex;justify-content:center;gap:14px;margin-top:14px;font-family:var(--mono);font-size:9.5px;color:var(--fg-3);">
+                <span>↑ Kp ·</span><span>→ slope ·</span><span>panels: mass perturbation ·</span><span style="display:inline-flex;align-items:center;gap:4px;">low <span style="display:inline-block;width:80px;height:8px;background:linear-gradient(90deg,#5a2425,#3d2628,#2c4a36,#3a6e54,#4a8164);"></span> high</span>
+              </div>
+            </div>
+
+            <div class="chips">
+              <span class="chip ok"><span class="k">best cell</span>Kp=160, slope=10°, mass=−5% · 100%</span>
+              <span class="chip"><span class="k">overall</span>85.3% pass</span>
+              <span class="chip"><span class="k">ttg @ best</span>4.32s ± 0.18</span>
+              <span class="chip err"><span class="k">failure floor</span>slope=20° · most cells &lt;60%</span>
+              <span class="chip muted"><span class="k">wall clock</span>37:12</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent recommendation -->
+        <div class="turn">
+          <div class="msg">
+            <div class="avatar cdx">cdx</div>
+            <div class="body">
+              <p>
+                <strong style="color:var(--fg);font-weight:600;">Sweet spot: Kp&nbsp;=&nbsp;160</strong>
+                across slopes ≤ 15° and all mass perturbations.
+                Above 15° the controller degrades regardless of Kp — that's not a
+                tuning problem, that's a structural limit of this PD controller
+                (no feedforward for body pitch).
+              </p>
+              <p>
+                Default is currently <code>Kp = 140</code>. Recommendation:
+                bump to 160, and flag slopes &gt; 15° as out-of-spec in the scenario
+                manifest so the regression harness doesn't grade us on them.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Approval -->
+        <div class="turn">
+          <div class="card approval">
+            <div class="card-head">
+              <span class="badge warn">approval</span>
+              <span class="title">promote Kp = 160 as the default?</span>
+            </div>
+            <div class="card-body" style="font-size:12.5px;color:var(--fg-2);">
+              Diff touches <code>controllers/stair_pd.yaml</code> (Kp 140 → 160)
+              and <code>scenarios/stair_climb/manifest.yaml</code> (max_slope
+              25 → 15).
+            </div>
+            <div class="actions">
+              <button class="btn primary">accept · open PR</button>
+              <button class="btn ghost">accept locally only</button>
+              <button class="btn ghost">explore more · try Kp=180</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Activity bar -->
+    <div class="activity">
+      <span class="idle" style="font-family:var(--mono);font-size:11px;">◦ idle · sweep complete</span>
+      <span class="live-line">last: cell 16/16 · slope=20°,mass=+15%,Kp=80 · success 0/25 · finalizing summary…</span>
+    </div>
+
+    <div class="composer">
+      <div class="ta-wrap">
+        <textarea placeholder="reply, or describe what you want next…"></textarea>
+        <button class="send">↵ send</button>
+      </div>
+      <div class="hint">
+        <span>⏎ to send · ⇧⏎ for newline</span>
+        <span>workspace-write · approvals required</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
