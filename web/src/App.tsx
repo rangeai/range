@@ -18,9 +18,11 @@ export function App() {
       />
       <div className="flex-1 flex overflow-hidden min-h-0">
         <LeftNav />
-        <main className="flex-1 overflow-y-auto min-w-0">
+        <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
           {view.kind === "home" ? (
-            <Home />
+            <div className="flex-1 overflow-y-auto">
+              <Home />
+            </div>
           ) : (
             <SessionView sessionId={view.id} />
           )}

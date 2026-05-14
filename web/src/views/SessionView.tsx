@@ -82,12 +82,61 @@ export function SessionView({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8">
-      <SessionHeader session={session} profile={profile} />
-      <WorktreeBlock session={session} />
-      <ConversationBlock session={session} />
-      <RunsBlock session={session} profile={profile} />
-      <PrBlock session={session} />
+    <div className="h-full flex flex-col overflow-hidden">
+      <ConversationScroller>
+        <div className="max-w-3xl mx-auto px-6 pt-6 pb-2 w-full">
+          <SessionHeader session={session} profile={profile} />
+          <WorktreeBlock session={session} />
+          <RunsBlock session={session} profile={profile} />
+          <PrBlock session={session} />
+          <ConversationBlock session={session} />
+        </div>
+      </ConversationScroller>
+      <div className="border-t border-[var(--br-1)] bg-[var(--bg-1)] flex-shrink-0">
+        <div className="max-w-3xl mx-auto px-6 py-3 w-full">
+          <StickyComposer session={session} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Scrolling container that pins the latest content at the bottom of the
+ * viewport (Claude Code / terminal style). If the user has scrolled up
+ * to read history, we leave their scroll position alone — auto-stick
+ * only resumes when they're already at the bottom.
+ */
+function ConversationScroller({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const stickRef = useRef(true);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickRef.current = distFromBottom < 40;
+    };
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new MutationObserver(() => {
+      if (stickRef.current) el.scrollTop = el.scrollHeight;
+    });
+    obs.observe(el, { childList: true, subtree: true, characterData: true });
+    // Initial snap to bottom.
+    el.scrollTop = el.scrollHeight;
+    return () => obs.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className="flex-1 overflow-y-auto min-h-0">
+      {children}
     </div>
   );
 }
@@ -313,7 +362,6 @@ function ConversationBlock({ session }: { session: Session }) {
       </div>
       <ContextCard session={session} />
       <ConversationTimeline conv={conv} sessionId={session.id} />
-      <MessageComposer session={session} conv={conv} />
     </section>
   );
 }
@@ -468,13 +516,6 @@ function ConversationTimeline({
   conv: ConversationState;
   sessionId: string;
 }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [conv.entries.length]);
-
   if (conv.entries.length === 0 && conv.status === "stopped") {
     return (
       <div className="border border-dashed border-[var(--br-1)] rounded-lg p-6 mb-3 bg-[var(--bg-1)]/40">
@@ -486,10 +527,7 @@ function ConversationTimeline({
   }
 
   return (
-    <div
-      ref={ref}
-      className="border border-[var(--br-1)] rounded-lg bg-[var(--bg-1)] mb-3 overflow-y-auto max-h-[460px] p-4 space-y-4"
-    >
+    <div className="border border-[var(--br-1)] rounded-lg bg-[var(--bg-1)] p-4 space-y-4">
       {conv.entries.map((entry, i) => (
         <ConversationEntryView key={i} entry={entry} sessionId={sessionId} />
       ))}
@@ -890,6 +928,13 @@ function AgentBadge({
       {label}
     </div>
   );
+}
+
+function StickyComposer({ session }: { session: Session }) {
+  const conv = useAppStore(
+    (s) => s.conversationsBySession.get(session.id) ?? EMPTY_CONV,
+  );
+  return <MessageComposer session={session} conv={conv} />;
 }
 
 function MessageComposer({
