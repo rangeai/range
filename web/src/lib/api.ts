@@ -124,6 +124,16 @@ export function abortRun(id: string): Promise<{ ok: boolean }> {
   });
 }
 
+export function listRunArtifacts(
+  runId: string,
+): Promise<{ artifacts: import("@shared/protocol").ArtifactInfo[] }> {
+  return jsonRequest(`/api/runs/${encodeURIComponent(runId)}/artifacts`);
+}
+
+export function artifactUrl(runId: string, name: string): string {
+  return `/api/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(name)}`;
+}
+
 export function runScenario(
   sessionId: string,
   scenarioName: string,

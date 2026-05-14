@@ -6,6 +6,7 @@ import { applyServerMessage, useWsSend } from "../lib/ws";
 import { Markdown } from "./Markdown";
 import type {
   AgentItem,
+  ArtifactInfo,
   ProfileCommand,
   ProfileLoadResult,
   Run,
@@ -1272,9 +1273,191 @@ function RunsBlock({
         />
       )}
 
+      {selectedRun && <ArtifactPanel run={selectedRun} />}
       {selectedRun && <LogPanel run={selectedRun} />}
     </section>
   );
+}
+
+function ArtifactPanel({ run }: { run: Run }) {
+  const artifacts = useAppStore((s) => s.artifactsByRun.get(run.id));
+  const setRunArtifacts = useAppStore((s) => s.setRunArtifacts);
+
+  useEffect(() => {
+    if (artifacts) return;
+    if (run.state !== "succeeded" && run.state !== "failed") return;
+    api
+      .listRunArtifacts(run.id)
+      .then((res) => setRunArtifacts(run.id, res.artifacts))
+      .catch((err) => console.error("listRunArtifacts failed", err));
+  }, [run.id, run.state, artifacts, setRunArtifacts]);
+
+  if (!artifacts || artifacts.length === 0) return null;
+
+  return (
+    <div className="mt-4">
+      <div className="flex items-baseline justify-between mb-2">
+        <div className="text-[10px] tracking-[0.18em] uppercase text-fg-3 font-medium">
+          artifacts
+        </div>
+        <span className="text-[10.5px] font-mono text-fg-3">
+          {artifacts.length}
+        </span>
+      </div>
+      <div className="space-y-2">
+        {artifacts.map((a) => (
+          <ArtifactRow key={a.name} runId={run.id} artifact={a} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ArtifactRow({
+  runId,
+  artifact,
+}: {
+  runId: string;
+  artifact: ArtifactInfo;
+}) {
+  const url = api.artifactUrl(runId, artifact.name);
+  const sizeLabel = formatBytes(artifact.size);
+
+  return (
+    <div className="border border-[var(--br-1)] rounded-lg bg-[var(--bg-1)] overflow-hidden">
+      <div className="px-3 py-2 flex items-center gap-2">
+        <ArtifactKindBadge kind={artifact.kind} />
+        <span className="font-mono text-[12px] text-fg-1 truncate flex-1">
+          {artifact.name}
+        </span>
+        <span className="text-[10.5px] font-mono text-fg-3 flex-shrink-0">
+          {sizeLabel}
+        </span>
+        <a
+          href={url}
+          download={artifact.name}
+          className="text-[10.5px] text-[var(--accent)] hover:underline px-1"
+        >
+          download
+        </a>
+      </div>
+      <ArtifactPreview kind={artifact.kind} url={url} name={artifact.name} />
+    </div>
+  );
+}
+
+function ArtifactPreview({
+  kind,
+  url,
+  name,
+}: {
+  kind: ArtifactInfo["kind"];
+  url: string;
+  name: string;
+}) {
+  const [jsonText, setJsonText] = useState<string | null>(null);
+  const [csvText, setCsvText] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (kind === "json" && jsonText === null) {
+      fetch(url)
+        .then((r) => r.text())
+        .then((t) => {
+          try {
+            setJsonText(JSON.stringify(JSON.parse(t), null, 2));
+          } catch {
+            setJsonText(t.slice(0, 4000));
+          }
+        })
+        .catch(() => setJsonText("(failed to load)"));
+    }
+    if (kind === "csv" && csvText === null) {
+      fetch(url)
+        .then((r) => r.text())
+        .then((t) => setCsvText(t.split("\n").slice(0, 20).join("\n")))
+        .catch(() => setCsvText("(failed to load)"));
+    }
+  }, [kind, url, jsonText, csvText]);
+
+  if (kind === "image") {
+    return (
+      <div className="border-t border-[var(--br-1)] bg-[var(--bg)] p-2 flex justify-center">
+        <img
+          src={url}
+          alt={name}
+          className="max-h-[320px] object-contain rounded"
+        />
+      </div>
+    );
+  }
+  if (kind === "video") {
+    return (
+      <div className="border-t border-[var(--br-1)] bg-[var(--bg)] p-2 flex justify-center">
+        <video
+          src={url}
+          controls
+          className="max-h-[320px] rounded"
+        />
+      </div>
+    );
+  }
+  if (kind === "json") {
+    return (
+      <pre className="border-t border-[var(--br-1)] bg-[var(--bg)] p-2 font-mono text-[11px] text-fg-2 max-h-[200px] overflow-auto whitespace-pre-wrap break-words">
+        {jsonText ?? "loading…"}
+      </pre>
+    );
+  }
+  if (kind === "csv") {
+    return (
+      <pre className="border-t border-[var(--br-1)] bg-[var(--bg)] p-2 font-mono text-[11px] text-fg-2 max-h-[200px] overflow-auto whitespace-pre">
+        {csvText ?? "loading…"}
+      </pre>
+    );
+  }
+  if (kind === "usd" || kind === "mesh") {
+    return (
+      <div className="border-t border-[var(--br-1)] bg-[var(--bg)] px-3 py-2 text-[11px] text-fg-3 italic">
+        binary {kind === "usd" ? "USD" : "mesh"} — preview requires an
+        external viewer. Use{" "}
+        <span className="font-mono text-fg-2">download</span> to inspect.
+      </div>
+    );
+  }
+  return null;
+}
+
+function ArtifactKindBadge({ kind }: { kind: ArtifactInfo["kind"] }) {
+  const map: Record<ArtifactInfo["kind"], { label: string; color: string }> = {
+    usd: { label: "usd", color: "var(--accent)" },
+    image: { label: "img", color: "var(--ok)" },
+    video: { label: "vid", color: "var(--ok)" },
+    csv: { label: "csv", color: "var(--warn)" },
+    json: { label: "{}", color: "var(--warn)" },
+    npy: { label: "npy", color: "var(--warn)" },
+    mesh: { label: "msh", color: "var(--accent)" },
+    other: { label: "···", color: "var(--fg-3)" },
+  };
+  const m = map[kind];
+  return (
+    <span
+      className="font-mono text-[9.5px] px-1.5 py-0.5 rounded border tracking-[0.06em] uppercase"
+      style={{
+        color: m.color,
+        borderColor: `color-mix(in oklch, ${m.color} 35%, var(--br-1))`,
+        background: `color-mix(in oklch, ${m.color} 10%, var(--bg))`,
+      }}
+    >
+      {m.label}
+    </span>
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 function VerificationStrip({

@@ -386,6 +386,30 @@ export interface ServerRunMetrics {
   metrics: MetricsSnapshot;
 }
 
+export type ArtifactKind =
+  | "usd"
+  | "image"
+  | "video"
+  | "csv"
+  | "json"
+  | "npy"
+  | "mesh"
+  | "other";
+
+export interface ArtifactInfo {
+  name: string;
+  /** Bytes. */
+  size: number;
+  kind: ArtifactKind;
+}
+
+export interface ServerRunArtifacts {
+  type: "run_artifacts";
+  runId: string;
+  sessionId: string;
+  artifacts: ArtifactInfo[];
+}
+
 export type ServerMessage =
   | ServerHello
   | ServerPing
@@ -405,7 +429,8 @@ export type ServerMessage =
   | ServerAgentApprovalRequest
   | ServerAgentApprovalResolved
   | ServerVerificationResult
-  | ServerRunMetrics;
+  | ServerRunMetrics
+  | ServerRunArtifacts;
 
 // ─── Browser → Server ──────────────────────────────────────────────────────
 

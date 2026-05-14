@@ -60,7 +60,12 @@ import {
   getRun,
   listRunsBySession,
 } from "./runs.ts";
-import { abortRun, readRunEvents, startRun } from "./runner.ts";
+import {
+  abortRun,
+  listRunArtifacts,
+  readRunEvents,
+  startRun,
+} from "./runner.ts";
 import { loadProfile } from "./profile.ts";
 import { getLatestResults } from "./verification.ts";
 import { draftPr, openPr } from "./pr.ts";
@@ -359,6 +364,29 @@ app.post("/api/sessions/:id/scenarios/:name/run", async (c) => {
       400,
     );
   }
+});
+
+app.get("/api/runs/:id/artifacts", async (c) => {
+  const id = c.req.param("id");
+  const run = getRun(id);
+  if (!run) return c.json({ error: "run not found" }, 404);
+  const list = await listRunArtifacts(run);
+  return c.json({ artifacts: list });
+});
+
+app.get("/api/runs/:id/artifacts/:name", async (c) => {
+  const id = c.req.param("id");
+  const name = c.req.param("name");
+  const run = getRun(id);
+  if (!run) return c.json({ error: "run not found" }, 404);
+  // Reject any path traversal — only flat filenames inside the run dir.
+  if (name.includes("/") || name.includes("..") || name.startsWith(".")) {
+    return c.json({ error: "invalid name" }, 400);
+  }
+  const filePath = `${run.runDir}/${name}`;
+  const file = Bun.file(filePath);
+  if (!(await file.exists())) return c.json({ error: "not found" }, 404);
+  return new Response(file);
 });
 
 app.post("/api/runs/:id/abort", async (c) => {

@@ -24,7 +24,10 @@ import {
 } from "./runs.ts";
 import { getSession } from "./sessions.ts";
 import { evaluateGatesForRun } from "./verification.ts";
+import { readdir, stat } from "node:fs/promises";
 import type {
+  ArtifactInfo,
+  ArtifactKind,
   LogStream,
   MetricsSnapshot,
   Run,
@@ -245,6 +248,12 @@ async function runInBackground(
         err: String(err instanceof Error ? err.message : err),
       });
     });
+    void scanAndBroadcastArtifacts(finished).catch((err) => {
+      log.warn("runner", "artifact scan failed", {
+        runId,
+        err: String(err instanceof Error ? err.message : err),
+      });
+    });
     void evaluateGatesForRun(finished).catch((err) => {
       log.warn("runner", "verification failed", {
         runId,
@@ -294,6 +303,61 @@ async function readAndBroadcastMetrics(
   log.info("runner", "metrics recorded", {
     runId: run.id,
     keys: Object.keys(metrics),
+  });
+}
+
+function classifyArtifact(name: string): ArtifactKind {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".usd") || lower.endsWith(".usda") || lower.endsWith(".usdc"))
+    return "usd";
+  if (/\.(png|jpe?g|gif|webp|svg)$/.test(lower)) return "image";
+  if (/\.(mp4|webm|mov|m4v)$/.test(lower)) return "video";
+  if (lower.endsWith(".csv") || lower.endsWith(".tsv")) return "csv";
+  if (lower.endsWith(".json")) return "json";
+  if (lower.endsWith(".npy") || lower.endsWith(".npz")) return "npy";
+  if (/\.(obj|ply|gltf|glb|stl|fbx)$/.test(lower)) return "mesh";
+  return "other";
+}
+
+export async function listRunArtifacts(run: Run): Promise<ArtifactInfo[]> {
+  const skip = new Set(["events.jsonl", "metrics.json"]);
+  let entries: string[];
+  try {
+    entries = await readdir(run.runDir);
+  } catch {
+    return [];
+  }
+  const artifacts: ArtifactInfo[] = [];
+  for (const name of entries) {
+    if (skip.has(name) || name.startsWith(".")) continue;
+    try {
+      const s = await stat(join(run.runDir, name));
+      if (!s.isFile()) continue;
+      artifacts.push({
+        name,
+        size: s.size,
+        kind: classifyArtifact(name),
+      });
+    } catch {
+      // ignore
+    }
+  }
+  artifacts.sort((a, b) => a.name.localeCompare(b.name));
+  return artifacts;
+}
+
+async function scanAndBroadcastArtifacts(run: Run): Promise<void> {
+  const artifacts = await listRunArtifacts(run);
+  if (artifacts.length === 0) return;
+  broadcast({
+    type: "run_artifacts",
+    runId: run.id,
+    sessionId: run.sessionId,
+    artifacts,
+  });
+  log.info("runner", "artifacts recorded", {
+    runId: run.id,
+    count: artifacts.length,
   });
 }
 

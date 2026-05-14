@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type {
   AgentItem,
+  ArtifactInfo,
   ProfileLoadResult,
   Run,
   RunLogEntry,
@@ -50,6 +51,7 @@ interface AppState {
   sessions: Map<string, Session>;
   runsBySession: Map<string, Map<string, Run>>;
   logsByRun: Map<string, RunLogEntry[]>;
+  artifactsByRun: Map<string, ArtifactInfo[]>;
   profilesBySession: Map<string, ProfileLoadResult>;
   conversationsBySession: Map<string, ConversationState>;
   verificationBySession: Map<string, Map<string, VerificationResult>>;
@@ -68,6 +70,7 @@ interface AppState {
     runId: string,
     metrics: import("@shared/protocol").MetricsSnapshot,
   ) => void;
+  setRunArtifacts: (runId: string, artifacts: ArtifactInfo[]) => void;
   appendLog: (entry: RunLogEntry) => void;
   appendManyLogs: (entries: RunLogEntry[]) => void;
 
@@ -109,6 +112,7 @@ export const useAppStore = create<AppState>((set) => ({
   sessions: new Map(),
   runsBySession: new Map(),
   logsByRun: new Map(),
+  artifactsByRun: new Map(),
   profilesBySession: new Map(),
   conversationsBySession: new Map(),
   verificationBySession: new Map(),
@@ -181,6 +185,12 @@ export const useAppStore = create<AppState>((set) => ({
       inner.set(runId, { ...prev, metrics });
       next.set(sessionId, inner);
       return { runsBySession: next };
+    }),
+  setRunArtifacts: (runId, artifacts) =>
+    set((state) => {
+      const next = new Map(state.artifactsByRun);
+      next.set(runId, artifacts);
+      return { artifactsByRun: next };
     }),
 
   appendLog: (entry) =>

@@ -253,5 +253,8 @@ export function applyServerMessage(msg: ServerMessage): void {
         .getState()
         .applyRunMetrics(msg.sessionId, msg.runId, msg.metrics);
       break;
+    case "run_artifacts":
+      useAppStore.getState().setRunArtifacts(msg.runId, msg.artifacts);
+      break;
   }
 }
