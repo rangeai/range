@@ -82,21 +82,29 @@ export function SessionView({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <ConversationScroller>
-        <div className="max-w-3xl mx-auto px-6 pt-6 pb-2 w-full">
-          <SessionHeader session={session} profile={profile} />
-          <WorktreeBlock session={session} />
-          <RunsBlock session={session} profile={profile} />
-          <PrBlock session={session} />
-          <ConversationBlock session={session} />
-        </div>
-      </ConversationScroller>
-      <div className="border-t border-[var(--br-1)] bg-[var(--bg-1)] flex-shrink-0">
-        <div className="max-w-3xl mx-auto px-6 py-3 w-full">
-          <StickyComposer session={session} />
+    <div className="h-full flex overflow-hidden">
+      {/* Main column: header + worktree + conversation (scrolls) + composer (pinned) */}
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        <ConversationScroller>
+          <div className="max-w-3xl mx-auto px-6 pt-6 pb-2 w-full">
+            <SessionHeader session={session} profile={profile} />
+            <WorktreeBlock session={session} />
+            <ConversationBlock session={session} />
+          </div>
+        </ConversationScroller>
+        <div className="border-t border-[var(--br-1)] bg-[var(--bg-1)] flex-shrink-0">
+          <div className="max-w-3xl mx-auto px-6 py-3 w-full">
+            <StickyComposer session={session} />
+          </div>
         </div>
       </div>
+      {/* Right rail: launchers, runs list, PR. Independent scroll. */}
+      <aside className="w-[360px] flex-shrink-0 border-l border-[var(--br-1)] bg-[var(--bg-1)] overflow-y-auto">
+        <div className="px-4 py-4 space-y-1">
+          <RunsBlock session={session} profile={profile} />
+          <PrBlock session={session} />
+        </div>
+      </aside>
     </div>
   );
 }
