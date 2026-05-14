@@ -248,5 +248,10 @@ export function applyServerMessage(msg: ServerMessage): void {
     case "verification_result":
       useAppStore.getState().applyVerificationResult(msg.result);
       break;
+    case "run_metrics":
+      useAppStore
+        .getState()
+        .applyRunMetrics(msg.sessionId, msg.runId, msg.metrics);
+      break;
   }
 }

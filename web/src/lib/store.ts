@@ -63,6 +63,11 @@ interface AppState {
 
   upsertRun: (r: Run) => void;
   upsertManyRuns: (r: Run[]) => void;
+  applyRunMetrics: (
+    sessionId: string,
+    runId: string,
+    metrics: import("@shared/protocol").MetricsSnapshot,
+  ) => void;
   appendLog: (entry: RunLogEntry) => void;
   appendManyLogs: (entries: RunLogEntry[]) => void;
 
@@ -165,6 +170,16 @@ export const useAppStore = create<AppState>((set) => ({
         inner.set(r.id, r);
         next.set(r.sessionId, inner);
       }
+      return { runsBySession: next };
+    }),
+  applyRunMetrics: (sessionId, runId, metrics) =>
+    set((state) => {
+      const next = new Map(state.runsBySession);
+      const inner = new Map(next.get(sessionId) ?? []);
+      const prev = inner.get(runId);
+      if (!prev) return {};
+      inner.set(runId, { ...prev, metrics });
+      next.set(sessionId, inner);
       return { runsBySession: next };
     }),
 

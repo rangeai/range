@@ -6,7 +6,12 @@
  */
 
 import { db } from "./db.ts";
-import type { Run, RunKind, RunState } from "../shared/protocol.ts";
+import type {
+  MetricsSnapshot,
+  Run,
+  RunKind,
+  RunState,
+} from "../shared/protocol.ts";
 
 interface RunRow {
   id: string;
@@ -19,6 +24,10 @@ interface RunRow {
   started_at: number | null;
   finished_at: number | null;
   run_dir: string;
+  scenario_name: string | null;
+  sweep_id: string | null;
+  sweep_variant: string | null;
+  metrics: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -31,6 +40,22 @@ function rowToRun(row: RunRow): Run {
   } catch {
     command = [row.command];
   }
+  let sweepVariant: Record<string, string | number> | null = null;
+  if (row.sweep_variant) {
+    try {
+      sweepVariant = JSON.parse(row.sweep_variant);
+    } catch {
+      sweepVariant = null;
+    }
+  }
+  let metrics: MetricsSnapshot | null = null;
+  if (row.metrics) {
+    try {
+      metrics = JSON.parse(row.metrics);
+    } catch {
+      metrics = null;
+    }
+  }
   return {
     id: row.id,
     sessionId: row.session_id,
@@ -42,6 +67,10 @@ function rowToRun(row: RunRow): Run {
     startedAt: row.started_at,
     finishedAt: row.finished_at,
     runDir: row.run_dir,
+    scenarioName: row.scenario_name,
+    sweepId: row.sweep_id,
+    sweepVariant,
+    metrics,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -56,8 +85,13 @@ export function newRunId(): string {
 const insertStmt = db.prepare(`
   INSERT INTO runs (
     id, session_id, kind, command, cwd, state,
-    run_dir, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?)
+    run_dir, scenario_name, sweep_id, sweep_variant,
+    created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)
+`);
+
+const updateMetricsStmt = db.prepare(`
+  UPDATE runs SET metrics = ?, updated_at = ? WHERE id = ?
 `);
 
 const selectByIdStmt = db.prepare<RunRow, [string]>(
@@ -87,6 +121,9 @@ export interface CreateRunInput {
   command: string[];
   cwd: string;
   runDir: string;
+  scenarioName?: string | null;
+  sweepId?: string | null;
+  sweepVariant?: Record<string, string | number> | null;
 }
 
 export function createRun(input: CreateRunInput): Run {
@@ -99,12 +136,23 @@ export function createRun(input: CreateRunInput): Run {
     JSON.stringify(input.command),
     input.cwd,
     input.runDir,
+    input.scenarioName ?? null,
+    input.sweepId ?? null,
+    input.sweepVariant ? JSON.stringify(input.sweepVariant) : null,
     now,
     now,
   );
   const row = selectByIdStmt.get(id);
   if (!row) throw new Error("inserted run not found");
   return rowToRun(row);
+}
+
+export function setRunMetrics(
+  id: string,
+  metrics: MetricsSnapshot,
+): Run | null {
+  updateMetricsStmt.run(JSON.stringify(metrics), Date.now(), id);
+  return getRun(id);
 }
 
 export function getRun(id: string): Run | null {

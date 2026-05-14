@@ -58,6 +58,14 @@ export type RunState =
   | "aborted"
   | "failed_start";
 
+/**
+ * Free-form metric snapshot a run drops into `${runDir}/metrics.json`.
+ * Range parses it after the run completes and surfaces it as chips.
+ * Values are kept loose so different sims can converge later.
+ */
+export type MetricValue = number | string | boolean;
+export type MetricsSnapshot = Record<string, MetricValue>;
+
 export interface Run {
   id: string;
   sessionId: string;
@@ -69,6 +77,14 @@ export interface Run {
   startedAt: number | null;
   finishedAt: number | null;
   runDir: string;
+  /** Scenario this run was launched from, if any. */
+  scenarioName: string | null;
+  /** Sweep this run belongs to; multiple runs share this id. */
+  sweepId: string | null;
+  /** This run's variant within its sweep (e.g. `{ seed: 3 }`). */
+  sweepVariant: Record<string, string | number> | null;
+  /** Parsed metrics.json contents once the run finishes (if any). */
+  metrics: MetricsSnapshot | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -105,6 +121,29 @@ export interface VerificationGate {
   description?: string;
 }
 
+/**
+ * A scenario is a parameterized, repeatable launch — sim runs, evaluation
+ * sweeps, benchmark variants. Distinct from `commands` (one-off utilities
+ * like `format` or `test-lite`) because scenarios carry metric/sweep
+ * semantics the IDE knows how to execute.
+ */
+export interface ScenarioSweep {
+  /** Each key is exposed to the run as RANGE_<KEY uppercased>=<value>. */
+  params: Record<string, (string | number)[]>;
+}
+
+export interface Scenario {
+  name: string;
+  /** Either a reference to a `commands` entry by name, or inline args. */
+  command?: string;
+  args?: string[];
+  /** Static env vars added to every launch of this scenario. */
+  env?: Record<string, string>;
+  /** Sweep over param values, fanning out to one run per combination. */
+  sweep?: ScenarioSweep;
+  description?: string;
+}
+
 export interface Profile {
   version: number;
   project: {
@@ -114,6 +153,7 @@ export interface Profile {
     language?: string;
   };
   commands: ProfileCommand[];
+  scenarios: Scenario[];
   gates: VerificationGate[];
 }
 
@@ -339,6 +379,13 @@ export interface ServerVerificationResult {
   result: VerificationResult;
 }
 
+export interface ServerRunMetrics {
+  type: "run_metrics";
+  runId: string;
+  sessionId: string;
+  metrics: MetricsSnapshot;
+}
+
 export type ServerMessage =
   | ServerHello
   | ServerPing
@@ -357,7 +404,8 @@ export type ServerMessage =
   | ServerAgentError
   | ServerAgentApprovalRequest
   | ServerAgentApprovalResolved
-  | ServerVerificationResult;
+  | ServerVerificationResult
+  | ServerRunMetrics;
 
 // ─── Browser → Server ──────────────────────────────────────────────────────
 
@@ -422,6 +470,16 @@ export interface StartAgentRequest {
 
 export interface StartAgentResponse {
   session: Session;
+}
+
+export interface RunScenarioRequest {
+  /** Optional partial param overrides; missing keys fall back to sweep. */
+  params?: Record<string, string | number>;
+}
+
+export interface RunScenarioResponse {
+  runs: Run[];
+  sweepId: string | null;
 }
 
 export interface AgentMessageRequest {

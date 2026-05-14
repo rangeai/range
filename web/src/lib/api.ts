@@ -12,6 +12,7 @@ import type {
   OpenPrRequest,
   OpenPrResponse,
   PrDraftResponse,
+  RunScenarioResponse,
   StartAgentRequest,
   StartAgentResponse,
   VerificationResult,
@@ -121,6 +122,16 @@ export function abortRun(id: string): Promise<{ ok: boolean }> {
   return jsonRequest(`/api/runs/${encodeURIComponent(id)}/abort`, {
     method: "POST",
   });
+}
+
+export function runScenario(
+  sessionId: string,
+  scenarioName: string,
+): Promise<RunScenarioResponse> {
+  return jsonRequest<RunScenarioResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/scenarios/${encodeURIComponent(scenarioName)}/run`,
+    { method: "POST" },
+  );
 }
 
 // ─── Agent (Codex) ────────────────────────────────────────────────────────

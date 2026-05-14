@@ -214,6 +214,17 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_runs_session ON runs(session_id, created_at DESC);
     `,
   },
+  {
+    id: 8,
+    name: "runs_scenarios_and_metrics",
+    up: `
+      ALTER TABLE runs ADD COLUMN scenario_name TEXT;
+      ALTER TABLE runs ADD COLUMN sweep_id TEXT;
+      ALTER TABLE runs ADD COLUMN sweep_variant TEXT;
+      ALTER TABLE runs ADD COLUMN metrics TEXT;
+      CREATE INDEX IF NOT EXISTS idx_runs_sweep ON runs(sweep_id);
+    `,
+  },
 ];
 
 function applyMigrations() {

@@ -19,12 +19,14 @@ import {
   markRunFinished,
   markRunRunning,
   newRunId,
+  setRunMetrics,
   setRunState,
 } from "./runs.ts";
 import { getSession } from "./sessions.ts";
 import { evaluateGatesForRun } from "./verification.ts";
 import type {
   LogStream,
+  MetricsSnapshot,
   Run,
   RunKind,
   ServerRunLog,
@@ -34,6 +36,11 @@ export interface StartRunInput {
   sessionId: string;
   command: string[];
   kind?: RunKind;
+  /** Extra env vars merged on top of the shell's defaults. */
+  env?: Record<string, string>;
+  scenarioName?: string;
+  sweepId?: string;
+  sweepVariant?: Record<string, string | number>;
 }
 
 interface RunningRun {
@@ -113,12 +120,21 @@ export async function startRun(input: StartRunInput): Promise<Run> {
     command: input.command,
     cwd,
     runDir,
+    scenarioName: input.scenarioName ?? null,
+    sweepId: input.sweepId ?? null,
+    sweepVariant: input.sweepVariant ?? null,
   });
 
   broadcast({ type: "run_started", run });
-  log.info("runner", "queued", { runId, cwd, command: input.command });
+  log.info("runner", "queued", {
+    runId,
+    cwd,
+    command: input.command,
+    scenarioName: input.scenarioName,
+    sweepId: input.sweepId,
+  });
 
-  void runInBackground(run).catch((err) => {
+  void runInBackground(run, input.env ?? {}).catch((err) => {
     log.error("runner", "background failed", {
       runId,
       err: String(err instanceof Error ? err.message : err),
@@ -128,7 +144,10 @@ export async function startRun(input: StartRunInput): Promise<Run> {
   return run;
 }
 
-async function runInBackground(initialRun: Run): Promise<void> {
+async function runInBackground(
+  initialRun: Run,
+  extraEnv: Record<string, string>,
+): Promise<void> {
   const runId = initialRun.id;
   const eventPath = join(initialRun.runDir, "events.jsonl");
   const eventFile = createWriteStream(eventPath, { flags: "a" });
@@ -154,6 +173,20 @@ async function runInBackground(initialRun: Run): Promise<void> {
     0,
   );
 
+  const metricsFile = join(initialRun.runDir, "metrics.json");
+  const env: Record<string, string> = {
+    ...(process.env as Record<string, string>),
+    ...extraEnv,
+    RANGE_RUN_ID: runId,
+    RANGE_RUN_DIR: initialRun.runDir,
+    RANGE_METRICS_FILE: metricsFile,
+  };
+  if (initialRun.scenarioName) env.RANGE_SCENARIO = initialRun.scenarioName;
+  if (initialRun.sweepId) env.RANGE_SWEEP_ID = initialRun.sweepId;
+  if (initialRun.sweepVariant) {
+    env.RANGE_SWEEP_VARIANT = JSON.stringify(initialRun.sweepVariant);
+  }
+
   let proc: Subprocess<"ignore", "pipe", "pipe"> | null = null;
   try {
     proc = Bun.spawn(initialRun.command, {
@@ -161,6 +194,7 @@ async function runInBackground(initialRun: Run): Promise<void> {
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
+      env,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -205,6 +239,12 @@ async function runInBackground(initialRun: Run): Promise<void> {
   );
   if (finished) {
     broadcast({ type: "run_finished", run: finished });
+    void readAndBroadcastMetrics(finished, metricsFile).catch((err) => {
+      log.warn("runner", "metrics read failed", {
+        runId,
+        err: String(err instanceof Error ? err.message : err),
+      });
+    });
     void evaluateGatesForRun(finished).catch((err) => {
       log.warn("runner", "verification failed", {
         runId,
@@ -217,6 +257,43 @@ async function runInBackground(initialRun: Run): Promise<void> {
     state,
     exitCode,
     durationMs: finishedAt - startedAt,
+  });
+}
+
+async function readAndBroadcastMetrics(
+  run: Run,
+  metricsFile: string,
+): Promise<void> {
+  const f = Bun.file(metricsFile);
+  if (!(await f.exists())) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await f.text());
+  } catch (err) {
+    log.warn("runner", "metrics not valid JSON", {
+      runId: run.id,
+      err: String(err instanceof Error ? err.message : err),
+    });
+    return;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+  const metrics: MetricsSnapshot = {};
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") {
+      metrics[k] = v;
+    }
+  }
+  if (Object.keys(metrics).length === 0) return;
+  setRunMetrics(run.id, metrics);
+  broadcast({
+    type: "run_metrics",
+    runId: run.id,
+    sessionId: run.sessionId,
+    metrics,
+  });
+  log.info("runner", "metrics recorded", {
+    runId: run.id,
+    keys: Object.keys(metrics),
   });
 }
 

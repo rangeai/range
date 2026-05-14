@@ -24,6 +24,8 @@ import type {
   Profile,
   ProfileCommand,
   ProfileLoadResult,
+  Scenario,
+  ScenarioSweep,
   VerificationCriterion,
   VerificationGate,
 } from "../shared/protocol.ts";
@@ -90,9 +92,63 @@ interface RawYaml {
     language?: unknown;
   };
   commands?: Record<string, unknown>;
+  scenarios?: unknown;
   verification?: {
     gates?: unknown;
   };
+}
+
+function coerceSweep(raw: unknown): ScenarioSweep | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const paramsRaw = r.params;
+  if (!paramsRaw || typeof paramsRaw !== "object") return undefined;
+  const params: Record<string, (string | number)[]> = {};
+  for (const [k, v] of Object.entries(paramsRaw as Record<string, unknown>)) {
+    if (!Array.isArray(v)) continue;
+    const vals: (string | number)[] = [];
+    for (const item of v) {
+      if (typeof item === "number" || typeof item === "string") vals.push(item);
+    }
+    if (vals.length > 0) params[k] = vals;
+  }
+  return Object.keys(params).length > 0 ? { params } : undefined;
+}
+
+function coerceEnv(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "string") out[k] = v;
+    else if (typeof v === "number" || typeof v === "boolean") out[k] = String(v);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function coerceScenarios(raw: unknown): Scenario[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Scenario[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const r = item as Record<string, unknown>;
+    const name = typeof r.name === "string" ? r.name : null;
+    if (!name) continue;
+    const command = typeof r.command === "string" ? r.command : undefined;
+    const args = Array.isArray(r.args)
+      ? r.args.map((v) => String(v)).filter((s) => s.length > 0)
+      : undefined;
+    if (!command && (!args || args.length === 0)) continue;
+    out.push({
+      name,
+      command,
+      args,
+      env: coerceEnv(r.env),
+      sweep: coerceSweep(r.sweep),
+      description:
+        typeof r.description === "string" ? r.description : undefined,
+    });
+  }
+  return out;
 }
 
 function coerceCriterion(raw: unknown): VerificationCriterion | undefined {
@@ -163,9 +219,10 @@ function coerceProfile(raw: unknown): Profile {
     }
   }
 
+  const scenarios = coerceScenarios(r.scenarios);
   const gates = coerceGates(r.verification?.gates);
 
-  return { version, project, commands, gates };
+  return { version, project, commands, scenarios, gates };
 }
 
 export async function loadProfile(

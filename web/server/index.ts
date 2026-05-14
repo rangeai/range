@@ -41,6 +41,7 @@ import type {
   OpenPrResponse,
   PrDraftResponse,
   RunKind,
+  RunScenarioResponse,
   Sandbox,
   ServerMessage,
   StartAgentRequest,
@@ -64,6 +65,7 @@ import { loadProfile } from "./profile.ts";
 import { getLatestResults } from "./verification.ts";
 import { draftPr, openPr } from "./pr.ts";
 import { listDirectory, homeDir } from "./fs_browse.ts";
+import { runScenario } from "./scenarios.ts";
 import {
   composeBaseInstructions,
   isAgentRunning,
@@ -342,6 +344,21 @@ app.get("/api/runs/:id", async (c) => {
       : undefined,
   };
   return c.json(response);
+});
+
+app.post("/api/sessions/:id/scenarios/:name/run", async (c) => {
+  const sessionId = c.req.param("id");
+  const name = c.req.param("name");
+  try {
+    const outcome = await runScenario({ sessionId, scenarioName: name });
+    const response: RunScenarioResponse = outcome;
+    return c.json(response, 201);
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      400,
+    );
+  }
 });
 
 app.post("/api/runs/:id/abort", async (c) => {

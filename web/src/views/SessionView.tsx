@@ -11,6 +11,7 @@ import type {
   Run,
   RunLogEntry,
   RunState,
+  Scenario,
   Session,
   VerificationGate,
   VerificationResult,
@@ -1238,6 +1239,7 @@ function RunsBlock({
 
   const profileCommands = profile?.profile?.commands ?? [];
   const gates = profile?.profile?.gates ?? [];
+  const scenarios = profile?.profile?.scenarios ?? [];
 
   return (
     <section className="mb-8">
@@ -1247,6 +1249,10 @@ function RunsBlock({
         </div>
         <span className="text-[10.5px] font-mono text-fg-3">{runs.length}</span>
       </div>
+
+      {scenarios.length > 0 && (
+        <ScenariosStrip session={session} scenarios={scenarios} />
+      )}
 
       {gates.length > 0 && (
         <VerificationStrip sessionId={session.id} gates={gates} />
@@ -1259,16 +1265,11 @@ function RunsBlock({
       <RunLauncher session={session} />
 
       {runs.length > 0 && (
-        <div className="space-y-1.5 mb-1">
-          {runs.map((r) => (
-            <RunRow
-              key={r.id}
-              run={r}
-              selected={r.id === selectedRunId}
-              onClick={() => setSelectedRunId(r.id)}
-            />
-          ))}
-        </div>
+        <RunsList
+          runs={runs}
+          selectedRunId={selectedRunId}
+          onSelect={setSelectedRunId}
+        />
       )}
 
       {selectedRun && <LogPanel run={selectedRun} />}
@@ -1349,6 +1350,95 @@ function verificationColor(
     default:
       return undefined;
   }
+}
+
+function ScenariosStrip({
+  session,
+  scenarios,
+}: {
+  session: Session;
+  scenarios: Scenario[];
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const launch = async (name: string) => {
+    if (!session.worktreePath) return;
+    setBusy(name);
+    setErr(null);
+    try {
+      await api.runScenario(session.id, name);
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="mb-3">
+      <div className="text-[9.5px] tracking-[0.16em] uppercase text-fg-3 mb-2">
+        scenarios
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {scenarios.map((s) => {
+          const sweepCount = s.sweep
+            ? Object.values(s.sweep.params).reduce(
+                (a, v) => a * v.length,
+                1,
+              )
+            : 1;
+          const isBusy = busy === s.name;
+          return (
+            <button
+              key={s.name}
+              onClick={() => launch(s.name)}
+              disabled={!session.worktreePath || busy !== null}
+              title={s.description ?? s.name}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 border bg-[var(--bg-1)] hover:bg-[var(--bg-2)] disabled:opacity-50 disabled:cursor-not-allowed rounded text-[11.5px] text-fg-1 transition"
+              style={{
+                borderColor: isBusy
+                  ? "var(--accent)"
+                  : "color-mix(in oklch, var(--accent) 25%, var(--br-1))",
+              }}
+            >
+              <svg
+                className="w-2.5 h-2.5 text-[var(--accent)]"
+                viewBox="0 0 12 12"
+                fill="none"
+              >
+                <circle
+                  cx="6"
+                  cy="6"
+                  r="4.5"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                />
+                <path
+                  d="M5 4l3 2-3 2z"
+                  fill="currentColor"
+                />
+              </svg>
+              <span className="font-mono">{s.name}</span>
+              {sweepCount > 1 && (
+                <span className="text-[10px] text-[var(--accent)] font-mono">
+                  ×{sweepCount}
+                </span>
+              )}
+              {isBusy && (
+                <span className="text-[10px] text-fg-3 italic">launching…</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {err && (
+        <div className="mt-1.5 text-[10.5px] text-[var(--err)] break-words">
+          {err}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ProfileCommandStrip({
@@ -1484,6 +1574,161 @@ function RunLauncher({ session }: { session: Session }) {
   );
 }
 
+function RunsList({
+  runs,
+  selectedRunId,
+  onSelect,
+}: {
+  runs: Run[];
+  selectedRunId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  // Group consecutive runs that share a sweep_id under a header. Solo
+  // runs (no sweepId) render normally.
+  type Group =
+    | { kind: "single"; run: Run }
+    | { kind: "sweep"; sweepId: string; runs: Run[] };
+
+  const groups: Group[] = [];
+  for (const r of runs) {
+    if (r.sweepId) {
+      const last = groups[groups.length - 1];
+      if (last && last.kind === "sweep" && last.sweepId === r.sweepId) {
+        last.runs.push(r);
+        continue;
+      }
+      groups.push({ kind: "sweep", sweepId: r.sweepId, runs: [r] });
+    } else {
+      groups.push({ kind: "single", run: r });
+    }
+  }
+
+  return (
+    <div className="space-y-1.5 mb-1">
+      {groups.map((g) =>
+        g.kind === "single" ? (
+          <RunRow
+            key={g.run.id}
+            run={g.run}
+            selected={g.run.id === selectedRunId}
+            onClick={() => onSelect(g.run.id)}
+          />
+        ) : (
+          <SweepGroup
+            key={g.sweepId}
+            sweepId={g.sweepId}
+            runs={g.runs}
+            selectedRunId={selectedRunId}
+            onSelect={onSelect}
+          />
+        ),
+      )}
+    </div>
+  );
+}
+
+function SweepGroup({
+  runs,
+  selectedRunId,
+  onSelect,
+}: {
+  sweepId: string;
+  runs: Run[];
+  selectedRunId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const finished = runs.filter((r) => r.finishedAt != null);
+  const passed = finished.filter((r) => r.state === "succeeded").length;
+  const inFlight = runs.filter(
+    (r) => r.state === "running" || r.state === "starting" || r.state === "queued",
+  ).length;
+  const scenarioName = runs[0]?.scenarioName ?? "sweep";
+
+  // Aggregate one metric across runs: pick the first numeric metric key.
+  let aggKey: string | null = null;
+  const values: number[] = [];
+  for (const r of runs) {
+    if (!r.metrics) continue;
+    for (const [k, v] of Object.entries(r.metrics)) {
+      if (typeof v === "number") {
+        if (aggKey == null) aggKey = k;
+        if (k === aggKey) values.push(v);
+        break;
+      }
+    }
+  }
+  const min = values.length ? Math.min(...values) : null;
+  const max = values.length ? Math.max(...values) : null;
+
+  return (
+    <div className="border border-[var(--br-1)] rounded-lg bg-[var(--bg-1)] overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-[var(--bg-2)] transition"
+      >
+        <svg
+          className={`w-2.5 h-2.5 text-fg-3 flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+          viewBox="0 0 12 12"
+          fill="none"
+        >
+          <path
+            d="M4 2l4 4-4 4"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="text-[10px] uppercase tracking-[0.14em] font-medium text-[var(--accent)]">
+          sweep · {scenarioName}
+        </span>
+        <span className="font-mono text-[10.5px] text-fg-3">
+          {runs.length} run{runs.length === 1 ? "" : "s"}
+        </span>
+        <div className="flex-1"></div>
+        {inFlight > 0 && (
+          <span className="text-[10.5px] text-[var(--accent)] font-mono pulse-live">
+            {inFlight} in flight
+          </span>
+        )}
+        {finished.length > 0 && (
+          <span className="text-[10.5px] font-mono text-fg-2">
+            {passed}/{finished.length} pass
+          </span>
+        )}
+        {aggKey && values.length > 0 && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded font-mono"
+            style={{
+              background: "color-mix(in oklch, var(--accent) 12%, var(--bg))",
+              border:
+                "1px solid color-mix(in oklch, var(--accent) 30%, var(--br-1))",
+              color: "var(--fg-1)",
+            }}
+            title={`range across sweep variants`}
+          >
+            <span className="text-[var(--accent)] mr-1">{aggKey}</span>
+            {formatMetricNumber(aggKey, min!)}–{formatMetricNumber(aggKey, max!)}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="border-t border-[var(--br-1)] p-1.5 space-y-1.5 bg-[var(--bg)]">
+          {runs.map((r) => (
+            <RunRow
+              key={r.id}
+              run={r}
+              selected={r.id === selectedRunId}
+              onClick={() => onSelect(r.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RunRow({
   run,
   selected,
@@ -1505,27 +1750,89 @@ function RunRow({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-3 py-2 border rounded-lg flex items-center gap-3 transition ${
+      className={`w-full text-left px-3 py-2 border rounded-lg transition ${
         selected
           ? "border-[var(--br-3)] bg-[var(--bg-2)]"
           : "border-[var(--br-1)] bg-[var(--bg-1)] hover:bg-[var(--bg-2)]"
       }`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`}></span>
-      <span className="font-mono text-[12px] text-fg-1 truncate flex-1">
-        {cmd}
-      </span>
-      <span
-        className="font-mono text-[10.5px]"
-        style={{ color: stateColor ?? "var(--fg-3)" }}
-      >
-        {run.state.replace(/_/g, " ")}
-      </span>
-      <span className="font-mono text-[10.5px] text-fg-3 w-[60px] text-right">
-        {elapsed}
-      </span>
+      <div className="flex items-center gap-3">
+        <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`}></span>
+        {run.scenarioName && (
+          <span className="text-[10px] uppercase tracking-[0.14em] font-medium text-[var(--accent)] flex-shrink-0">
+            {run.scenarioName}
+          </span>
+        )}
+        <span className="font-mono text-[12px] text-fg-1 truncate flex-1 min-w-0">
+          {cmd}
+        </span>
+        <span
+          className="font-mono text-[10.5px]"
+          style={{ color: stateColor ?? "var(--fg-3)" }}
+        >
+          {run.state.replace(/_/g, " ")}
+        </span>
+        <span className="font-mono text-[10.5px] text-fg-3 w-[60px] text-right">
+          {elapsed}
+        </span>
+      </div>
+      {(run.sweepVariant || run.metrics) && (
+        <div className="mt-1.5 ml-3.5 flex flex-wrap gap-1.5">
+          {run.sweepVariant &&
+            Object.entries(run.sweepVariant).map(([k, v]) => (
+              <span
+                key={`v-${k}`}
+                className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--br-1)] bg-[var(--bg)] font-mono text-fg-3"
+                title={`sweep variant ${k}`}
+              >
+                {k}={String(v)}
+              </span>
+            ))}
+          {run.metrics &&
+            Object.entries(run.metrics).map(([k, v]) => (
+              <MetricChip key={`m-${k}`} name={k} value={v} />
+            ))}
+        </div>
+      )}
     </button>
   );
+}
+
+function MetricChip({
+  name,
+  value,
+}: {
+  name: string;
+  value: number | string | boolean;
+}) {
+  const display =
+    typeof value === "number"
+      ? formatMetricNumber(name, value)
+      : String(value);
+  return (
+    <span
+      title={`${name} = ${value}`}
+      className="text-[10px] px-1.5 py-0.5 rounded font-mono"
+      style={{
+        background: "color-mix(in oklch, var(--accent) 12%, var(--bg))",
+        border:
+          "1px solid color-mix(in oklch, var(--accent) 30%, var(--br-1))",
+        color: "var(--fg-1)",
+      }}
+    >
+      <span className="text-[var(--accent)] mr-1">{name}</span>
+      {display}
+    </span>
+  );
+}
+
+function formatMetricNumber(name: string, v: number): string {
+  if (/rate$|ratio$|pct$/i.test(name) && v <= 1) {
+    return `${(v * 100).toFixed(1)}%`;
+  }
+  if (Number.isInteger(v)) return v.toString();
+  if (Math.abs(v) < 0.01) return v.toExponential(2);
+  return v.toFixed(2);
 }
 
 const EMPTY_LOGS: RunLogEntry[] = [];
