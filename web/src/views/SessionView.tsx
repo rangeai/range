@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
 import { runsForSession, useAppStore } from "../lib/store";
@@ -81,6 +81,17 @@ export function SessionView({ sessionId }: { sessionId: string }) {
     );
   }
 
+  return <SessionLayout session={session} profile={profile} />;
+}
+
+function SessionLayout({
+  session,
+  profile,
+}: {
+  session: Session;
+  profile: ProfileLoadResult | undefined;
+}) {
+  const [railOpen, setRailOpen] = useState(true);
   return (
     <div className="h-full flex overflow-hidden">
       {/* Main column: header + worktree + conversation (scrolls) + composer (pinned) */}
@@ -98,12 +109,47 @@ export function SessionView({ sessionId }: { sessionId: string }) {
           </div>
         </div>
       </div>
-      {/* Right rail: launchers, runs list, PR. Independent scroll. */}
-      <aside className="w-[360px] flex-shrink-0 border-l border-[var(--br-1)] bg-[var(--bg-1)] overflow-y-auto">
-        <div className="px-4 py-4 space-y-1">
-          <RunsBlock session={session} profile={profile} />
-          <PrBlock session={session} />
-        </div>
+      {/* Right rail: collapsible. Independent scroll when open. */}
+      <aside
+        className={`flex-shrink-0 border-l border-[var(--br-1)] bg-[var(--bg-1)] flex flex-col transition-[width] duration-150 ${railOpen ? "w-[460px]" : "w-[34px]"}`}
+      >
+        <button
+          onClick={() => setRailOpen((o) => !o)}
+          title={railOpen ? "collapse panel" : "expand panel"}
+          className="h-9 flex items-center justify-center border-b border-[var(--br-1)] text-fg-3 hover:text-fg-1 hover:bg-[var(--bg-2)] transition flex-shrink-0"
+        >
+          <svg
+            className={`w-3 h-3 transition-transform ${railOpen ? "" : "rotate-180"}`}
+            viewBox="0 0 12 12"
+            fill="none"
+          >
+            <path
+              d="M4 2l4 4-4 4"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {!railOpen && (
+            <span
+              className="ml-1.5 text-[10px] tracking-[0.18em] uppercase"
+              style={{
+                writingMode: "vertical-rl",
+                transform: "rotate(180deg)",
+                marginTop: 6,
+              }}
+            >
+              runs · pr
+            </span>
+          )}
+        </button>
+        {railOpen && (
+          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+            <RunsBlock session={session} profile={profile} />
+            <PrBlock session={session} />
+          </div>
+        )}
       </aside>
     </div>
   );
@@ -1248,7 +1294,6 @@ function RunsBlock({
     useShallow((s) => runsForSession(s, session.id)),
   );
   const upsertManyRuns = useAppStore((s) => s.upsertManyRuns);
-  const appendManyLogs = useAppStore((s) => s.appendManyLogs);
   const setVerificationResults = useAppStore((s) => s.setVerificationResults);
 
   useEffect(() => {
@@ -1261,35 +1306,6 @@ function RunsBlock({
       .then((res) => setVerificationResults(session.id, res.results))
       .catch((err) => console.error("getVerification failed", err));
   }, [session.id, upsertManyRuns, setVerificationResults]);
-
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (runs.length === 0) {
-      setSelectedRunId(null);
-      return;
-    }
-    if (!selectedRunId || !runs.find((r) => r.id === selectedRunId)) {
-      setSelectedRunId(runs[runs.length - 1]!.id);
-    }
-  }, [runs, selectedRunId]);
-
-  useEffect(() => {
-    if (!selectedRunId) return;
-    const haveLogs = !!useAppStore.getState().logsByRun.get(selectedRunId);
-    if (haveLogs) return;
-    api
-      .getRun(selectedRunId, true)
-      .then((res) => {
-        if (res.logs && res.logs.length > 0) appendManyLogs(res.logs);
-      })
-      .catch((err) => console.error("getRun(logs) failed", err));
-  }, [selectedRunId, appendManyLogs]);
-
-  const selectedRun = useMemo(
-    () => runs.find((r) => r.id === selectedRunId) ?? null,
-    [runs, selectedRunId],
-  );
 
   const profileCommands = profile?.profile?.commands ?? [];
   const gates = profile?.profile?.gates ?? [];
@@ -1318,16 +1334,7 @@ function RunsBlock({
 
       <RunLauncher session={session} />
 
-      {runs.length > 0 && (
-        <RunsList
-          runs={runs}
-          selectedRunId={selectedRunId}
-          onSelect={setSelectedRunId}
-        />
-      )}
-
-      {selectedRun && <ArtifactPanel run={selectedRun} />}
-      {selectedRun && <LogPanel run={selectedRun} />}
+      {runs.length > 0 && <RunsList runs={runs} />}
     </section>
   );
 }
@@ -1810,15 +1817,7 @@ function RunLauncher({ session }: { session: Session }) {
   );
 }
 
-function RunsList({
-  runs,
-  selectedRunId,
-  onSelect,
-}: {
-  runs: Run[];
-  selectedRunId: string | null;
-  onSelect: (id: string) => void;
-}) {
+function RunsList({ runs }: { runs: Run[] }) {
   // Group consecutive runs that share a sweep_id under a header. Solo
   // runs (no sweepId) render normally.
   type Group =
@@ -1843,36 +1842,16 @@ function RunsList({
     <div className="space-y-1.5 mb-1">
       {groups.map((g) =>
         g.kind === "single" ? (
-          <RunRow
-            key={g.run.id}
-            run={g.run}
-            selected={g.run.id === selectedRunId}
-            onClick={() => onSelect(g.run.id)}
-          />
+          <RunRow key={g.run.id} run={g.run} />
         ) : (
-          <SweepGroup
-            key={g.sweepId}
-            sweepId={g.sweepId}
-            runs={g.runs}
-            selectedRunId={selectedRunId}
-            onSelect={onSelect}
-          />
+          <SweepGroup key={g.sweepId} runs={g.runs} />
         ),
       )}
     </div>
   );
 }
 
-function SweepGroup({
-  runs,
-  selectedRunId,
-  onSelect,
-}: {
-  sweepId: string;
-  runs: Run[];
-  selectedRunId: string | null;
-  onSelect: (id: string) => void;
-}) {
+function SweepGroup({ runs }: { runs: Run[] }) {
   const [open, setOpen] = useState(true);
   const finished = runs.filter((r) => r.finishedAt != null);
   const passed = finished.filter((r) => r.state === "succeeded").length;
@@ -1952,12 +1931,7 @@ function SweepGroup({
       {open && (
         <div className="border-t border-[var(--br-1)] p-1.5 space-y-1.5 bg-[var(--bg)]">
           {runs.map((r) => (
-            <RunRow
-              key={r.id}
-              run={r}
-              selected={r.id === selectedRunId}
-              onClick={() => onSelect(r.id)}
-            />
+            <RunRow key={r.id} run={r} />
           ))}
         </div>
       )}
@@ -1965,15 +1939,7 @@ function SweepGroup({
   );
 }
 
-function RunRow({
-  run,
-  selected,
-  onClick,
-}: {
-  run: Run;
-  selected: boolean;
-  onClick: () => void;
-}) {
+function RunRow({ run }: { run: Run }) {
   const stateColor = runStateColor(run.state);
   const dotClass = runStateDotClass(run.state);
   const cmd = run.command.join(" ");
@@ -1983,54 +1949,102 @@ function RunRow({
       : run.startedAt
         ? "running"
         : "queued";
+
+  // Auto-expand while running, collapse once finished — unless the user
+  // explicitly opens it. Matches CommandItemView's pattern.
+  const inFlight =
+    run.state === "running" ||
+    run.state === "starting" ||
+    run.state === "queued";
+  const [userOpen, setUserOpen] = useState(false);
+  const open = userOpen || inFlight;
+  const appendManyLogs = useAppStore((s) => s.appendManyLogs);
+
+  // Lazy-load historical logs the first time this row opens (live logs
+  // come via WS and live in logsByRun already).
+  useEffect(() => {
+    if (!open) return;
+    const haveLogs = !!useAppStore.getState().logsByRun.get(run.id);
+    if (haveLogs) return;
+    api
+      .getRun(run.id, true)
+      .then((res) => {
+        if (res.logs && res.logs.length > 0) appendManyLogs(res.logs);
+      })
+      .catch((err) => console.error("getRun(logs) failed", err));
+  }, [open, run.id, appendManyLogs]);
+
   return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left px-3 py-2 border rounded-lg transition ${
-        selected
+    <div
+      className={`border rounded-lg transition ${
+        open
           ? "border-[var(--br-3)] bg-[var(--bg-2)]"
           : "border-[var(--br-1)] bg-[var(--bg-1)] hover:bg-[var(--bg-2)]"
       }`}
     >
-      <div className="flex items-center gap-3">
-        <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`}></span>
-        {run.scenarioName && (
-          <span className="text-[10px] uppercase tracking-[0.14em] font-medium text-[var(--accent)] flex-shrink-0">
-            {run.scenarioName}
+      <button
+        onClick={() => setUserOpen((o) => !o)}
+        className="w-full text-left px-3 py-2"
+      >
+        <div className="flex items-center gap-3">
+          <svg
+            className={`w-2.5 h-2.5 text-fg-3 flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+            viewBox="0 0 12 12"
+            fill="none"
+          >
+            <path
+              d="M4 2l4 4-4 4"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span className={`w-1.5 h-1.5 rounded-full ${dotClass}`}></span>
+          {run.scenarioName && (
+            <span className="text-[10px] uppercase tracking-[0.14em] font-medium text-[var(--accent)] flex-shrink-0">
+              {run.scenarioName}
+            </span>
+          )}
+          <span className="font-mono text-[12px] text-fg-1 truncate flex-1 min-w-0">
+            {cmd}
           </span>
+          <span
+            className="font-mono text-[10.5px]"
+            style={{ color: stateColor ?? "var(--fg-3)" }}
+          >
+            {run.state.replace(/_/g, " ")}
+          </span>
+          <span className="font-mono text-[10.5px] text-fg-3 w-[60px] text-right">
+            {elapsed}
+          </span>
+        </div>
+        {(run.sweepVariant || run.metrics) && (
+          <div className="mt-1.5 ml-5 flex flex-wrap gap-1.5">
+            {run.sweepVariant &&
+              Object.entries(run.sweepVariant).map(([k, v]) => (
+                <span
+                  key={`v-${k}`}
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--br-1)] bg-[var(--bg)] font-mono text-fg-3"
+                  title={`sweep variant ${k}`}
+                >
+                  {k}={String(v)}
+                </span>
+              ))}
+            {run.metrics &&
+              Object.entries(run.metrics).map(([k, v]) => (
+                <MetricChip key={`m-${k}`} name={k} value={v} />
+              ))}
+          </div>
         )}
-        <span className="font-mono text-[12px] text-fg-1 truncate flex-1 min-w-0">
-          {cmd}
-        </span>
-        <span
-          className="font-mono text-[10.5px]"
-          style={{ color: stateColor ?? "var(--fg-3)" }}
-        >
-          {run.state.replace(/_/g, " ")}
-        </span>
-        <span className="font-mono text-[10.5px] text-fg-3 w-[60px] text-right">
-          {elapsed}
-        </span>
-      </div>
-      {(run.sweepVariant || run.metrics) && (
-        <div className="mt-1.5 ml-3.5 flex flex-wrap gap-1.5">
-          {run.sweepVariant &&
-            Object.entries(run.sweepVariant).map(([k, v]) => (
-              <span
-                key={`v-${k}`}
-                className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--br-1)] bg-[var(--bg)] font-mono text-fg-3"
-                title={`sweep variant ${k}`}
-              >
-                {k}={String(v)}
-              </span>
-            ))}
-          {run.metrics &&
-            Object.entries(run.metrics).map(([k, v]) => (
-              <MetricChip key={`m-${k}`} name={k} value={v} />
-            ))}
+      </button>
+      {open && (
+        <div className="border-t border-[var(--br-1)] p-2 space-y-2">
+          <ArtifactPanel run={run} />
+          <LogPanel run={run} />
         </div>
       )}
-    </button>
+    </div>
   );
 }
 
