@@ -1085,16 +1085,59 @@ function MessageComposer({
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [repoPickerOpen, setRepoPickerOpen] = useState(false);
+  const [slashIdx, setSlashIdx] = useState(0);
+  const [slashErr, setSlashErr] = useState<string | null>(null);
   const pushUserMessage = useAppStore((s) => s.pushUserMessage);
   const upsertSession = useAppStore((s) => s.upsertSession);
   const patch = useAppStore((s) => s.patchConversation);
+  const profile = useAppStore((s) =>
+    s.profilesBySession.get(session.id),
+  );
+
+  // Slash-command items (scenarios + commands from range.yaml).
+  type SlashItem =
+    | { kind: "scenario"; name: string; description?: string; sweepCount: number }
+    | { kind: "command"; name: string; description?: string; args: string[] };
+  const allItems: SlashItem[] = (() => {
+    const p = profile?.profile;
+    if (!p) return [];
+    const items: SlashItem[] = [];
+    for (const s of p.scenarios) {
+      const sweepCount = s.sweep
+        ? Object.values(s.sweep.params).reduce((a, v) => a * v.length, 1)
+        : 1;
+      items.push({
+        kind: "scenario",
+        name: s.name,
+        description: s.description,
+        sweepCount,
+      });
+    }
+    for (const c of p.commands) {
+      items.push({
+        kind: "command",
+        name: c.name,
+        description: c.description,
+        args: c.args,
+      });
+    }
+    return items;
+  })();
+
+  const slashOpen = text.startsWith("/");
+  const slashQuery = slashOpen ? text.slice(1).toLowerCase() : "";
+  const matched = slashOpen
+    ? allItems.filter((it) => it.name.toLowerCase().includes(slashQuery))
+    : [];
+  const slashSelection = matched[Math.min(slashIdx, Math.max(0, matched.length - 1))];
 
   const canSend =
     conv.status === "running" &&
     !conv.turnInFlight &&
     text.trim().length > 0 &&
-    !busy;
+    !busy &&
+    !slashOpen;
 
   const submit = async () => {
     if (!canSend) return;
@@ -1112,8 +1155,60 @@ function MessageComposer({
     }
   };
 
+  const runSlash = async (item: SlashItem) => {
+    if (busy) return;
+    setBusy(true);
+    setSlashErr(null);
+    try {
+      if (item.kind === "scenario") {
+        await api.runScenario(session.id, item.name);
+      } else {
+        await api.createRun(session.id, {
+          command: item.args,
+          kind: "shell",
+        });
+      }
+      setText("");
+    } catch (e) {
+      setSlashErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashOpen) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashIdx((i) => Math.min(matched.length - 1, i + 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashIdx((i) => Math.max(0, i - 1));
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setText("");
+        setSlashIdx(0);
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        if (slashSelection) void runSlash(slashSelection);
+        return;
+      }
+      return;
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
+  };
+
   const onPickRepo = async (path: string) => {
-    setPickerOpen(false);
+    setRepoPickerOpen(false);
     try {
       const res = await api.attachRepo(session.id, path);
       upsertSession(res.session);
@@ -1130,33 +1225,45 @@ function MessageComposer({
         ? "Codex is starting…"
         : conv.turnInFlight
           ? "Codex is working on the previous turn…"
-          : "ask Codex to investigate, explain, or run commands…";
+          : "type a message, or `/` for scenarios + commands…";
 
   const noRepo = !session.worktreePath;
 
   return (
     <>
+      {slashOpen && (
+        <SlashPicker
+          items={matched}
+          selectedIdx={Math.min(slashIdx, Math.max(0, matched.length - 1))}
+          onPick={(it) => runSlash(it)}
+          query={slashQuery}
+        />
+      )}
       <div className="border border-[var(--br-2)] rounded-lg bg-[var(--bg-1)]">
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
+          onChange={(e) => {
+            setText(e.target.value);
+            setSlashIdx(0);
           }}
-          disabled={conv.status !== "running" || conv.turnInFlight}
+          onKeyDown={onKeyDown}
+          disabled={
+            (conv.status !== "running" || conv.turnInFlight) && !slashOpen
+          }
           placeholder={placeholder}
           rows={2}
           className="w-full bg-transparent outline-none resize-none text-[13px] text-fg placeholder:text-fg-3 leading-relaxed disabled:opacity-60 px-3 py-2"
         />
         <div className="px-3 py-1.5 border-t border-[var(--br-1)] flex items-center gap-2 bg-[var(--bg)]">
-          <span className="text-[10.5px] text-fg-3">⏎ to send · ⇧⏎ newline</span>
+          <span className="text-[10.5px] text-fg-3">
+            {slashOpen
+              ? "↑↓ to navigate · ⏎ to run · esc to cancel"
+              : "⏎ to send · ⇧⏎ newline · / for scenarios"}
+          </span>
           <div className="flex-1"></div>
-          {noRepo && (
+          {noRepo && !slashOpen && (
             <button
-              onClick={() => setPickerOpen(true)}
+              onClick={() => setRepoPickerOpen(true)}
               title="attach a repo to this session"
               className="text-[11px] text-fg-1 border border-[var(--br-2)] hover:border-[var(--br-3)] hover:bg-[var(--bg-2)] px-2.5 py-1 rounded transition flex items-center gap-1.5"
             >
@@ -1171,22 +1278,99 @@ function MessageComposer({
               attach repo
             </button>
           )}
-          <button
-            onClick={submit}
-            disabled={!canSend}
-            className="text-[11px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition font-medium"
-          >
-            send
-          </button>
+          {!slashOpen && (
+            <button
+              onClick={submit}
+              disabled={!canSend}
+              className="text-[11px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded transition font-medium"
+            >
+              send
+            </button>
+          )}
         </div>
+        {slashErr && (
+          <div className="px-3 py-2 text-[11px] text-[var(--err)] border-t border-[var(--br-1)] break-words">
+            {slashErr}
+          </div>
+        )}
       </div>
-      {pickerOpen && (
+      {repoPickerOpen && (
         <RepoPicker
           onPick={onPickRepo}
-          onClose={() => setPickerOpen(false)}
+          onClose={() => setRepoPickerOpen(false)}
         />
       )}
     </>
+  );
+}
+
+function SlashPicker({
+  items,
+  selectedIdx,
+  onPick,
+  query,
+}: {
+  items: Array<
+    | { kind: "scenario"; name: string; description?: string; sweepCount: number }
+    | { kind: "command"; name: string; description?: string; args: string[] }
+  >;
+  selectedIdx: number;
+  onPick: (
+    item:
+      | { kind: "scenario"; name: string; description?: string; sweepCount: number }
+      | { kind: "command"; name: string; description?: string; args: string[] }
+  ) => void;
+  query: string;
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="border border-[var(--br-2)] rounded-lg bg-[var(--bg-1)] p-3 mb-2 text-[11.5px] text-fg-3 italic">
+        no scenarios or commands match{" "}
+        <span className="font-mono text-fg-2">/{query}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="border border-[var(--br-2)] rounded-lg bg-[var(--bg-1)] overflow-hidden mb-2 max-h-[280px] overflow-y-auto">
+      {items.map((it, i) => {
+        const isSel = i === selectedIdx;
+        return (
+          <button
+            key={`${it.kind}-${it.name}`}
+            onClick={() => onPick(it)}
+            className={`w-full px-3 py-2 flex items-center gap-2 text-left transition ${
+              isSel
+                ? "bg-[var(--bg-2)] border-l-2 border-[var(--accent)]"
+                : "border-l-2 border-transparent hover:bg-[var(--bg-2)]"
+            }`}
+          >
+            <span
+              className="font-mono text-[10px] uppercase tracking-[0.16em] flex-shrink-0"
+              style={{
+                color: it.kind === "scenario" ? "var(--accent)" : "var(--fg-3)",
+              }}
+            >
+              {it.kind === "scenario" ? "▶" : "$"}
+            </span>
+            <span className="font-mono text-[12.5px] text-fg-1 flex-shrink-0">
+              {it.name}
+            </span>
+            {it.kind === "scenario" && it.sweepCount > 1 && (
+              <span className="font-mono text-[10px] text-[var(--accent)]">
+                ×{it.sweepCount}
+              </span>
+            )}
+            <span className="text-[11px] text-fg-3 truncate flex-1 min-w-0">
+              {it.description ??
+                (it.kind === "command" ? it.args.join(" ") : "")}
+            </span>
+            <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-fg-3 flex-shrink-0">
+              {it.kind}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
