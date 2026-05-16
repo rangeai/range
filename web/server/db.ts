@@ -225,6 +225,14 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_runs_sweep ON runs(sweep_id);
     `,
   },
+  {
+    id: 9,
+    name: "sessions_approval_settings",
+    up: `
+      ALTER TABLE sessions ADD COLUMN auto_approve INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN allowed_commands TEXT NOT NULL DEFAULT '[]';
+    `,
+  },
 ];
 
 function applyMigrations() {

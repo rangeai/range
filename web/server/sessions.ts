@@ -37,11 +37,22 @@ interface SessionRow {
   base_sha: string | null;
   codex_thread_id: string | null;
   sandbox: string;
+  auto_approve: number;
+  allowed_commands: string;
   created_at: number;
   updated_at: number;
 }
 
 function rowToSession(row: SessionRow): Session {
+  let allowed: string[] = [];
+  try {
+    const parsed = JSON.parse(row.allowed_commands ?? "[]");
+    if (Array.isArray(parsed)) {
+      allowed = parsed.filter((x) => typeof x === "string");
+    }
+  } catch {
+    allowed = [];
+  }
   return {
     id: row.id,
     kind: row.kind as Session["kind"],
@@ -56,6 +67,8 @@ function rowToSession(row: SessionRow): Session {
     baseSha: row.base_sha,
     codexThreadId: row.codex_thread_id,
     sandbox: row.sandbox as Sandbox,
+    autoApprove: row.auto_approve === 1,
+    allowedCommands: allowed,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -207,6 +220,50 @@ export function setSessionCodexThreadId(
 ): Session | null {
   setCodexThreadIdStmt.run(threadId, Date.now(), id);
   return getSession(id);
+}
+
+const setAutoApproveStmt = db.prepare(
+  "UPDATE sessions SET auto_approve = ?, updated_at = ? WHERE id = ?",
+);
+const setAllowedCommandsStmt = db.prepare(
+  "UPDATE sessions SET allowed_commands = ?, updated_at = ? WHERE id = ?",
+);
+
+export function setSessionAutoApprove(
+  id: string,
+  enabled: boolean,
+): Session | null {
+  setAutoApproveStmt.run(enabled ? 1 : 0, Date.now(), id);
+  return getSession(id);
+}
+
+export function setSessionAllowedCommands(
+  id: string,
+  binaries: string[],
+): Session | null {
+  // Normalize: lowercase, dedupe, drop empties.
+  const norm = Array.from(
+    new Set(binaries.map((b) => b.trim().toLowerCase()).filter(Boolean)),
+  );
+  setAllowedCommandsStmt.run(JSON.stringify(norm), Date.now(), id);
+  return getSession(id);
+}
+
+export function allowCommand(id: string, binary: string): Session | null {
+  const s = getSession(id);
+  if (!s) return null;
+  const next = Array.from(new Set([...s.allowedCommands, binary.toLowerCase()]));
+  return setSessionAllowedCommands(id, next);
+}
+
+export function disallowCommand(id: string, binary: string): Session | null {
+  const s = getSession(id);
+  if (!s) return null;
+  const lower = binary.toLowerCase();
+  return setSessionAllowedCommands(
+    id,
+    s.allowedCommands.filter((b) => b !== lower),
+  );
 }
 
 const deleteStmt = db.prepare("DELETE FROM sessions WHERE id = ?");

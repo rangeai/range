@@ -33,6 +33,11 @@ export interface Session {
   baseSha: string | null;
   codexThreadId: string | null;
   sandbox: Sandbox;
+  /** Skip approval for every command. Maps to Codex approval_policy = "never". */
+  autoApprove: boolean;
+  /** Binaries (first non-shell token) whose commands auto-approve in this
+   *  session. e.g. ["git", "ls", "find"]. */
+  allowedCommands: string[];
   createdAt: number;
   updatedAt: number;
 }

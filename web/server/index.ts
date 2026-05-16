@@ -49,11 +49,14 @@ import type {
 } from "../shared/protocol.ts";
 import "./db.ts";
 import {
+  allowCommand,
   attachRepo,
   createSession,
   deleteSession,
+  disallowCommand,
   getSession,
   listSessions,
+  setSessionAutoApprove,
   validateRepoPath,
 } from "./sessions.ts";
 import {
@@ -185,6 +188,61 @@ app.get("/api/sessions/:id", (c) => {
   if (!session) return c.json({ error: "session not found" }, 404);
   const response: GetSessionResponse = { session };
   return c.json(response);
+});
+
+app.post("/api/sessions/:id/allow-command", async (c) => {
+  const id = c.req.param("id");
+  let body: { binary?: string };
+  try {
+    body = (await c.req.json()) as { binary?: string };
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  if (!body.binary || typeof body.binary !== "string") {
+    return c.json({ error: "binary is required" }, 400);
+  }
+  const session = allowCommand(id, body.binary);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  broadcast({ type: "session_updated", session });
+  return c.json({ session });
+});
+
+app.delete("/api/sessions/:id/allow-command/:binary", (c) => {
+  const id = c.req.param("id");
+  const binary = c.req.param("binary");
+  const session = disallowCommand(id, binary);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  broadcast({ type: "session_updated", session });
+  return c.json({ session });
+});
+
+app.post("/api/sessions/:id/auto-approve", async (c) => {
+  const id = c.req.param("id");
+  let body: { enabled?: boolean };
+  try {
+    body = (await c.req.json()) as { enabled?: boolean };
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  if (typeof body.enabled !== "boolean") {
+    return c.json({ error: "enabled must be boolean" }, 400);
+  }
+  const session = setSessionAutoApprove(id, body.enabled);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  broadcast({ type: "session_updated", session });
+  // Codex sets approval_policy at thread/start time. If the agent is
+  // currently running, the policy is baked in for this thread; restart
+  // so the new setting takes effect.
+  if (isAgentRunning(id)) {
+    await stopAgent(id);
+    void startAgent(id).catch((err) => {
+      log.warn("sessions", "restart after auto-approve toggle failed", {
+        sessionId: id,
+        err: String(err instanceof Error ? err.message : err),
+      });
+    });
+  }
+  return c.json({ session });
 });
 
 app.delete("/api/sessions/:id", async (c) => {

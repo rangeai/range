@@ -296,30 +296,114 @@ function WorktreeBlock({ session }: { session: Session }) {
         </svg>
       </button>
       {open && (
-        <div className="border-t border-[var(--br-1)] px-3 py-3 grid grid-cols-2 gap-3 bg-[var(--bg)]">
-          <Fact
-            label="project path"
-            value={session.repoPath ?? "—"}
-            mono={!!session.repoPath}
-            breakAll
-          />
-          <Fact
-            label="branch"
-            value={session.branch ?? "—"}
-            mono={!!session.branch}
-            breakAll
-          />
-          <Fact
-            label="worktree (range internal)"
-            value={session.worktreePath}
-            mono
-            breakAll
-          />
-          <Fact
-            label="base sha"
-            value={session.baseSha?.slice(0, 12) ?? "—"}
-            mono={!!session.baseSha}
-          />
+        <div className="border-t border-[var(--br-1)] bg-[var(--bg)]">
+          <div className="px-3 py-3 grid grid-cols-2 gap-3">
+            <Fact
+              label="project path"
+              value={session.repoPath ?? "—"}
+              mono={!!session.repoPath}
+              breakAll
+            />
+            <Fact
+              label="branch"
+              value={session.branch ?? "—"}
+              mono={!!session.branch}
+              breakAll
+            />
+            <Fact
+              label="worktree (range internal)"
+              value={session.worktreePath}
+              mono
+              breakAll
+            />
+            <Fact
+              label="base sha"
+              value={session.baseSha?.slice(0, 12) ?? "—"}
+              mono={!!session.baseSha}
+            />
+          </div>
+          <ApprovalSettings session={session} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ApprovalSettings({ session }: { session: Session }) {
+  const upsertSession = useAppStore((s) => s.upsertSession);
+  const [busy, setBusy] = useState(false);
+
+  const toggleAutoApprove = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await api.setAutoApprove(session.id, !session.autoApprove);
+      upsertSession(res.session);
+    } catch (e) {
+      console.error("setAutoApprove failed", e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeBinary = async (binary: string) => {
+    try {
+      const res = await api.disallowCommand(session.id, binary);
+      upsertSession(res.session);
+    } catch (e) {
+      console.error("disallowCommand failed", e);
+    }
+  };
+
+  const modeLabel = session.autoApprove
+    ? "auto-approve all"
+    : session.allowedCommands.length > 0
+      ? `auto-allowed: ${session.allowedCommands.join(", ")}`
+      : "ask for every command";
+
+  return (
+    <div className="border-t border-[var(--br-1)] px-3 py-2.5">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[10px] tracking-[0.16em] uppercase text-fg-3">
+          approvals
+        </span>
+        <span className="text-[11px] text-fg-2 truncate flex-1">
+          {modeLabel}
+        </span>
+        <button
+          onClick={toggleAutoApprove}
+          disabled={busy}
+          title={
+            session.autoApprove
+              ? "stop auto-approving · ask for every command again"
+              : "auto-approve everything · Codex will not pause"
+          }
+          className={`text-[10.5px] px-2 py-0.5 rounded border transition ${
+            session.autoApprove
+              ? "text-[var(--bg)] bg-[var(--warn)] border-[var(--warn)]"
+              : "text-fg-1 border-[var(--br-2)] hover:border-[var(--br-3)] hover:bg-[var(--bg-2)]"
+          }`}
+        >
+          {session.autoApprove ? "auto-approve · on" : "auto-approve · off"}
+        </button>
+      </div>
+      {!session.autoApprove && session.allowedCommands.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {session.allowedCommands.map((b) => (
+            <span
+              key={b}
+              className="inline-flex items-center gap-1 text-[10.5px] font-mono px-1.5 py-0.5 rounded border border-[var(--accent)]/40 bg-[var(--accent-soft)]"
+            >
+              <span>{b}</span>
+              <button
+                onClick={() => removeBinary(b)}
+                className="text-fg-3 hover:text-[var(--err)] leading-none"
+                title={`stop auto-approving ${b}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
         </div>
       )}
     </div>
@@ -796,6 +880,11 @@ function ApprovalCard({
 }) {
   const wsSend = useWsSend();
   const resolveApproval = useAppStore((s) => s.resolveApproval);
+  const upsertSession = useAppStore((s) => s.upsertSession);
+  const binary =
+    approval.kind === "command"
+      ? approvalBinary(approval.payload.command)
+      : null;
 
   const decide = (decision: "accept" | "decline") => {
     if (approval.decision) return;
@@ -806,6 +895,17 @@ function ApprovalCard({
       requestId: approval.requestId,
       decision,
     });
+  };
+
+  const allowAndAccept = async () => {
+    if (approval.decision || !binary) return;
+    try {
+      const res = await api.allowCommand(sessionId, binary);
+      upsertSession(res.session);
+    } catch (e) {
+      console.error("allowCommand failed", e);
+    }
+    decide("accept");
   };
 
   const headline = approvalHeadline(approval);
@@ -862,6 +962,15 @@ function ApprovalCard({
               >
                 accept
               </button>
+              {binary && (
+                <button
+                  onClick={allowAndAccept}
+                  title={`auto-accept every future "${binary}" command in this session`}
+                  className="text-[11px] text-[var(--accent)] border border-[var(--accent)]/60 hover:bg-[var(--accent-soft)] px-2.5 py-1 rounded transition font-medium"
+                >
+                  always allow <span className="font-mono">{binary}</span>
+                </button>
+              )}
               <button
                 onClick={() => decide("decline")}
                 className="text-[11px] text-fg-1 border border-[var(--br-2)] hover:border-[var(--br-3)] hover:bg-[var(--bg-2)] px-2.5 py-1 rounded transition"
@@ -877,6 +986,29 @@ function ApprovalCard({
       </div>
     </div>
   );
+}
+
+/** Mirror of server/codex.ts `approvalBinary`. Pulls the user-meaningful
+ *  binary name out of a Codex command payload so the UI can offer
+ *  "always allow `<binary>`". */
+function approvalBinary(
+  command: string | string[] | undefined,
+): string | null {
+  if (!command) return null;
+  const joined = Array.isArray(command) ? command.join(" ") : command;
+  const wrapped = joined.match(
+    /^\/bin\/(?:ba|z)sh\s+-l?c\s+(['"])(.*)\1\s*$/s,
+  );
+  const inner = wrapped ? wrapped[2]! : joined;
+  const first = inner.trim().split(/\s+/, 1)[0] ?? "";
+  if (!first) return null;
+  if (first.includes("=")) {
+    for (const t of inner.trim().split(/\s+/)) {
+      if (!t.includes("=")) return t.split("/").pop() ?? t;
+    }
+    return null;
+  }
+  return first.split("/").pop() ?? first;
 }
 
 function approvalHeadline(approval: PendingApproval): string {

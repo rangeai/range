@@ -220,11 +220,13 @@ export async function startAgent(
 
   const sandbox: Sandbox = options.sandbox ?? session.sandbox;
   // workspace-write gates risky ops behind approvals; read-only auto-approves
-  // (there's nothing dangerous to do).
-  const approvalPolicy =
+  // (there's nothing dangerous to do). If the user has flipped on
+  // autoApprove for this session, fall through to "never" regardless.
+  let approvalPolicy: "never" | "on-request" =
     sandbox === "workspace-write" || sandbox === "danger-full-access"
       ? "on-request"
       : "never";
+  if (session.autoApprove) approvalPolicy = "never";
 
   const dir = threadDir(sessionId);
   await mkdir(dir, { recursive: true });
@@ -541,6 +543,28 @@ function handleIncomingRequest(cs: CodexSession, msg: JsonRpcRequest): void {
   if (typeof raw.description === "string") payload.description = raw.description;
   payload.raw = params;
 
+  // If this is a command approval and the underlying binary is in the
+  // session's allowlist, auto-accept on the user's behalf — no card,
+  // no wait. Other approval kinds (file_edit, permissions) still
+  // require explicit approval.
+  if (kind === "command") {
+    const session = getSession(cs.sessionId);
+    const binary = approvalBinary(payload.command);
+    if (
+      session &&
+      binary &&
+      session.allowedCommands.includes(binary.toLowerCase())
+    ) {
+      log.info("codex", "auto-approve (allowlist)", {
+        sessionId: cs.sessionId,
+        binary,
+        requestId: msg.id,
+      });
+      respondToApproval(cs.sessionId, msg.id, "accept");
+      return;
+    }
+  }
+
   emit({
     type: "agent_approval_request",
     sessionId: cs.sessionId,
@@ -548,6 +572,33 @@ function handleIncomingRequest(cs: CodexSession, msg: JsonRpcRequest): void {
     kind,
     payload,
   });
+}
+
+/** Pull the user-meaningful binary name out of a Codex command payload.
+ *  Codex tends to wrap things as ["/bin/zsh","-lc","actual cmd"]; we
+ *  strip that wrapper and take the first token of the actual command.
+ *  Matches the prettyCommand logic on the frontend. */
+export function approvalBinary(
+  command: string | string[] | undefined,
+): string | null {
+  if (!command) return null;
+  const joined = Array.isArray(command) ? command.join(" ") : command;
+  const wrapped = joined.match(
+    /^\/bin\/(?:ba|z)sh\s+-l?c\s+(['"])(.*)\1\s*$/s,
+  );
+  const inner = wrapped ? wrapped[2]! : joined;
+  const tok = inner.trim().split(/\s+/, 1)[0] ?? "";
+  if (!tok) return null;
+  // Strip env-var prefixes like FOO=1 BAR=2 cmd …
+  // The first token shouldn't be an assignment; if it is, take next.
+  if (tok.includes("=")) {
+    const rest = inner.trim().split(/\s+/);
+    for (const t of rest) {
+      if (!t.includes("=")) return t.split("/").pop() ?? t;
+    }
+    return null;
+  }
+  return tok.split("/").pop() ?? tok;
 }
 
 function classifyApproval(

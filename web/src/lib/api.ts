@@ -63,6 +63,36 @@ export function deleteSession(id: string): Promise<{ ok: boolean }> {
   });
 }
 
+export function allowCommand(
+  sessionId: string,
+  binary: string,
+): Promise<GetSessionResponse> {
+  return jsonRequest<GetSessionResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/allow-command`,
+    { method: "POST", body: JSON.stringify({ binary }) },
+  );
+}
+
+export function disallowCommand(
+  sessionId: string,
+  binary: string,
+): Promise<GetSessionResponse> {
+  return jsonRequest<GetSessionResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/allow-command/${encodeURIComponent(binary)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function setAutoApprove(
+  sessionId: string,
+  enabled: boolean,
+): Promise<GetSessionResponse> {
+  return jsonRequest<GetSessionResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/auto-approve`,
+    { method: "POST", body: JSON.stringify({ enabled }) },
+  );
+}
+
 export function attachRepo(
   sessionId: string,
   repoPath: string,
