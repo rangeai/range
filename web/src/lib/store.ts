@@ -7,6 +7,7 @@ import type {
   RunLogEntry,
   ServerAgentApprovalRequest,
   Session,
+  ThreadTokenUsage,
   VerificationResult,
 } from "@shared/protocol";
 
@@ -70,6 +71,8 @@ interface AppState {
   profilesBySession: Map<string, ProfileLoadResult>;
   conversationsBySession: Map<string, ConversationState>;
   verificationBySession: Map<string, Map<string, VerificationResult>>;
+  tokenUsageBySession: Map<string, ThreadTokenUsage>;
+  lastTurnDiffBySession: Map<string, string>;
 
   goHome: () => void;
   openSession: (id: string) => void;
@@ -134,6 +137,9 @@ interface AppState {
    *  Preserves runs / artifacts / verification — only the chat
    *  entries are wiped. */
   clearConversation: (sessionId: string) => void;
+
+  setTokenUsage: (sessionId: string, usage: ThreadTokenUsage) => void;
+  setTurnDiff: (sessionId: string, diff: string) => void;
 }
 
 const LOG_CAP = 5_000;
@@ -147,6 +153,8 @@ export const useAppStore = create<AppState>((set) => ({
   profilesBySession: new Map(),
   conversationsBySession: new Map(),
   verificationBySession: new Map(),
+  tokenUsageBySession: new Map(),
+  lastTurnDiffBySession: new Map(),
 
   goHome: () => set({ view: { kind: "home" } }),
   openSession: (id) => set({ view: { kind: "session", id } }),
@@ -435,6 +443,20 @@ export const useAppStore = create<AppState>((set) => ({
       if (!prev) return {};
       next.set(sessionId, { ...prev, entries: [], error: null });
       return { conversationsBySession: next };
+    }),
+
+  setTokenUsage: (sessionId, usage) =>
+    set((state) => {
+      const next = new Map(state.tokenUsageBySession);
+      next.set(sessionId, usage);
+      return { tokenUsageBySession: next };
+    }),
+
+  setTurnDiff: (sessionId, diff) =>
+    set((state) => {
+      const next = new Map(state.lastTurnDiffBySession);
+      next.set(sessionId, diff);
+      return { lastTurnDiffBySession: next };
     }),
 
   applyMessageDelta: (sessionId, itemId, delta) =>

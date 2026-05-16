@@ -141,6 +141,15 @@ export function clearAgent(
   );
 }
 
+export function compactAgent(
+  sessionId: string,
+): Promise<{ ok: boolean }> {
+  return jsonRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/agent/compact`,
+    { method: "POST" },
+  );
+}
+
 export function attachRepo(
   sessionId: string,
   repoPath: string,

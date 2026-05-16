@@ -391,6 +391,43 @@ export interface ServerVerificationResult {
   result: VerificationResult;
 }
 
+export interface TokenUsageBreakdown {
+  cachedInputTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+  totalTokens: number;
+}
+
+export interface ThreadTokenUsage {
+  last: TokenUsageBreakdown;
+  total: TokenUsageBreakdown;
+  modelContextWindow: number | null;
+}
+
+export interface ServerAgentTokenUsage {
+  type: "agent_token_usage";
+  sessionId: string;
+  threadId: string;
+  turnId: string;
+  usage: ThreadTokenUsage;
+}
+
+export interface ServerAgentTurnDiff {
+  type: "agent_turn_diff";
+  sessionId: string;
+  threadId: string;
+  turnId: string;
+  diff: string;
+}
+
+export interface ServerAgentCompacted {
+  type: "agent_compacted";
+  sessionId: string;
+  threadId: string;
+  turnId: string;
+}
+
 export interface ServerRunMetrics {
   type: "run_metrics";
   runId: string;
@@ -442,7 +479,10 @@ export type ServerMessage =
   | ServerAgentApprovalResolved
   | ServerVerificationResult
   | ServerRunMetrics
-  | ServerRunArtifacts;
+  | ServerRunArtifacts
+  | ServerAgentTokenUsage
+  | ServerAgentTurnDiff
+  | ServerAgentCompacted;
 
 // ─── Browser → Server ──────────────────────────────────────────────────────
 

@@ -79,6 +79,7 @@ import { listDirectory, homeDir } from "./fs_browse.ts";
 import { runScenario } from "./scenarios.ts";
 import {
   archiveAgentHistory,
+  compactThread,
   composeBaseInstructions,
   isAgentRunning,
   readAgentHistory,
@@ -332,6 +333,22 @@ app.post("/api/sessions/:id/agent/restart", async (c) => {
   try {
     const { threadId } = await startAgent(sessionId);
     return c.json({ threadId });
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      500,
+    );
+  }
+});
+
+app.post("/api/sessions/:id/agent/compact", async (c) => {
+  const sessionId = c.req.param("id");
+  if (!isAgentRunning(sessionId)) {
+    return c.json({ error: "agent not running for this session" }, 400);
+  }
+  try {
+    await compactThread(sessionId);
+    return c.json({ ok: true });
   } catch (err) {
     return c.json(
       { error: String(err instanceof Error ? err.message : err) },

@@ -695,12 +695,103 @@ function handleNotification(
     case "turn/completed":
       onTurnCompleted(cs, params);
       break;
+    case "thread/tokenUsage/updated":
+      onTokenUsageUpdated(cs, params);
+      break;
+    case "turn/diff/updated":
+      onTurnDiffUpdated(cs, params);
+      break;
+    case "thread/compacted":
+      onThreadCompacted(cs, params);
+      break;
     default:
       log.debug("codex", "unhandled notification", {
         sessionId: cs.sessionId,
         method: msg.method,
       });
   }
+}
+
+function onTokenUsageUpdated(
+  cs: CodexSession,
+  params: Record<string, unknown>,
+): void {
+  const threadId = (params.threadId as string | undefined) ?? cs.threadId ?? "";
+  const turnId = (params.turnId as string | undefined) ?? "";
+  const usage = params.tokenUsage as
+    | {
+        last: Record<string, number>;
+        total: Record<string, number>;
+        modelContextWindow?: number | null;
+      }
+    | undefined;
+  if (!usage) return;
+  emit({
+    type: "agent_token_usage",
+    sessionId: cs.sessionId,
+    threadId,
+    turnId,
+    usage: {
+      last: {
+        cachedInputTokens: usage.last.cachedInputTokens ?? 0,
+        inputTokens: usage.last.inputTokens ?? 0,
+        outputTokens: usage.last.outputTokens ?? 0,
+        reasoningOutputTokens: usage.last.reasoningOutputTokens ?? 0,
+        totalTokens: usage.last.totalTokens ?? 0,
+      },
+      total: {
+        cachedInputTokens: usage.total.cachedInputTokens ?? 0,
+        inputTokens: usage.total.inputTokens ?? 0,
+        outputTokens: usage.total.outputTokens ?? 0,
+        reasoningOutputTokens: usage.total.reasoningOutputTokens ?? 0,
+        totalTokens: usage.total.totalTokens ?? 0,
+      },
+      modelContextWindow: usage.modelContextWindow ?? null,
+    },
+  });
+}
+
+function onTurnDiffUpdated(
+  cs: CodexSession,
+  params: Record<string, unknown>,
+): void {
+  const threadId = (params.threadId as string | undefined) ?? cs.threadId ?? "";
+  const turnId = (params.turnId as string | undefined) ?? "";
+  const diff = typeof params.diff === "string" ? params.diff : "";
+  emit({
+    type: "agent_turn_diff",
+    sessionId: cs.sessionId,
+    threadId,
+    turnId,
+    diff,
+  });
+}
+
+function onThreadCompacted(
+  cs: CodexSession,
+  params: Record<string, unknown>,
+): void {
+  const threadId = (params.threadId as string | undefined) ?? cs.threadId ?? "";
+  const turnId = (params.turnId as string | undefined) ?? "";
+  emit({
+    type: "agent_compacted",
+    sessionId: cs.sessionId,
+    threadId,
+    turnId,
+  });
+}
+
+/** Request Codex to compact its conversation in place. Returns once the
+ *  thread/compact/start RPC has been acknowledged; the actual compaction
+ *  proceeds asynchronously and fires `thread/compacted` when done. */
+export async function compactThread(sessionId: string): Promise<void> {
+  const cs = sessions.get(sessionId);
+  if (!cs || !cs.threadId) {
+    throw new Error(`no live Codex session for ${sessionId}`);
+  }
+  await sendRequest(cs, "thread/compact/start", {
+    threadId: cs.threadId,
+  });
 }
 
 // ─── Item translation ──────────────────────────────────────────────────────

@@ -261,5 +261,19 @@ export function applyServerMessage(msg: ServerMessage): void {
     case "run_artifacts":
       useAppStore.getState().setRunArtifacts(msg.runId, msg.artifacts);
       break;
+    case "agent_token_usage":
+      useAppStore.getState().setTokenUsage(msg.sessionId, msg.usage);
+      break;
+    case "agent_turn_diff":
+      useAppStore.getState().setTurnDiff(msg.sessionId, msg.diff);
+      break;
+    case "agent_compacted":
+      useAppStore
+        .getState()
+        .pushSystemEntry(
+          msg.sessionId,
+          "Conversation compacted — Codex condensed earlier turns.",
+        );
+      break;
   }
 }

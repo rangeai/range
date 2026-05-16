@@ -276,6 +276,7 @@ function WorktreeBlock({ session }: { session: Session }) {
           </span>
         )}
         <div className="flex-1"></div>
+        <CodexPills session={session} />
         <Pill>{session.sandbox}</Pill>
         {session.branch && (
           <Pill mono title={session.branch}>
@@ -482,6 +483,70 @@ function ApprovalSettings({ session }: { session: Session }) {
       )}
     </div>
   );
+}
+
+function CodexPills({ session }: { session: Session }) {
+  const usage = useAppStore((s) => s.tokenUsageBySession.get(session.id));
+  const pills: Array<{ label: string; value: string; title: string }> = [];
+  if (session.model) {
+    pills.push({
+      label: "model",
+      value: session.model,
+      title: `Codex is using model: ${session.model}`,
+    });
+  }
+  if (session.reasoningEffort) {
+    pills.push({
+      label: "think",
+      value: session.reasoningEffort,
+      title: `Reasoning effort: ${session.reasoningEffort}`,
+    });
+  }
+  if (usage) {
+    const total = usage.total.totalTokens;
+    const ctx = usage.modelContextWindow;
+    const value = ctx
+      ? `${formatTokens(total)} / ${formatTokens(ctx)}`
+      : formatTokens(total);
+    pills.push({
+      label: "tokens",
+      value,
+      title:
+        `total ${total.toLocaleString()} tokens` +
+        (ctx ? ` of ${ctx.toLocaleString()} context window` : "") +
+        ` · last turn in/out/think: ` +
+        `${usage.last.inputTokens.toLocaleString()}/` +
+        `${usage.last.outputTokens.toLocaleString()}/` +
+        `${usage.last.reasoningOutputTokens.toLocaleString()}`,
+    });
+  }
+  if (pills.length === 0) return null;
+  return (
+    <>
+      {pills.map((p) => (
+        <span
+          key={p.label}
+          title={p.title}
+          className="flex-shrink-0 text-[10.5px] font-mono px-1.5 py-0.5 rounded border"
+          style={{
+            color: "var(--accent)",
+            borderColor:
+              "color-mix(in oklch, var(--accent) 30%, var(--br-1))",
+            background: "color-mix(in oklch, var(--accent) 10%, var(--bg))",
+          }}
+        >
+          <span className="text-fg-3 mr-1">{p.label}</span>
+          {p.value}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function formatTokens(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`;
+  return `${(n / 1_000_000).toFixed(2)}M`;
 }
 
 function Pill({
@@ -746,8 +811,18 @@ function ConversationEntryView({
     );
   }
   if (entry.kind === "system") {
+    // Short status messages render as one-liners; multi-line system
+    // entries (e.g. /diff output) render markdown so code blocks work.
+    const isMultiline = entry.text.includes("\n");
+    if (!isMultiline) {
+      return (
+        <div className="text-[10.5px] text-fg-3 italic">{entry.text}</div>
+      );
+    }
     return (
-      <div className="text-[10.5px] text-fg-3 italic">{entry.text}</div>
+      <div className="text-[12px] text-fg-2 border-l-2 border-[var(--br-2)] pl-3">
+        <Markdown>{entry.text}</Markdown>
+      </div>
     );
   }
   if (entry.kind === "approval") {
@@ -1452,6 +1527,24 @@ function MessageComposer({
       description: `toggle auto-approve (current: ${session.autoApprove ? "on" : "off"})`,
       argHint: "on | off",
     });
+    items.push({
+      kind: "builtin",
+      layer: "codex",
+      name: "compact",
+      description: "summarize earlier turns and continue (saves context tokens)",
+    });
+    items.push({
+      kind: "builtin",
+      layer: "codex",
+      name: "tokens",
+      description: "show current thread token usage",
+    });
+    items.push({
+      kind: "builtin",
+      layer: "codex",
+      name: "diff",
+      description: "show the current turn's aggregated unified diff",
+    });
 
     const p = profile?.profile;
     if (p) {
@@ -1591,6 +1684,46 @@ function MessageComposer({
         const res = await api.setAutoApprove(session.id, v === "on");
         useAppStore.getState().upsertSession(res.session);
         pushSystem(session.id, `auto-approve → ${v}`);
+      } else if (item.kind === "builtin" && item.name === "compact") {
+        pushSystem(session.id, "Compacting conversation…");
+        await api.compactAgent(session.id);
+      } else if (item.kind === "builtin" && item.name === "tokens") {
+        const usage = useAppStore
+          .getState()
+          .tokenUsageBySession.get(session.id);
+        if (!usage) {
+          pushSystem(
+            session.id,
+            "No token usage reported yet — send a turn first.",
+          );
+        } else {
+          const ctx = usage.modelContextWindow;
+          const total = usage.total.totalTokens;
+          const ratio = ctx ? ` / ${ctx.toLocaleString()} (${Math.round((total / ctx) * 100)}%)` : "";
+          pushSystem(
+            session.id,
+            `tokens · total ${total.toLocaleString()}${ratio} · ` +
+              `last turn: in ${usage.last.inputTokens.toLocaleString()}, ` +
+              `out ${usage.last.outputTokens.toLocaleString()}, ` +
+              `reasoning ${usage.last.reasoningOutputTokens.toLocaleString()}`,
+          );
+        }
+      } else if (item.kind === "builtin" && item.name === "diff") {
+        const diff = useAppStore
+          .getState()
+          .lastTurnDiffBySession.get(session.id);
+        if (!diff) {
+          pushSystem(
+            session.id,
+            "No pending turn diff — Codex hasn't touched any files this turn.",
+          );
+        } else {
+          const truncated =
+            diff.length > 8000
+              ? diff.slice(0, 8000) + "\n…(truncated)"
+              : diff;
+          pushSystem(session.id, "Pending turn diff:\n\n```diff\n" + truncated + "\n```");
+        }
       }
       setText("");
     } catch (e) {
