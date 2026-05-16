@@ -62,7 +62,23 @@ export function SessionView({ sessionId }: { sessionId: string }) {
             });
           }
         })
-        .catch((err) => console.error("getAgentHistory failed", err));
+        .then(() =>
+          // Backfill run/sweep cards into the conversation from the
+          // persisted runs list. Runs aren't in events.jsonl — they
+          // live in SQLite — so we fetch them separately and push
+          // a conversation entry per run (the store dedupes sweeps).
+          api.listRuns(sessionId).then((res) => {
+            const store = useAppStore.getState();
+            store.upsertManyRuns(res.runs);
+            const sorted = [...res.runs].sort(
+              (a, b) => a.createdAt - b.createdAt,
+            );
+            for (const run of sorted) {
+              store.appendRunToConversation(sessionId, run);
+            }
+          }),
+        )
+        .catch((err) => console.error("rehydrate failed", err));
     }
 
     // Codex starts implicitly when a session is opened. The server's
@@ -623,7 +639,76 @@ function ConversationEntryView({
       <ApprovalCard approval={entry.approval} sessionId={sessionId} />
     );
   }
+  if (entry.kind === "run") {
+    return <InlineRunEntry runId={entry.runId} sessionId={sessionId} />;
+  }
+  if (entry.kind === "sweep") {
+    return <InlineSweepEntry sweepId={entry.sweepId} sessionId={sessionId} />;
+  }
   return <AgentItemView item={entry.item} />;
+}
+
+/** Looks up the live Run by id and renders a RunRow card inline. */
+function InlineRunEntry({
+  runId,
+  sessionId,
+}: {
+  runId: string;
+  sessionId: string;
+}) {
+  const run = useAppStore((s) =>
+    s.runsBySession.get(sessionId)?.get(runId),
+  );
+  if (!run) {
+    return (
+      <div className="text-[10.5px] text-fg-3 italic">
+        run {runId} (not loaded)
+      </div>
+    );
+  }
+  return (
+    <div className="flex gap-3">
+      <AgentBadge label="▶" tone="tool" />
+      <div className="flex-1 min-w-0">
+        <RunRow run={run} />
+      </div>
+    </div>
+  );
+}
+
+/** Looks up all Runs that share a sweepId and renders them as one
+ *  SweepGroup card inline. */
+function InlineSweepEntry({
+  sweepId,
+  sessionId,
+}: {
+  sweepId: string;
+  sessionId: string;
+}) {
+  const runs = useAppStore(
+    useShallow((s) => {
+      const inner = s.runsBySession.get(sessionId);
+      if (!inner) return [] as Run[];
+      return [...inner.values()]
+        .filter((r) => r.sweepId === sweepId)
+        .sort((a, b) => a.createdAt - b.createdAt);
+    }),
+  );
+  if (runs.length === 0) {
+    return (
+      <div className="text-[10.5px] text-fg-3 italic">
+        sweep {sweepId} (loading runs…)
+      </div>
+    );
+  }
+  return (
+    <div className="flex gap-3">
+      <AgentBadge label="⋮▶" tone="tool" />
+      <div className="flex-1 min-w-0">
+        <SweepGroup runs={runs} />
+      </div>
+    </div>
+  );
 }
 
 function ApprovalCard({

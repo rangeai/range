@@ -25,7 +25,9 @@ export type ConversationEntry =
   | { kind: "user"; text: string; t: number }
   | { kind: "agent_item"; item: AgentItem; t: number }
   | { kind: "approval"; approval: PendingApproval; t: number }
-  | { kind: "system"; text: string; t: number };
+  | { kind: "system"; text: string; t: number }
+  | { kind: "run"; runId: string; t: number }
+  | { kind: "sweep"; sweepId: string; t: number };
 
 export interface ConversationState {
   status: "stopped" | "starting" | "running" | "error";
@@ -71,6 +73,11 @@ interface AppState {
     metrics: import("@shared/protocol").MetricsSnapshot,
   ) => void;
   setRunArtifacts: (runId: string, artifacts: ArtifactInfo[]) => void;
+  /** Push a `run` or `sweep` entry into the session's conversation.
+   *  Solo runs get a `run` entry. Runs that belong to a sweep get a
+   *  single `sweep` entry per sweepId (subsequent runs in the same
+   *  sweep are folded into that one entry at render time). */
+  appendRunToConversation: (sessionId: string, run: Run) => void;
   appendLog: (entry: RunLogEntry) => void;
   appendManyLogs: (entries: RunLogEntry[]) => void;
 
@@ -165,6 +172,41 @@ export const useAppStore = create<AppState>((set) => ({
       inner.set(r.id, r);
       next.set(r.sessionId, inner);
       return { runsBySession: next };
+    }),
+  appendRunToConversation: (sessionId, run) =>
+    set((state) => {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId) ?? emptyConversation();
+      // Solo run → push a `run` entry if not already there.
+      if (!run.sweepId) {
+        if (prev.entries.some((e) => e.kind === "run" && e.runId === run.id)) {
+          return {};
+        }
+        next.set(sessionId, {
+          ...prev,
+          entries: [
+            ...prev.entries,
+            { kind: "run", runId: run.id, t: run.createdAt },
+          ],
+        });
+        return { conversationsBySession: next };
+      }
+      // Sweep run → push a `sweep` entry once per sweepId.
+      if (
+        prev.entries.some(
+          (e) => e.kind === "sweep" && e.sweepId === run.sweepId,
+        )
+      ) {
+        return {};
+      }
+      next.set(sessionId, {
+        ...prev,
+        entries: [
+          ...prev.entries,
+          { kind: "sweep", sweepId: run.sweepId, t: run.createdAt },
+        ],
+      });
+      return { conversationsBySession: next };
     }),
   upsertManyRuns: (list) =>
     set((state) => {

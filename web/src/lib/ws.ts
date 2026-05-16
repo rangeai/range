@@ -158,6 +158,11 @@ export function applyServerMessage(msg: ServerMessage): void {
       useAppStore.getState().removeSession(msg.sessionId);
       break;
     case "run_started":
+      useAppStore.getState().upsertRun(msg.run);
+      useAppStore
+        .getState()
+        .appendRunToConversation(msg.run.sessionId, msg.run);
+      break;
     case "run_finished":
       useAppStore.getState().upsertRun(msg.run);
       break;
