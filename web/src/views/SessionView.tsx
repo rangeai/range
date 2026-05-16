@@ -603,7 +603,125 @@ function ConversationEntryView({
   if (entry.kind === "sweep") {
     return <InlineSweepEntry sweepId={entry.sweepId} sessionId={sessionId} />;
   }
+  if (entry.kind === "pr_draft") {
+    return <InlinePrDraft pr={entry.pr} sessionId={sessionId} />;
+  }
   return <AgentItemView item={entry.item} />;
+}
+
+function InlinePrDraft({
+  pr,
+  sessionId,
+}: {
+  pr: import("../lib/store").PrDraftEntryState;
+  sessionId: string;
+}) {
+  const [title, setTitle] = useState(pr.initialTitle);
+  const [body, setBody] = useState(pr.initialBody);
+  const updatePrDraft = useAppStore((s) => s.updatePrDraft);
+
+  const isOpened = pr.status === "opened";
+  const isOpening = pr.status === "opening";
+  const isDiscarded = pr.status === "discarded";
+
+  const openPr = async () => {
+    updatePrDraft(sessionId, pr.draftId, { status: "opening", error: undefined });
+    try {
+      const res = await api.openPr(sessionId, { title, body });
+      updatePrDraft(sessionId, pr.draftId, {
+        status: "opened",
+        url: res.url,
+      });
+    } catch (e) {
+      const msg = String(e instanceof Error ? e.message : e);
+      updatePrDraft(sessionId, pr.draftId, {
+        status: "error",
+        error: msg,
+      });
+    }
+  };
+
+  return (
+    <div className="flex gap-3">
+      <AgentBadge label="PR" tone="warn" />
+      <div className="flex-1 min-w-0">
+        <div className="border border-[var(--br-2)] rounded-lg bg-[var(--bg-1)] overflow-hidden">
+          <div className="px-3 py-2 flex items-center gap-2 border-b border-[var(--br-1)]">
+            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--warn)] font-medium">
+              draft pr
+            </span>
+            <span className="text-[10.5px] text-fg-3 font-mono">
+              {pr.commitCount} commit{pr.commitCount === 1 ? "" : "s"} · base{" "}
+              {pr.base.replace(/^origin\//, "")}
+            </span>
+          </div>
+          {isDiscarded ? (
+            <div className="px-3 py-2 text-[11.5px] text-fg-3 italic">
+              discarded.
+            </div>
+          ) : (
+            <>
+              <div className="px-3 py-2 border-b border-[var(--br-1)]">
+                <input
+                  type="text"
+                  value={title}
+                  disabled={isOpened || isOpening}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full bg-transparent outline-none text-[14px] font-medium text-fg disabled:opacity-70"
+                  placeholder="PR title"
+                />
+              </div>
+              <textarea
+                value={body}
+                disabled={isOpened || isOpening}
+                onChange={(e) => setBody(e.target.value)}
+                rows={10}
+                spellCheck={false}
+                className="w-full bg-transparent outline-none resize-y font-mono text-[12px] text-fg-1 leading-relaxed px-3 py-2 disabled:opacity-70"
+              />
+              <div className="px-3 py-2 border-t border-[var(--br-1)] flex items-center gap-1.5 bg-[var(--bg)]">
+                {isOpened ? (
+                  <a
+                    href={pr.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11.5px] text-[var(--accent)] hover:underline font-mono break-all"
+                  >
+                    opened · {pr.url}
+                  </a>
+                ) : (
+                  <>
+                    <button
+                      onClick={openPr}
+                      disabled={isOpening}
+                      className="text-[11.5px] font-medium text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded transition"
+                    >
+                      {isOpening ? "opening…" : "push + open PR"}
+                    </button>
+                    <button
+                      onClick={() =>
+                        updatePrDraft(sessionId, pr.draftId, {
+                          status: "discarded",
+                        })
+                      }
+                      className="text-[11.5px] text-fg-3 hover:text-fg-1 px-2 py-1.5 rounded transition"
+                    >
+                      discard
+                    </button>
+                  </>
+                )}
+              </div>
+              {pr.error && (
+                <div className="px-3 py-2 text-[11px] text-[var(--err)] border-t border-[var(--br-1)] break-words">
+                  {pr.error}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** Looks up the live Run by id and renders a RunRow card inline. */
@@ -1053,32 +1171,40 @@ function MessageComposer({
     s.profilesBySession.get(session.id),
   );
 
-  // Slash-command items (scenarios + commands from range.yaml).
+  // Slash-command items (scenarios + commands from range.yaml + builtins).
   type SlashItem =
     | { kind: "scenario"; name: string; description?: string; sweepCount: number }
-    | { kind: "command"; name: string; description?: string; args: string[] };
+    | { kind: "command"; name: string; description?: string; args: string[] }
+    | { kind: "builtin"; name: string; description: string };
   const allItems: SlashItem[] = (() => {
-    const p = profile?.profile;
-    if (!p) return [];
     const items: SlashItem[] = [];
-    for (const s of p.scenarios) {
-      const sweepCount = s.sweep
-        ? Object.values(s.sweep.params).reduce((a, v) => a * v.length, 1)
-        : 1;
-      items.push({
-        kind: "scenario",
-        name: s.name,
-        description: s.description,
-        sweepCount,
-      });
-    }
-    for (const c of p.commands) {
-      items.push({
-        kind: "command",
-        name: c.name,
-        description: c.description,
-        args: c.args,
-      });
+    // Builtins first so they're easy to find by typing "/pr" etc.
+    items.push({
+      kind: "builtin",
+      name: "pr",
+      description: "draft a pull request from the current branch",
+    });
+    const p = profile?.profile;
+    if (p) {
+      for (const s of p.scenarios) {
+        const sweepCount = s.sweep
+          ? Object.values(s.sweep.params).reduce((a, v) => a * v.length, 1)
+          : 1;
+        items.push({
+          kind: "scenario",
+          name: s.name,
+          description: s.description,
+          sweepCount,
+        });
+      }
+      for (const c of p.commands) {
+        items.push({
+          kind: "command",
+          name: c.name,
+          description: c.description,
+          args: c.args,
+        });
+      }
     }
     return items;
   })();
@@ -1113,6 +1239,8 @@ function MessageComposer({
     }
   };
 
+  const pushPrDraft = useAppStore((s) => s.pushPrDraft);
+
   const runSlash = async (item: SlashItem) => {
     if (busy) return;
     setBusy(true);
@@ -1120,10 +1248,24 @@ function MessageComposer({
     try {
       if (item.kind === "scenario") {
         await api.runScenario(session.id, item.name);
-      } else {
+      } else if (item.kind === "command") {
         await api.createRun(session.id, {
           command: item.args,
           kind: "shell",
+        });
+      } else if (item.kind === "builtin" && item.name === "pr") {
+        const draft = await api.draftPr(session.id);
+        const draftId = `pr_${Date.now().toString(36)}_${Math.random()
+          .toString(36)
+          .slice(2, 6)}`;
+        pushPrDraft(session.id, {
+          draftId,
+          initialTitle: draft.title,
+          initialBody: draft.body,
+          base: draft.base,
+          commitCount: draft.commitCount,
+          filesChanged: draft.filesChanged,
+          status: "draft",
         });
       }
       setText("");
@@ -1262,22 +1404,20 @@ function MessageComposer({
   );
 }
 
+type SlashItem =
+  | { kind: "scenario"; name: string; description?: string; sweepCount: number }
+  | { kind: "command"; name: string; description?: string; args: string[] }
+  | { kind: "builtin"; name: string; description: string };
+
 function SlashPicker({
   items,
   selectedIdx,
   onPick,
   query,
 }: {
-  items: Array<
-    | { kind: "scenario"; name: string; description?: string; sweepCount: number }
-    | { kind: "command"; name: string; description?: string; args: string[] }
-  >;
+  items: SlashItem[];
   selectedIdx: number;
-  onPick: (
-    item:
-      | { kind: "scenario"; name: string; description?: string; sweepCount: number }
-      | { kind: "command"; name: string; description?: string; args: string[] }
-  ) => void;
+  onPick: (item: SlashItem) => void;
   query: string;
 }) {
   if (items.length === 0) {
@@ -1305,10 +1445,15 @@ function SlashPicker({
             <span
               className="font-mono text-[10px] uppercase tracking-[0.16em] flex-shrink-0"
               style={{
-                color: it.kind === "scenario" ? "var(--accent)" : "var(--fg-3)",
+                color:
+                  it.kind === "scenario"
+                    ? "var(--accent)"
+                    : it.kind === "builtin"
+                      ? "var(--warn)"
+                      : "var(--fg-3)",
               }}
             >
-              {it.kind === "scenario" ? "▶" : "$"}
+              {it.kind === "scenario" ? "▶" : it.kind === "builtin" ? "✦" : "$"}
             </span>
             <span className="font-mono text-[12.5px] text-fg-1 flex-shrink-0">
               {it.name}

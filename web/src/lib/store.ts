@@ -21,13 +21,26 @@ export type View =
   | { kind: "home" }
   | { kind: "session"; id: string };
 
+export interface PrDraftEntryState {
+  draftId: string;
+  initialTitle: string;
+  initialBody: string;
+  base: string;
+  commitCount: number;
+  filesChanged: string[];
+  status: "draft" | "opening" | "opened" | "discarded" | "error";
+  url?: string;
+  error?: string;
+}
+
 export type ConversationEntry =
   | { kind: "user"; text: string; t: number }
   | { kind: "agent_item"; item: AgentItem; t: number }
   | { kind: "approval"; approval: PendingApproval; t: number }
   | { kind: "system"; text: string; t: number }
   | { kind: "run"; runId: string; t: number }
-  | { kind: "sweep"; sweepId: string; t: number };
+  | { kind: "sweep"; sweepId: string; t: number }
+  | { kind: "pr_draft"; pr: PrDraftEntryState; t: number };
 
 export interface ConversationState {
   status: "stopped" | "starting" | "running" | "error";
@@ -78,6 +91,13 @@ interface AppState {
    *  single `sweep` entry per sweepId (subsequent runs in the same
    *  sweep are folded into that one entry at render time). */
   appendRunToConversation: (sessionId: string, run: Run) => void;
+
+  pushPrDraft: (sessionId: string, draft: PrDraftEntryState) => void;
+  updatePrDraft: (
+    sessionId: string,
+    draftId: string,
+    patch: Partial<PrDraftEntryState>,
+  ) => void;
   appendLog: (entry: RunLogEntry) => void;
   appendManyLogs: (entries: RunLogEntry[]) => void;
 
@@ -172,6 +192,36 @@ export const useAppStore = create<AppState>((set) => ({
       inner.set(r.id, r);
       next.set(r.sessionId, inner);
       return { runsBySession: next };
+    }),
+  pushPrDraft: (sessionId, draft) =>
+    set((state) => {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId) ?? emptyConversation();
+      next.set(sessionId, {
+        ...prev,
+        entries: [
+          ...prev.entries,
+          { kind: "pr_draft", pr: draft, t: Date.now() },
+        ],
+      });
+      return { conversationsBySession: next };
+    }),
+  updatePrDraft: (sessionId, draftId, patch) =>
+    set((state) => {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId);
+      if (!prev) return {};
+      let changed = false;
+      const entries = prev.entries.map((e) => {
+        if (e.kind === "pr_draft" && e.pr.draftId === draftId) {
+          changed = true;
+          return { ...e, pr: { ...e.pr, ...patch } };
+        }
+        return e;
+      });
+      if (!changed) return {};
+      next.set(sessionId, { ...prev, entries });
+      return { conversationsBySession: next };
     }),
   appendRunToConversation: (sessionId, run) =>
     set((state) => {
