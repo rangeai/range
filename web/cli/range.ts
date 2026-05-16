@@ -750,6 +750,13 @@ async function main(): Promise<number> {
     showHelp();
     return 2;
   }
+  // --help at any subcommand position should never reach the handler;
+  // print top-level help instead. (Otherwise something like
+  // `range scenarios run X --help` would launch the scenario.)
+  if (rest.includes("--help") || rest.includes("-h")) {
+    showHelp();
+    return 0;
+  }
   const parsed = parseArgs(rest);
   try {
     return await handler(parsed);
