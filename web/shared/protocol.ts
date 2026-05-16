@@ -38,9 +38,16 @@ export interface Session {
   /** Binaries (first non-shell token) whose commands auto-approve in this
    *  session. e.g. ["git", "ls", "find"]. */
   allowedCommands: string[];
+  /** Underlying LLM Codex should use (e.g., "gpt-5", "claude-sonnet-4.5").
+   *  Null means use Codex's default. Applied at thread/start. */
+  model: string | null;
+  /** Reasoning effort hint forwarded to Codex's thread/start. */
+  reasoningEffort: "low" | "medium" | "high" | null;
   createdAt: number;
   updatedAt: number;
 }
+
+export type ReasoningEffort = "low" | "medium" | "high";
 
 // ─── Runs ──────────────────────────────────────────────────────────────────
 

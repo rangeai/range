@@ -39,6 +39,8 @@ interface SessionRow {
   sandbox: string;
   auto_approve: number;
   allowed_commands: string;
+  model: string | null;
+  reasoning_effort: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -69,6 +71,13 @@ function rowToSession(row: SessionRow): Session {
     sandbox: row.sandbox as Sandbox,
     autoApprove: row.auto_approve === 1,
     allowedCommands: allowed,
+    model: row.model,
+    reasoningEffort:
+      row.reasoning_effort === "low" ||
+      row.reasoning_effort === "medium" ||
+      row.reasoning_effort === "high"
+        ? row.reasoning_effort
+        : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -246,6 +255,33 @@ export function setSessionSandbox(
     throw new Error(`invalid sandbox: ${sandbox}`);
   }
   setSandboxStmt.run(sandbox, Date.now(), id);
+  return getSession(id);
+}
+
+const setModelStmt = db.prepare(
+  "UPDATE sessions SET model = ?, updated_at = ? WHERE id = ?",
+);
+const setReasoningStmt = db.prepare(
+  "UPDATE sessions SET reasoning_effort = ?, updated_at = ? WHERE id = ?",
+);
+
+export function setSessionModel(
+  id: string,
+  model: string | null,
+): Session | null {
+  const value = model && model.trim().length > 0 ? model.trim() : null;
+  setModelStmt.run(value, Date.now(), id);
+  return getSession(id);
+}
+
+export function setSessionReasoningEffort(
+  id: string,
+  effort: "low" | "medium" | "high" | null,
+): Session | null {
+  if (effort !== null && !["low", "medium", "high"].includes(effort)) {
+    throw new Error(`invalid reasoning effort: ${effort}`);
+  }
+  setReasoningStmt.run(effort, Date.now(), id);
   return getSession(id);
 }
 

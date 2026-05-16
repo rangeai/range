@@ -103,6 +103,26 @@ export function setSandbox(
   );
 }
 
+export function setModel(
+  sessionId: string,
+  model: string | null,
+): Promise<GetSessionResponse> {
+  return jsonRequest<GetSessionResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/model`,
+    { method: "POST", body: JSON.stringify({ model }) },
+  );
+}
+
+export function setReasoning(
+  sessionId: string,
+  effort: "low" | "medium" | "high" | null,
+): Promise<GetSessionResponse> {
+  return jsonRequest<GetSessionResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/think`,
+    { method: "POST", body: JSON.stringify({ effort }) },
+  );
+}
+
 export function restartAgent(
   sessionId: string,
 ): Promise<{ threadId: string }> {

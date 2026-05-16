@@ -327,12 +327,21 @@ export async function startAgent(
     sendNotification(cs, "initialized", {});
 
     const baseInstructions = await composeBaseInstructions(session);
-    const threadResp = (await sendRequest(cs, "thread/start", {
+    const threadParams: Record<string, unknown> = {
       cwd,
       approvalPolicy,
       sandbox,
       baseInstructions,
-    })) as { thread?: { id?: string }; threadId?: string };
+    };
+    if (session.model) threadParams.model = session.model;
+    if (session.reasoningEffort) {
+      threadParams.effort = session.reasoningEffort;
+      threadParams.reasoningEffort = session.reasoningEffort;
+    }
+    const threadResp = (await sendRequest(cs, "thread/start", threadParams)) as {
+      thread?: { id?: string };
+      threadId?: string;
+    };
 
     const threadId =
       threadResp?.thread?.id ?? threadResp?.threadId ?? "";

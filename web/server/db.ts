@@ -233,6 +233,14 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE sessions ADD COLUMN allowed_commands TEXT NOT NULL DEFAULT '[]';
     `,
   },
+  {
+    id: 10,
+    name: "sessions_model_and_reasoning",
+    up: `
+      ALTER TABLE sessions ADD COLUMN model TEXT;
+      ALTER TABLE sessions ADD COLUMN reasoning_effort TEXT;
+    `,
+  },
 ];
 
 function applyMigrations() {

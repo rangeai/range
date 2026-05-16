@@ -11,6 +11,7 @@ import type {
   Run,
   RunLogEntry,
   RunState,
+  Sandbox,
   Session,
 } from "@shared/protocol";
 import type {
@@ -1378,27 +1379,80 @@ function MessageComposer({
 
   // Slash-command items (scenarios + commands from range.yaml + builtins).
   type SlashItem =
-    | { kind: "scenario"; name: string; description?: string; sweepCount: number }
-    | { kind: "command"; name: string; description?: string; args: string[] }
-    | { kind: "builtin"; name: string; description: string };
+    | {
+        kind: "scenario";
+        layer: "scenario";
+        name: string;
+        description?: string;
+        sweepCount: number;
+      }
+    | {
+        kind: "command";
+        layer: "command";
+        name: string;
+        description?: string;
+        args: string[];
+      }
+    | {
+        kind: "builtin";
+        layer: "range" | "codex";
+        name: string;
+        description: string;
+        argHint?: string;
+      };
   const allItems: SlashItem[] = (() => {
     const items: SlashItem[] = [];
-    // Builtins first so they're easy to find by typing "/pr" etc.
+
+    // Range builtins (operate on the harness).
     items.push({
       kind: "builtin",
+      layer: "range",
       name: "pr",
       description: "draft a pull request from the current branch",
     });
     items.push({
       kind: "builtin",
+      layer: "range",
       name: "restart",
       description: "kill Codex and start a fresh thread with current settings",
     });
     items.push({
       kind: "builtin",
+      layer: "range",
       name: "clear",
       description: "archive history + restart Codex + clear chat (keeps runs)",
     });
+
+    // Codex builtins (operate on Codex's thread / config).
+    items.push({
+      kind: "builtin",
+      layer: "codex",
+      name: "model",
+      description: `switch the LLM (current: ${session.model ?? "default"})`,
+      argHint: "<name>  e.g. gpt-5, claude-sonnet-4.5",
+    });
+    items.push({
+      kind: "builtin",
+      layer: "codex",
+      name: "think",
+      description: `set reasoning effort (current: ${session.reasoningEffort ?? "default"})`,
+      argHint: "low | medium | high",
+    });
+    items.push({
+      kind: "builtin",
+      layer: "codex",
+      name: "sandbox",
+      description: `change sandbox (current: ${session.sandbox})`,
+      argHint: "read-only | workspace-write | danger-full-access",
+    });
+    items.push({
+      kind: "builtin",
+      layer: "codex",
+      name: "approvals",
+      description: `toggle auto-approve (current: ${session.autoApprove ? "on" : "off"})`,
+      argHint: "on | off",
+    });
+
     const p = profile?.profile;
     if (p) {
       for (const s of p.scenarios) {
@@ -1407,6 +1461,7 @@ function MessageComposer({
           : 1;
         items.push({
           kind: "scenario",
+          layer: "scenario",
           name: s.name,
           description: s.description,
           sweepCount,
@@ -1415,6 +1470,7 @@ function MessageComposer({
       for (const c of p.commands) {
         items.push({
           kind: "command",
+          layer: "command",
           name: c.name,
           description: c.description,
           args: c.args,
@@ -1425,9 +1481,20 @@ function MessageComposer({
   })();
 
   const slashOpen = text.startsWith("/");
-  const slashQuery = slashOpen ? text.slice(1).toLowerCase() : "";
+  // Split "/cmd args…" into ("cmd", "args…") so users can type
+  // "/model gpt-5" and still have the picker match "model".
+  const slashRaw = slashOpen ? text.slice(1) : "";
+  const slashFirstSpace = slashRaw.indexOf(" ");
+  const slashName =
+    slashFirstSpace >= 0 ? slashRaw.slice(0, slashFirstSpace) : slashRaw;
+  const slashArgs =
+    slashFirstSpace >= 0 ? slashRaw.slice(slashFirstSpace + 1).trim() : "";
   const matched = slashOpen
-    ? allItems.filter((it) => it.name.toLowerCase().includes(slashQuery))
+    ? allItems.filter((it) =>
+        slashName === ""
+          ? true
+          : it.name.toLowerCase().includes(slashName.toLowerCase()),
+      )
     : [];
   const slashSelection = matched[Math.min(slashIdx, Math.max(0, matched.length - 1))];
 
@@ -1490,6 +1557,40 @@ function MessageComposer({
       } else if (item.kind === "builtin" && item.name === "clear") {
         await api.clearAgent(session.id);
         clearConversation(session.id);
+      } else if (item.kind === "builtin" && item.name === "model") {
+        if (!slashArgs) throw new Error("usage: /model <name>");
+        const res = await api.setModel(session.id, slashArgs);
+        useAppStore.getState().upsertSession(res.session);
+        pushSystem(session.id, `model → ${slashArgs}`);
+      } else if (item.kind === "builtin" && item.name === "think") {
+        const eff = slashArgs.toLowerCase();
+        if (!["low", "medium", "high"].includes(eff)) {
+          throw new Error("usage: /think low | medium | high");
+        }
+        const res = await api.setReasoning(
+          session.id,
+          eff as "low" | "medium" | "high",
+        );
+        useAppStore.getState().upsertSession(res.session);
+        pushSystem(session.id, `reasoning → ${eff}`);
+      } else if (item.kind === "builtin" && item.name === "sandbox") {
+        const s = slashArgs as Sandbox;
+        if (!["read-only", "workspace-write", "danger-full-access"].includes(s)) {
+          throw new Error(
+            "usage: /sandbox read-only | workspace-write | danger-full-access",
+          );
+        }
+        const res = await api.setSandbox(session.id, s);
+        useAppStore.getState().upsertSession(res.session);
+        pushSystem(session.id, `sandbox → ${s}`);
+      } else if (item.kind === "builtin" && item.name === "approvals") {
+        const v = slashArgs.toLowerCase();
+        if (v !== "on" && v !== "off") {
+          throw new Error("usage: /approvals on | off");
+        }
+        const res = await api.setAutoApprove(session.id, v === "on");
+        useAppStore.getState().upsertSession(res.session);
+        pushSystem(session.id, `auto-approve → ${v}`);
       }
       setText("");
     } catch (e) {
@@ -1559,7 +1660,7 @@ function MessageComposer({
           items={matched}
           selectedIdx={Math.min(slashIdx, Math.max(0, matched.length - 1))}
           onPick={(it) => runSlash(it)}
-          query={slashQuery}
+          query={slashName}
         />
       )}
       <div className="border border-[var(--br-2)] rounded-lg bg-[var(--bg-1)]">
@@ -1628,9 +1729,53 @@ function MessageComposer({
 }
 
 type SlashItem =
-  | { kind: "scenario"; name: string; description?: string; sweepCount: number }
-  | { kind: "command"; name: string; description?: string; args: string[] }
-  | { kind: "builtin"; name: string; description: string };
+  | {
+      kind: "scenario";
+      layer: "scenario";
+      name: string;
+      description?: string;
+      sweepCount: number;
+    }
+  | {
+      kind: "command";
+      layer: "command";
+      name: string;
+      description?: string;
+      args: string[];
+    }
+  | {
+      kind: "builtin";
+      layer: "range" | "codex";
+      name: string;
+      description: string;
+      argHint?: string;
+    };
+
+const LAYER_STYLE: Record<
+  SlashItem["layer"],
+  { label: string; color: string; bg: string }
+> = {
+  range: {
+    label: "range",
+    color: "var(--warn)",
+    bg: "color-mix(in oklch, var(--warn) 12%, var(--bg))",
+  },
+  codex: {
+    label: "codex",
+    color: "var(--accent)",
+    bg: "color-mix(in oklch, var(--accent) 12%, var(--bg))",
+  },
+  scenario: {
+    label: "scenario",
+    color: "var(--accent-2)",
+    bg: "color-mix(in oklch, var(--accent) 8%, var(--bg))",
+  },
+  command: {
+    label: "command",
+    color: "var(--fg-2)",
+    bg: "var(--bg)",
+  },
+};
 
 function SlashPicker({
   items,
@@ -1655,9 +1800,12 @@ function SlashPicker({
     <div className="border border-[var(--br-2)] rounded-lg bg-[var(--bg-1)] overflow-hidden mb-2 max-h-[280px] overflow-y-auto">
       {items.map((it, i) => {
         const isSel = i === selectedIdx;
+        const ls = LAYER_STYLE[it.layer];
+        const glyph =
+          it.kind === "scenario" ? "▶" : it.kind === "builtin" ? "✦" : "$";
         return (
           <button
-            key={`${it.kind}-${it.name}`}
+            key={`${it.layer}-${it.name}`}
             onClick={() => onPick(it)}
             className={`w-full px-3 py-2 flex items-center gap-2 text-left transition ${
               isSel
@@ -1667,16 +1815,9 @@ function SlashPicker({
           >
             <span
               className="font-mono text-[10px] uppercase tracking-[0.16em] flex-shrink-0"
-              style={{
-                color:
-                  it.kind === "scenario"
-                    ? "var(--accent)"
-                    : it.kind === "builtin"
-                      ? "var(--warn)"
-                      : "var(--fg-3)",
-              }}
+              style={{ color: ls.color }}
             >
-              {it.kind === "scenario" ? "▶" : it.kind === "builtin" ? "✦" : "$"}
+              {glyph}
             </span>
             <span className="font-mono text-[12.5px] text-fg-1 flex-shrink-0">
               {it.name}
@@ -1686,12 +1827,24 @@ function SlashPicker({
                 ×{it.sweepCount}
               </span>
             )}
+            {it.kind === "builtin" && it.argHint && (
+              <span className="font-mono text-[10.5px] text-fg-3">
+                {it.argHint}
+              </span>
+            )}
             <span className="text-[11px] text-fg-3 truncate flex-1 min-w-0">
               {it.description ??
                 (it.kind === "command" ? it.args.join(" ") : "")}
             </span>
-            <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-fg-3 flex-shrink-0">
-              {it.kind}
+            <span
+              className="text-[10px] font-mono uppercase tracking-[0.14em] px-1.5 py-0.5 rounded border flex-shrink-0"
+              style={{
+                color: ls.color,
+                background: ls.bg,
+                borderColor: `color-mix(in oklch, ${ls.color} 30%, var(--br-1))`,
+              }}
+            >
+              {ls.label}
             </span>
           </button>
         );

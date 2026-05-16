@@ -57,6 +57,8 @@ import {
   getSession,
   listSessions,
   setSessionAutoApprove,
+  setSessionModel,
+  setSessionReasoningEffort,
   setSessionSandbox,
   validateRepoPath,
 } from "./sessions.ts";
@@ -245,6 +247,73 @@ app.post("/api/sessions/:id/sandbox", async (c) => {
     await stopAgent(id);
     void startAgent(id).catch((err) => {
       log.warn("sessions", "restart after sandbox change failed", {
+        sessionId: id,
+        err: String(err instanceof Error ? err.message : err),
+      });
+    });
+  }
+  return c.json({ session });
+});
+
+app.post("/api/sessions/:id/model", async (c) => {
+  const id = c.req.param("id");
+  let body: { model?: string | null };
+  try {
+    body = (await c.req.json()) as { model?: string | null };
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const model = body.model === null ? null : (body.model ?? "").trim();
+  if (model !== null && model.length === 0) {
+    return c.json({ error: "model must be a non-empty string or null" }, 400);
+  }
+  const session = setSessionModel(id, model);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  broadcast({ type: "session_updated", session });
+  if (isAgentRunning(id)) {
+    await stopAgent(id);
+    void startAgent(id).catch((err) => {
+      log.warn("sessions", "restart after model change failed", {
+        sessionId: id,
+        err: String(err instanceof Error ? err.message : err),
+      });
+    });
+  }
+  return c.json({ session });
+});
+
+app.post("/api/sessions/:id/think", async (c) => {
+  const id = c.req.param("id");
+  let body: { effort?: string | null };
+  try {
+    body = (await c.req.json()) as { effort?: string | null };
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const raw = body.effort;
+  if (
+    raw !== null &&
+    raw !== "low" &&
+    raw !== "medium" &&
+    raw !== "high"
+  ) {
+    return c.json({ error: "effort must be one of low | medium | high | null" }, 400);
+  }
+  let session;
+  try {
+    session = setSessionReasoningEffort(id, raw as "low" | "medium" | "high" | null);
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      400,
+    );
+  }
+  if (!session) return c.json({ error: "session not found" }, 404);
+  broadcast({ type: "session_updated", session });
+  if (isAgentRunning(id)) {
+    await stopAgent(id);
+    void startAgent(id).catch((err) => {
+      log.warn("sessions", "restart after think change failed", {
         sessionId: id,
         err: String(err instanceof Error ? err.message : err),
       });
