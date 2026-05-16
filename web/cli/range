@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Shim that lets `range` be invoked from PATH without bun arguments
+# leaking into argv. Resolves the absolute path of range.ts next to
+# this script so the CLI works regardless of cwd.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec bun run "$SCRIPT_DIR/range.ts" "$@"

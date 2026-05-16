@@ -108,14 +108,49 @@ export async function composeBaseInstructions(
           const desc = cmd.description ? ` — ${cmd.description}` : "";
           lines.push(`  • ${cmd.name}: ${args}${desc}`);
         }
-        lines.push(
-          "You can run these directly; they are pre-approved when the sandbox allows.",
-        );
+      }
+      if (profile.profile && profile.profile.scenarios.length > 0) {
+        lines.push("");
+        lines.push("Available scenarios (range.yaml):");
+        for (const sc of profile.profile.scenarios) {
+          const sweep = sc.sweep
+            ? ` ×${Object.values(sc.sweep.params).reduce(
+                (a, v) => a * v.length,
+                1,
+              )}`
+            : "";
+          const desc = sc.description ? ` — ${sc.description}` : "";
+          lines.push(`  • ${sc.name}${sweep}${desc}`);
+        }
       }
     } catch {
       // ignore profile load errors; instructions just won't include them
     }
   }
+
+  lines.push("");
+  lines.push("You have a `range` CLI on PATH that speaks the Range API directly.");
+  lines.push("Prefer it over `curl` to the REST endpoints. Key commands:");
+  lines.push("  range sessions current           ← this session's metadata");
+  lines.push("  range scenarios list             ← scenarios from range.yaml");
+  lines.push("  range scenarios run <name> --follow --timeout 600");
+  lines.push("                                    launches a scenario (or sweep)");
+  lines.push("                                    and blocks until it finishes");
+  lines.push("  range commands list");
+  lines.push("  range commands run <name> --follow");
+  lines.push("  range runs list [--scenario X] [--state failed] [--since 1h] [--json]");
+  lines.push("  range runs show <id> [--json]    ← state + metrics + metadata");
+  lines.push("  range runs metrics <id> --json   ← parsed metrics.json");
+  lines.push("  range runs artifacts <id>        ← USD/video/csv outputs");
+  lines.push("  range runs logs <id> [--tail 50] ← captured stdout/stderr");
+  lines.push("  range runs wait <id> [--timeout 600]");
+  lines.push("  range runs compare <id1> <id2> [...]   ← side-by-side metrics table");
+  lines.push("  range gates list | results       ← verification gates + results");
+  lines.push("  range pr draft --json            ← compose a PR title + body");
+  lines.push("  range pr open --title T --body-file F  (after `git push`)");
+  lines.push("");
+  lines.push("Append --json to read commands when you want structured output.");
+  lines.push("RANGE_SESSION is preset in your env, so commands resolve to this session.");
 
   lines.push("");
   lines.push(
@@ -201,6 +236,20 @@ export async function startAgent(
   // to the session's thread dir — a private scratch space Range owns.
   const cwd = session.worktreePath ?? dir;
   log.info("codex", "spawning", { sessionId, cwd });
+
+  // Resolve the `range` CLI shim's directory and prepend it to PATH so
+  // Codex can invoke `range scenarios run …` etc. without an absolute
+  // path. Also inject session + server discovery env so the CLI
+  // auto-resolves to *this* server and *this* session.
+  const cliDir = join(import.meta.dir, "..", "cli");
+  const port = process.env.RANGE_PORT ?? "3457";
+  const env: Record<string, string> = {
+    ...(process.env as Record<string, string>),
+    PATH: `${cliDir}:${process.env.PATH ?? ""}`,
+    RANGE_URL: process.env.RANGE_URL ?? `http://127.0.0.1:${port}`,
+    RANGE_SESSION: sessionId,
+  };
+
   let proc: Subprocess<"pipe", "pipe", "pipe">;
   try {
     proc = Bun.spawn(["codex", "app-server"], {
@@ -208,6 +257,7 @@ export async function startAgent(
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
+      env,
     });
   } catch (err) {
     eventFile.end();
