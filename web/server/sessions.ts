@@ -228,6 +228,26 @@ const setAutoApproveStmt = db.prepare(
 const setAllowedCommandsStmt = db.prepare(
   "UPDATE sessions SET allowed_commands = ?, updated_at = ? WHERE id = ?",
 );
+const setSandboxStmt = db.prepare(
+  "UPDATE sessions SET sandbox = ?, updated_at = ? WHERE id = ?",
+);
+
+const VALID_SANDBOXES: ReadonlySet<Sandbox> = new Set<Sandbox>([
+  "read-only",
+  "workspace-write",
+  "danger-full-access",
+]);
+
+export function setSessionSandbox(
+  id: string,
+  sandbox: Sandbox,
+): Session | null {
+  if (!VALID_SANDBOXES.has(sandbox)) {
+    throw new Error(`invalid sandbox: ${sandbox}`);
+  }
+  setSandboxStmt.run(sandbox, Date.now(), id);
+  return getSession(id);
+}
 
 export function setSessionAutoApprove(
   id: string,

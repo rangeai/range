@@ -169,6 +169,31 @@ export function isAgentRunning(sessionId: string): boolean {
  * thread's events.jsonl so we don't ship huge histories — sessions
  * with very long output get truncated to the last MAX bytes.
  */
+/** Archive the persisted event log so the next session view rehydration
+ *  starts with a blank slate. The old log moves to events.jsonl.<ts>
+ *  next to it; we never delete history outright. */
+export async function archiveAgentHistory(sessionId: string): Promise<void> {
+  const dir = threadDir(sessionId);
+  const src = join(dir, "events.jsonl");
+  try {
+    const exists = await Bun.file(src).exists();
+    if (!exists) return;
+    const ts = new Date()
+      .toISOString()
+      .replace(/[:T.Z]/g, "")
+      .slice(0, 14);
+    const dst = join(dir, `events.jsonl.${ts}`);
+    const { rename } = await import("node:fs/promises");
+    await rename(src, dst);
+    log.info("codex", "history archived", { sessionId, dst });
+  } catch (err) {
+    log.warn("codex", "history archive failed", {
+      sessionId,
+      err: String(err instanceof Error ? err.message : err),
+    });
+  }
+}
+
 export async function readAgentHistory(
   sessionId: string,
 ): Promise<{ events: ServerMessage[] }> {

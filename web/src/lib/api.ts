@@ -93,6 +93,34 @@ export function setAutoApprove(
   );
 }
 
+export function setSandbox(
+  sessionId: string,
+  sandbox: import("@shared/protocol").Sandbox,
+): Promise<GetSessionResponse> {
+  return jsonRequest<GetSessionResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/sandbox`,
+    { method: "POST", body: JSON.stringify({ sandbox }) },
+  );
+}
+
+export function restartAgent(
+  sessionId: string,
+): Promise<{ threadId: string }> {
+  return jsonRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/agent/restart`,
+    { method: "POST" },
+  );
+}
+
+export function clearAgent(
+  sessionId: string,
+): Promise<{ threadId: string }> {
+  return jsonRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/agent/clear`,
+    { method: "POST" },
+  );
+}
+
 export function attachRepo(
   sessionId: string,
   repoPath: string,

@@ -57,6 +57,7 @@ import {
   getSession,
   listSessions,
   setSessionAutoApprove,
+  setSessionSandbox,
   validateRepoPath,
 } from "./sessions.ts";
 import {
@@ -75,6 +76,7 @@ import { draftPr, openPr } from "./pr.ts";
 import { listDirectory, homeDir } from "./fs_browse.ts";
 import { runScenario } from "./scenarios.ts";
 import {
+  archiveAgentHistory,
   composeBaseInstructions,
   isAgentRunning,
   readAgentHistory,
@@ -214,6 +216,78 @@ app.delete("/api/sessions/:id/allow-command/:binary", (c) => {
   if (!session) return c.json({ error: "session not found" }, 404);
   broadcast({ type: "session_updated", session });
   return c.json({ session });
+});
+
+app.post("/api/sessions/:id/sandbox", async (c) => {
+  const id = c.req.param("id");
+  let body: { sandbox?: Sandbox };
+  try {
+    body = (await c.req.json()) as { sandbox?: Sandbox };
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  if (!body.sandbox || !VALID_SANDBOXES.has(body.sandbox)) {
+    return c.json({ error: "sandbox must be a valid Sandbox" }, 400);
+  }
+  let session;
+  try {
+    session = setSessionSandbox(id, body.sandbox);
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      400,
+    );
+  }
+  if (!session) return c.json({ error: "session not found" }, 404);
+  broadcast({ type: "session_updated", session });
+  // Restart Codex so the new sandbox takes effect.
+  if (isAgentRunning(id)) {
+    await stopAgent(id);
+    void startAgent(id).catch((err) => {
+      log.warn("sessions", "restart after sandbox change failed", {
+        sessionId: id,
+        err: String(err instanceof Error ? err.message : err),
+      });
+    });
+  }
+  return c.json({ session });
+});
+
+app.post("/api/sessions/:id/agent/restart", async (c) => {
+  const sessionId = c.req.param("id");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  if (isAgentRunning(sessionId)) {
+    await stopAgent(sessionId);
+  }
+  try {
+    const { threadId } = await startAgent(sessionId);
+    return c.json({ threadId });
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      500,
+    );
+  }
+});
+
+app.post("/api/sessions/:id/agent/clear", async (c) => {
+  const sessionId = c.req.param("id");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  if (isAgentRunning(sessionId)) {
+    await stopAgent(sessionId);
+  }
+  await archiveAgentHistory(sessionId);
+  try {
+    const { threadId } = await startAgent(sessionId);
+    return c.json({ threadId });
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      500,
+    );
+  }
 });
 
 app.post("/api/sessions/:id/auto-approve", async (c) => {

@@ -322,8 +322,81 @@ function WorktreeBlock({ session }: { session: Session }) {
               mono={!!session.baseSha}
             />
           </div>
+          <SandboxSwitcher session={session} />
           <ApprovalSettings session={session} />
         </div>
+      )}
+    </div>
+  );
+}
+
+function SandboxSwitcher({ session }: { session: Session }) {
+  const upsertSession = useAppStore((s) => s.upsertSession);
+  const [busy, setBusy] = useState(false);
+  const choices: Array<{
+    value: import("@shared/protocol").Sandbox;
+    label: string;
+    hint: string;
+  }> = [
+    {
+      value: "read-only",
+      label: "read-only",
+      hint: "Codex can read + run safe commands; no file edits",
+    },
+    {
+      value: "workspace-write",
+      label: "workspace-write",
+      hint: "Codex can edit files; you approve each write",
+    },
+    {
+      value: "danger-full-access",
+      label: "danger",
+      hint: "no sandbox · Codex can do anything",
+    },
+  ];
+
+  const change = async (next: import("@shared/protocol").Sandbox) => {
+    if (busy || next === session.sandbox) return;
+    setBusy(true);
+    try {
+      const res = await api.setSandbox(session.id, next);
+      upsertSession(res.session);
+    } catch (e) {
+      console.error("setSandbox failed", e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="border-t border-[var(--br-1)] px-3 py-2.5 flex items-center gap-3">
+      <span className="text-[10px] tracking-[0.16em] uppercase text-fg-3 flex-shrink-0">
+        sandbox
+      </span>
+      <div className="flex gap-1">
+        {choices.map((c) => {
+          const isCurrent = c.value === session.sandbox;
+          return (
+            <button
+              key={c.value}
+              onClick={() => change(c.value)}
+              disabled={busy || isCurrent}
+              title={c.hint}
+              className={`text-[10.5px] px-2 py-0.5 rounded border transition ${
+                isCurrent
+                  ? c.value === "danger-full-access"
+                    ? "text-[var(--bg)] bg-[var(--err)] border-[var(--err)]"
+                    : "text-[var(--bg)] bg-[var(--accent)] border-[var(--accent)]"
+                  : "text-fg-1 border-[var(--br-2)] hover:border-[var(--br-3)] hover:bg-[var(--bg-2)] disabled:opacity-50"
+              }`}
+            >
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+      {busy && (
+        <span className="text-[10.5px] text-fg-3 italic">restarting codex…</span>
       )}
     </div>
   );
@@ -1316,6 +1389,16 @@ function MessageComposer({
       name: "pr",
       description: "draft a pull request from the current branch",
     });
+    items.push({
+      kind: "builtin",
+      name: "restart",
+      description: "kill Codex and start a fresh thread with current settings",
+    });
+    items.push({
+      kind: "builtin",
+      name: "clear",
+      description: "archive history + restart Codex + clear chat (keeps runs)",
+    });
     const p = profile?.profile;
     if (p) {
       for (const s of p.scenarios) {
@@ -1372,6 +1455,8 @@ function MessageComposer({
   };
 
   const pushPrDraft = useAppStore((s) => s.pushPrDraft);
+  const clearConversation = useAppStore((s) => s.clearConversation);
+  const pushSystem = useAppStore((s) => s.pushSystemEntry);
 
   const runSlash = async (item: SlashItem) => {
     if (busy) return;
@@ -1399,6 +1484,12 @@ function MessageComposer({
           filesChanged: draft.filesChanged,
           status: "draft",
         });
+      } else if (item.kind === "builtin" && item.name === "restart") {
+        pushSystem(session.id, "Restarting Codex…");
+        await api.restartAgent(session.id);
+      } else if (item.kind === "builtin" && item.name === "clear") {
+        await api.clearAgent(session.id);
+        clearConversation(session.id);
       }
       setText("");
     } catch (e) {

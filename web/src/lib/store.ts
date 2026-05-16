@@ -130,6 +130,10 @@ interface AppState {
     sessionId: string,
     results: VerificationResult[],
   ) => void;
+  /** Reset the conversation timeline for a session (used by /clear).
+   *  Preserves runs / artifacts / verification — only the chat
+   *  entries are wiped. */
+  clearConversation: (sessionId: string) => void;
 }
 
 const LOG_CAP = 5_000;
@@ -422,6 +426,15 @@ export const useAppStore = create<AppState>((set) => ({
       for (const r of results) inner.set(r.gateName, r);
       next.set(sessionId, inner);
       return { verificationBySession: next };
+    }),
+
+  clearConversation: (sessionId) =>
+    set((state) => {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId);
+      if (!prev) return {};
+      next.set(sessionId, { ...prev, entries: [], error: null });
+      return { conversationsBySession: next };
     }),
 
   applyMessageDelta: (sessionId, itemId, delta) =>
