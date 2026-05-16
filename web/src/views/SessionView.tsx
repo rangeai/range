@@ -1,22 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
-import { runsForSession, useAppStore } from "../lib/store";
+import { useAppStore } from "../lib/store";
 import { applyServerMessage, useWsSend } from "../lib/ws";
 import { Markdown } from "./Markdown";
 import type {
   AgentItem,
   ArtifactInfo,
-  ProfileCommand,
   ProfileLoadResult,
   Run,
   RunLogEntry,
   RunState,
-  Scenario,
   Session,
-  VerificationGate,
-  VerificationResult,
-  VerificationStatus,
 } from "@shared/protocol";
 import type {
   ConversationEntry,
@@ -81,6 +76,15 @@ export function SessionView({ sessionId }: { sessionId: string }) {
         .catch((err) => console.error("rehydrate failed", err));
     }
 
+    // Verification results are read from disk on the server side; pull
+    // them here so any inline card that wants to render them has data.
+    api
+      .getVerification(sessionId)
+      .then((res) =>
+        useAppStore.getState().setVerificationResults(sessionId, res.results),
+      )
+      .catch((err) => console.error("getVerification failed", err));
+
     // Codex starts implicitly when a session is opened. The server's
     // startAgent is idempotent: if a thread is already running for this
     // session it just returns the existing thread id.
@@ -107,66 +111,20 @@ function SessionLayout({
   session: Session;
   profile: ProfileLoadResult | undefined;
 }) {
-  const [railOpen, setRailOpen] = useState(true);
   return (
-    <div className="h-full flex overflow-hidden">
-      {/* Main column: header + worktree + conversation (scrolls) + composer (pinned) */}
-      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        <ConversationScroller>
-          <div className="max-w-3xl mx-auto px-6 pt-6 pb-2 w-full">
-            <SessionHeader session={session} profile={profile} />
-            <WorktreeBlock session={session} />
-            <ConversationBlock session={session} />
-          </div>
-        </ConversationScroller>
-        <div className="border-t border-[var(--br-1)] bg-[var(--bg-1)] flex-shrink-0">
-          <div className="max-w-3xl mx-auto px-6 py-3 w-full">
-            <StickyComposer session={session} />
-          </div>
+    <div className="h-full flex flex-col overflow-hidden">
+      <ConversationScroller>
+        <div className="max-w-3xl mx-auto px-6 pt-6 pb-2 w-full">
+          <SessionHeader session={session} profile={profile} />
+          <WorktreeBlock session={session} />
+          <ConversationBlock session={session} />
+        </div>
+      </ConversationScroller>
+      <div className="border-t border-[var(--br-1)] bg-[var(--bg-1)] flex-shrink-0">
+        <div className="max-w-3xl mx-auto px-6 py-3 w-full">
+          <StickyComposer session={session} />
         </div>
       </div>
-      {/* Right rail: collapsible. Independent scroll when open. */}
-      <aside
-        className={`flex-shrink-0 border-l border-[var(--br-1)] bg-[var(--bg-1)] flex flex-col transition-[width] duration-150 ${railOpen ? "w-[460px]" : "w-[34px]"}`}
-      >
-        <button
-          onClick={() => setRailOpen((o) => !o)}
-          title={railOpen ? "collapse panel" : "expand panel"}
-          className="h-9 flex items-center justify-center border-b border-[var(--br-1)] text-fg-3 hover:text-fg-1 hover:bg-[var(--bg-2)] transition flex-shrink-0"
-        >
-          <svg
-            className={`w-3 h-3 transition-transform ${railOpen ? "" : "rotate-180"}`}
-            viewBox="0 0 12 12"
-            fill="none"
-          >
-            <path
-              d="M4 2l4 4-4 4"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          {!railOpen && (
-            <span
-              className="ml-1.5 text-[10px] tracking-[0.18em] uppercase"
-              style={{
-                writingMode: "vertical-rl",
-                transform: "rotate(180deg)",
-                marginTop: 6,
-              }}
-            >
-              runs · pr
-            </span>
-          )}
-        </button>
-        {railOpen && (
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
-            <RunsBlock session={session} profile={profile} />
-            <PrBlock session={session} />
-          </div>
-        )}
-      </aside>
     </div>
   );
 }
@@ -1550,63 +1508,6 @@ function RepoPicker({
   );
 }
 
-// ─── Runs block ────────────────────────────────────────────────────────────
-
-function RunsBlock({
-  session,
-  profile,
-}: {
-  session: Session;
-  profile: ProfileLoadResult | undefined;
-}) {
-  const runs = useAppStore(
-    useShallow((s) => runsForSession(s, session.id)),
-  );
-  const upsertManyRuns = useAppStore((s) => s.upsertManyRuns);
-  const setVerificationResults = useAppStore((s) => s.setVerificationResults);
-
-  useEffect(() => {
-    api
-      .listRuns(session.id)
-      .then((res) => upsertManyRuns(res.runs))
-      .catch((err) => console.error("listRuns failed", err));
-    api
-      .getVerification(session.id)
-      .then((res) => setVerificationResults(session.id, res.results))
-      .catch((err) => console.error("getVerification failed", err));
-  }, [session.id, upsertManyRuns, setVerificationResults]);
-
-  const profileCommands = profile?.profile?.commands ?? [];
-  const gates = profile?.profile?.gates ?? [];
-  const scenarios = profile?.profile?.scenarios ?? [];
-
-  return (
-    <section className="mb-8">
-      <div className="flex items-baseline justify-between mb-3">
-        <div className="text-[10px] tracking-[0.18em] uppercase text-fg-3 font-medium">
-          runs
-        </div>
-        <span className="text-[10.5px] font-mono text-fg-3">{runs.length}</span>
-      </div>
-
-      {scenarios.length > 0 && (
-        <ScenariosStrip session={session} scenarios={scenarios} />
-      )}
-
-      {gates.length > 0 && (
-        <VerificationStrip sessionId={session.id} gates={gates} />
-      )}
-
-      {profileCommands.length > 0 && (
-        <ProfileCommandStrip session={session} commands={profileCommands} />
-      )}
-
-      <RunLauncher session={session} />
-
-      {runs.length > 0 && <RunsList runs={runs} />}
-    </section>
-  );
-}
 
 function ArtifactPanel({ run }: { run: Run }) {
   const artifacts = useAppStore((s) => s.artifactsByRun.get(run.id));
@@ -1789,336 +1690,7 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-function VerificationStrip({
-  sessionId,
-  gates,
-}: {
-  sessionId: string;
-  gates: VerificationGate[];
-}) {
-  const results = useAppStore((s) =>
-    s.verificationBySession.get(sessionId),
-  );
 
-  return (
-    <div className="mb-3">
-      <div className="text-[9.5px] tracking-[0.16em] uppercase text-fg-3 mb-2">
-        verification gates
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {gates.map((g) => {
-          const r = results?.get(g.name) ?? null;
-          return <GateChip key={g.name} gate={g} result={r} />;
-        })}
-      </div>
-    </div>
-  );
-}
-
-function GateChip({
-  gate,
-  result,
-}: {
-  gate: VerificationGate;
-  result: VerificationResult | null;
-}) {
-  const color = verificationColor(result?.status);
-  const label = result?.status ?? "pending";
-  const tip = result
-    ? `${gate.command} · ${result.status} · ${result.reason}`
-    : gate.description || `runs after \`${gate.command}\``;
-  return (
-    <div
-      title={tip}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border rounded text-[11.5px] bg-[var(--bg-1)]"
-      style={{ borderColor: color ?? "var(--br-1)" }}
-    >
-      <span
-        className="w-1.5 h-1.5 rounded-full"
-        style={{ background: color ?? "var(--br-3)" }}
-      />
-      <span className="font-mono text-fg-1">{gate.name}</span>
-      <span
-        className="text-[10.5px] font-mono"
-        style={{ color: color ?? "var(--fg-3)" }}
-      >
-        {label}
-      </span>
-    </div>
-  );
-}
-
-function verificationColor(
-  status: VerificationStatus | undefined,
-): string | undefined {
-  switch (status) {
-    case "pass":
-      return "var(--ok)";
-    case "warn":
-      return "var(--warn)";
-    case "fail":
-    case "error":
-      return "var(--err)";
-    default:
-      return undefined;
-  }
-}
-
-function ScenariosStrip({
-  session,
-  scenarios,
-}: {
-  session: Session;
-  scenarios: Scenario[];
-}) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  const launch = async (name: string) => {
-    if (!session.worktreePath) return;
-    setBusy(name);
-    setErr(null);
-    try {
-      await api.runScenario(session.id, name);
-    } catch (e) {
-      setErr(String(e instanceof Error ? e.message : e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  return (
-    <div className="mb-3">
-      <div className="text-[9.5px] tracking-[0.16em] uppercase text-fg-3 mb-2">
-        scenarios
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {scenarios.map((s) => {
-          const sweepCount = s.sweep
-            ? Object.values(s.sweep.params).reduce(
-                (a, v) => a * v.length,
-                1,
-              )
-            : 1;
-          const isBusy = busy === s.name;
-          return (
-            <button
-              key={s.name}
-              onClick={() => launch(s.name)}
-              disabled={!session.worktreePath || busy !== null}
-              title={s.description ?? s.name}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 border bg-[var(--bg-1)] hover:bg-[var(--bg-2)] disabled:opacity-50 disabled:cursor-not-allowed rounded text-[11.5px] text-fg-1 transition"
-              style={{
-                borderColor: isBusy
-                  ? "var(--accent)"
-                  : "color-mix(in oklch, var(--accent) 25%, var(--br-1))",
-              }}
-            >
-              <svg
-                className="w-2.5 h-2.5 text-[var(--accent)]"
-                viewBox="0 0 12 12"
-                fill="none"
-              >
-                <circle
-                  cx="6"
-                  cy="6"
-                  r="4.5"
-                  stroke="currentColor"
-                  strokeWidth="1.2"
-                />
-                <path
-                  d="M5 4l3 2-3 2z"
-                  fill="currentColor"
-                />
-              </svg>
-              <span className="font-mono">{s.name}</span>
-              {sweepCount > 1 && (
-                <span className="text-[10px] text-[var(--accent)] font-mono">
-                  ×{sweepCount}
-                </span>
-              )}
-              {isBusy && (
-                <span className="text-[10px] text-fg-3 italic">launching…</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      {err && (
-        <div className="mt-1.5 text-[10.5px] text-[var(--err)] break-words">
-          {err}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ProfileCommandStrip({
-  session,
-  commands,
-}: {
-  session: Session;
-  commands: ProfileCommand[];
-}) {
-  const [busyName, setBusyName] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  const launch = async (cmd: ProfileCommand) => {
-    if (!session.worktreePath) return;
-    setBusyName(cmd.name);
-    setErr(null);
-    try {
-      await api.createRun(session.id, {
-        command: cmd.args,
-        kind: "shell",
-      });
-    } catch (e) {
-      setErr(String(e instanceof Error ? e.message : e));
-    } finally {
-      setBusyName(null);
-    }
-  };
-
-  const disabled = !session.worktreePath;
-
-  return (
-    <div className="mb-3">
-      <div className="text-[9.5px] tracking-[0.16em] uppercase text-fg-3 mb-2">
-        from range.yaml
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {commands.map((c) => (
-          <button
-            key={c.name}
-            onClick={() => launch(c)}
-            disabled={disabled || busyName !== null}
-            title={c.description || c.args.join(" ")}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 border border-[var(--br-1)] hover:border-[var(--br-2)] hover:bg-[var(--bg-2)] disabled:opacity-50 disabled:cursor-not-allowed bg-[var(--bg-1)] rounded text-[11.5px] text-fg-1 font-mono transition"
-          >
-            <svg
-              className="w-2.5 h-2.5 text-[var(--accent)]"
-              viewBox="0 0 12 12"
-              fill="none"
-            >
-              <path
-                d="M3 2v8l7-4-7-4z"
-                fill="currentColor"
-                stroke="currentColor"
-                strokeWidth="0.5"
-                strokeLinejoin="round"
-              />
-            </svg>
-            {busyName === c.name ? `${c.name}…` : c.name}
-          </button>
-        ))}
-      </div>
-      {err && (
-        <div className="mt-1.5 text-[10.5px] text-[var(--err)] break-words">
-          {err}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RunLauncher({ session }: { session: Session }) {
-  const [command, setCommand] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const canRun =
-    !!session.worktreePath && command.trim().length > 0 && !busy;
-
-  const submit = async () => {
-    if (!canRun) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      await api.createRun(session.id, {
-        command: command.trim(),
-        kind: "shell",
-      });
-      setCommand("");
-    } catch (e) {
-      setErr(String(e instanceof Error ? e.message : e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="border border-[var(--br-1)] rounded-lg overflow-hidden bg-[var(--bg-1)] mb-3">
-      <div className="px-3 py-2.5 flex items-center gap-2 border-b border-[var(--br-1)]">
-        <span className="font-mono text-[12px] text-fg-3 select-none">$</span>
-        <input
-          type="text"
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          disabled={!session.worktreePath || busy}
-          spellCheck={false}
-          placeholder={
-            session.worktreePath
-              ? "ls -la · pytest · python -m foo · …"
-              : "attach a repo to the session to run commands"
-          }
-          className="flex-1 bg-transparent outline-none text-[13px] font-mono text-fg placeholder:text-fg-3 disabled:opacity-60"
-        />
-        <button
-          onClick={submit}
-          disabled={!canRun}
-          className="px-3 py-1 rounded text-[11.5px] font-medium text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed transition"
-        >
-          {busy ? "starting…" : "run"}
-        </button>
-      </div>
-      {err && (
-        <div className="px-3 py-2 text-[11px] text-[var(--err)] border-t border-[var(--br-1)] break-words">
-          {err}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RunsList({ runs }: { runs: Run[] }) {
-  // Group consecutive runs that share a sweep_id under a header. Solo
-  // runs (no sweepId) render normally.
-  type Group =
-    | { kind: "single"; run: Run }
-    | { kind: "sweep"; sweepId: string; runs: Run[] };
-
-  const groups: Group[] = [];
-  for (const r of runs) {
-    if (r.sweepId) {
-      const last = groups[groups.length - 1];
-      if (last && last.kind === "sweep" && last.sweepId === r.sweepId) {
-        last.runs.push(r);
-        continue;
-      }
-      groups.push({ kind: "sweep", sweepId: r.sweepId, runs: [r] });
-    } else {
-      groups.push({ kind: "single", run: r });
-    }
-  }
-
-  return (
-    <div className="space-y-1.5 mb-1">
-      {groups.map((g) =>
-        g.kind === "single" ? (
-          <RunRow key={g.run.id} run={g.run} />
-        ) : (
-          <SweepGroup key={g.sweepId} runs={g.runs} />
-        ),
-      )}
-    </div>
-  );
-}
 
 function SweepGroup({ runs }: { runs: Run[] }) {
   const [open, setOpen] = useState(true);
@@ -2407,162 +1979,6 @@ function LogLine({ entry }: { entry: RunLogEntry }) {
   );
 }
 
-// ─── PR block ──────────────────────────────────────────────────────────────
-
-function PrBlock({ session }: { session: Session }) {
-  const [draft, setDraft] = useState<{
-    title: string;
-    body: string;
-    commitCount: number;
-    filesChanged: string[];
-    base: string;
-  } | null>(null);
-  const [busy, setBusy] = useState<"draft" | "open" | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [url, setUrl] = useState<string | null>(null);
-
-  if (!session.worktreePath) return null;
-
-  const onDraft = async () => {
-    setBusy("draft");
-    setErr(null);
-    try {
-      const d = await api.draftPr(session.id);
-      setDraft(d);
-    } catch (e) {
-      setErr(String(e instanceof Error ? e.message : e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const onOpen = async () => {
-    if (!draft) return;
-    setBusy("open");
-    setErr(null);
-    try {
-      const r = await api.openPr(session.id, {
-        title: draft.title,
-        body: draft.body,
-      });
-      setUrl(r.url);
-    } catch (e) {
-      setErr(String(e instanceof Error ? e.message : e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  return (
-    <section className="mb-8">
-      <div className="flex items-baseline justify-between mb-3">
-        <div className="text-[10px] tracking-[0.18em] uppercase text-fg-3 font-medium">
-          pull request
-        </div>
-        {draft && (
-          <span className="text-[10.5px] font-mono text-fg-3">
-            {draft.commitCount} commit · base {draft.base.replace(/^origin\//, "")}
-          </span>
-        )}
-      </div>
-
-      {!draft ? (
-        <button
-          onClick={onDraft}
-          disabled={busy !== null}
-          className="text-[11.5px] text-fg-1 border border-[var(--br-2)] hover:border-[var(--br-3)] hover:bg-[var(--bg-2)] disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded transition flex items-center gap-1.5"
-        >
-          <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none">
-            <path
-              d="M3 2v6a2 2 0 002 2h2M9 4v6"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-            />
-            <circle cx="3" cy="2" r="1.2" fill="currentColor" />
-            <circle cx="9" cy="4" r="1.2" fill="currentColor" />
-            <circle cx="9" cy="10" r="1.2" fill="currentColor" />
-          </svg>
-          {busy === "draft" ? "drafting…" : "draft pull request"}
-        </button>
-      ) : (
-        <div className="border border-[var(--br-1)] rounded-lg bg-[var(--bg-1)] overflow-hidden">
-          <div className="px-3 py-2 border-b border-[var(--br-1)]">
-            <input
-              type="text"
-              value={draft.title}
-              onChange={(e) =>
-                setDraft({ ...draft, title: e.target.value })
-              }
-              className="w-full bg-transparent outline-none text-[14px] font-medium text-fg"
-              placeholder="PR title"
-            />
-          </div>
-          <textarea
-            value={draft.body}
-            onChange={(e) =>
-              setDraft({ ...draft, body: e.target.value })
-            }
-            rows={14}
-            spellCheck={false}
-            className="w-full bg-transparent outline-none resize-y font-mono text-[12px] text-fg-1 leading-relaxed px-3 py-2"
-          />
-          <div className="px-3 py-2 border-t border-[var(--br-1)] flex items-center gap-1.5 bg-[var(--bg)]">
-            <button
-              onClick={onOpen}
-              disabled={busy !== null || url !== null}
-              className="text-[11.5px] text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded transition font-medium"
-            >
-              {busy === "open"
-                ? "opening…"
-                : url
-                  ? "opened"
-                  : "push + open PR"}
-            </button>
-            <button
-              onClick={onDraft}
-              disabled={busy !== null}
-              className="text-[11.5px] text-fg-1 border border-[var(--br-2)] hover:border-[var(--br-3)] hover:bg-[var(--bg-2)] disabled:opacity-50 px-2.5 py-1.5 rounded transition"
-            >
-              re-draft
-            </button>
-            <div className="flex-1"></div>
-            <button
-              onClick={() => {
-                setDraft(null);
-                setUrl(null);
-                setErr(null);
-              }}
-              disabled={busy !== null}
-              className="text-[11.5px] text-fg-3 hover:text-fg-1 px-2 py-1.5 rounded transition"
-            >
-              discard
-            </button>
-          </div>
-          {url && (
-            <div className="px-3 py-2 border-t border-[var(--br-1)] text-[11.5px]">
-              opened ·{" "}
-              <a
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[var(--accent)] hover:underline font-mono break-all"
-              >
-                {url}
-              </a>
-            </div>
-          )}
-        </div>
-      )}
-
-      {err && (
-        <div className="mt-2 text-[11px] text-[var(--err)] break-words">
-          {err}
-        </div>
-      )}
-    </section>
-  );
-}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
