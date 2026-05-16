@@ -777,14 +777,175 @@ function ConversationTimeline({
     );
   }
 
+  // Walk entries and group everything between a `turn` marker and the
+  // next `turn`/`user` into that turn's children. The user message that
+  // preceded a turn is *not* sucked in — it renders normally above the
+  // turn card so the prompt stays visible even when the turn collapses.
+  type Block =
+    | { kind: "loose"; entry: ConversationEntry; idx: number }
+    | {
+        kind: "turn";
+        turn: Extract<ConversationEntry, { kind: "turn" }>;
+        items: { entry: ConversationEntry; idx: number }[];
+        idx: number;
+      };
+  const blocks: Block[] = [];
+  let openTurn: Extract<Block, { kind: "turn" }> | null = null;
+  conv.entries.forEach((entry, idx) => {
+    if (entry.kind === "turn") {
+      openTurn = { kind: "turn", turn: entry, items: [], idx };
+      blocks.push(openTurn);
+    } else if (entry.kind === "user") {
+      // A user message ends the previous turn's collection.
+      openTurn = null;
+      blocks.push({ kind: "loose", entry, idx });
+    } else if (openTurn) {
+      openTurn.items.push({ entry, idx });
+    } else {
+      blocks.push({ kind: "loose", entry, idx });
+    }
+  });
+
   return (
     <div className="border border-[var(--br-1)] rounded-lg bg-[var(--bg-1)] p-4 space-y-4">
-      {conv.entries.map((entry, i) => (
-        <ConversationEntryView key={i} entry={entry} sessionId={sessionId} />
-      ))}
+      {blocks.map((b) =>
+        b.kind === "loose" ? (
+          <ConversationEntryView
+            key={`e${b.idx}`}
+            entry={b.entry}
+            sessionId={sessionId}
+          />
+        ) : (
+          <TurnCard
+            key={`t${b.idx}-${b.turn.turnId}`}
+            turn={b.turn}
+            items={b.items}
+            sessionId={sessionId}
+          />
+        ),
+      )}
       {conv.status === "error" && conv.error && (
         <div className="text-[11.5px] text-[var(--err)] border border-[var(--err)]/40 bg-[var(--err)]/10 rounded p-2 break-words">
           {conv.error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TurnCard({
+  turn,
+  items,
+  sessionId,
+}: {
+  turn: Extract<ConversationEntry, { kind: "turn" }>;
+  items: { entry: ConversationEntry; idx: number }[];
+  sessionId: string;
+}) {
+  const inFlight = turn.status === "running";
+  // Auto-collapse on completion; user can still toggle.
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const open = userOpen ?? inFlight;
+
+  // Summary counts for the header.
+  let cmds = 0;
+  let edits = 0;
+  let reasoning = 0;
+  let messages = 0;
+  let lastMessage: string | null = null;
+  for (const { entry } of items) {
+    if (entry.kind !== "agent_item") continue;
+    const k = entry.item.kind;
+    if (k === "command") cmds++;
+    else if (k === "file_edit") edits++;
+    else if (k === "reasoning") reasoning++;
+    else if (k === "message") {
+      messages++;
+      if (entry.item.text) lastMessage = entry.item.text;
+    }
+  }
+
+  const durationS =
+    turn.finishedAt !== null
+      ? Math.max(0, (turn.finishedAt - turn.startedAt) / 1000)
+      : null;
+  const statusColor =
+    turn.status === "ok"
+      ? "var(--ok)"
+      : turn.status === "failed" || turn.status === "aborted"
+        ? "var(--err)"
+        : "var(--accent)";
+
+  const summaryParts: string[] = [];
+  if (cmds) summaryParts.push(`${cmds} cmd${cmds === 1 ? "" : "s"}`);
+  if (edits) summaryParts.push(`${edits} edit${edits === 1 ? "" : "s"}`);
+  if (reasoning) summaryParts.push(`${reasoning} thought${reasoning === 1 ? "" : "s"}`);
+  if (messages) summaryParts.push(`${messages} msg${messages === 1 ? "" : "s"}`);
+  const summary = summaryParts.length === 0 ? "no activity" : summaryParts.join(" · ");
+
+  // First non-empty line of the agent's last message, truncated.
+  const lastMsgPreview = lastMessage
+    ? lastMessage
+        .split("\n")
+        .map((l) => l.trim())
+        .find((l) => l.length > 0)
+        ?.slice(0, 120) ?? null
+    : null;
+
+  return (
+    <div
+      className={`border rounded-lg overflow-hidden transition ${
+        open
+          ? "border-[var(--br-2)] bg-[var(--bg-1)]"
+          : "border-[var(--br-1)] bg-[var(--bg-1)] hover:bg-[var(--bg-2)]"
+      }`}
+    >
+      <button
+        onClick={() => setUserOpen(!open)}
+        className="w-full px-3 py-2 flex items-center gap-2 text-left"
+      >
+        <svg
+          className={`w-2.5 h-2.5 text-fg-3 flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+          viewBox="0 0 12 12"
+          fill="none"
+        >
+          <path
+            d="M4 2l4 4-4 4"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span
+          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+            inFlight ? "pulse-live" : ""
+          }`}
+          style={{ background: statusColor }}
+        />
+        <span className="text-[10px] tracking-[0.14em] uppercase font-medium flex-shrink-0"
+          style={{ color: statusColor }}
+        >
+          {inFlight ? "turn · running" : `turn · ${turn.status}`}
+        </span>
+        <span className="text-[11.5px] text-fg-2 truncate flex-1 min-w-0">
+          {open || !lastMsgPreview ? summary : lastMsgPreview}
+        </span>
+        {durationS !== null && (
+          <span className="text-[10.5px] font-mono text-fg-3 flex-shrink-0">
+            {durationS < 1 ? "<1s" : `${durationS.toFixed(1)}s`}
+          </span>
+        )}
+      </button>
+      {open && items.length > 0 && (
+        <div className="border-t border-[var(--br-1)] px-4 py-3 space-y-4">
+          {items.map(({ entry, idx }) => (
+            <ConversationEntryView
+              key={`t-e${idx}`}
+              entry={entry}
+              sessionId={sessionId}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -838,6 +999,11 @@ function ConversationEntryView({
   }
   if (entry.kind === "pr_draft") {
     return <InlinePrDraft pr={entry.pr} sessionId={sessionId} />;
+  }
+  if (entry.kind === "turn") {
+    // Turn markers are consumed by ConversationTimeline's grouping;
+    // they shouldn't reach here. Render nothing if one slips through.
+    return null;
   }
   return <AgentItemView item={entry.item} />;
 }
@@ -1209,20 +1375,7 @@ function AgentItemView({ item }: { item: AgentItem }) {
         </div>
       );
     case "reasoning":
-      return (
-        <div className="flex gap-3">
-          <AgentBadge label="·" />
-          <div className="flex-1 min-w-0 text-[12px] text-fg-3 italic break-words">
-            {item.text ? (
-              <Markdown>{item.text}</Markdown>
-            ) : inProgress ? (
-              "thinking…"
-            ) : (
-              ""
-            )}
-          </div>
-        </div>
-      );
+      return <ReasoningItemView item={item} inProgress={inProgress} />;
     case "command":
       return <CommandItemView item={item} inProgress={inProgress} />;
     case "file_edit":
@@ -1284,6 +1437,71 @@ function UnknownItemView({
           {JSON.stringify(item.raw, null, 2)}
         </pre>
       )}
+    </div>
+  );
+}
+
+function ReasoningItemView({
+  item,
+  inProgress,
+}: {
+  item: Extract<AgentItem, { kind: "reasoning" }>;
+  inProgress: boolean;
+}) {
+  // Track when this reasoning item first appeared so we can show
+  // "Thought for Xs" once it completes. We don't get this from the
+  // protocol; we just timestamp the first render.
+  const startedAt = useRef<number | null>(null);
+  if (startedAt.current === null) startedAt.current = Date.now();
+  const completedAt = useRef<number | null>(null);
+  if (!inProgress && completedAt.current === null) {
+    completedAt.current = Date.now();
+  }
+  const [open, setOpen] = useState(false);
+
+  const durationS =
+    completedAt.current !== null && startedAt.current !== null
+      ? Math.max(0, (completedAt.current - startedAt.current) / 1000)
+      : null;
+
+  const header = inProgress
+    ? "thinking…"
+    : durationS !== null
+      ? `Thought for ${durationS < 1 ? "<1s" : `${durationS.toFixed(0)}s`}`
+      : "Thought";
+
+  return (
+    <div className="flex gap-3">
+      <AgentBadge label="·" />
+      <div className="flex-1 min-w-0">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          disabled={!item.text}
+          className="flex items-center gap-1.5 text-[12px] text-fg-3 italic hover:text-fg-2 transition disabled:cursor-default"
+        >
+          {item.text && (
+            <svg
+              className={`w-2.5 h-2.5 text-fg-3 flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+              viewBox="0 0 12 12"
+              fill="none"
+            >
+              <path
+                d="M4 2l4 4-4 4"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+          <span className={inProgress ? "pulse-live" : ""}>{header}</span>
+        </button>
+        {open && item.text && (
+          <div className="mt-1 text-[12px] text-fg-3 italic border-l-2 border-[var(--br-1)] pl-3">
+            <Markdown>{item.text}</Markdown>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

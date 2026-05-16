@@ -204,24 +204,27 @@ export function applyServerMessage(msg: ServerMessage): void {
       break;
     case "agent_turn_started": {
       const store = useAppStore.getState();
-      // If the user hasn't sent any message yet for this session,
-      // this turn was kicked off server-side (e.g. the initial prompt
-      // from the home composer). Push the prompt into the timeline so
-      // the user sees what they originally typed.
+      // If the user hasn't sent any message yet for this session, this
+      // turn was kicked off server-side (e.g. the initial prompt from
+      // the home composer). Push the prompt into the timeline so the
+      // user sees what they originally typed.
       const conv = store.conversationsBySession.get(msg.sessionId);
       const hasUser = conv?.entries.some((e) => e.kind === "user");
       if (!hasUser && msg.prompt) {
         store.pushUserMessage(msg.sessionId, msg.prompt);
-      } else {
-        store.patchConversation(msg.sessionId, { turnInFlight: true });
       }
+      store.patchConversation(msg.sessionId, { turnInFlight: true });
+      // Push a turn marker so the timeline can group agent items by
+      // turn (and auto-collapse completed turns).
+      store.pushTurnStart(msg.sessionId, msg.turnId, msg.prompt || null);
       break;
     }
-    case "agent_turn_finished":
-      useAppStore.getState().patchConversation(msg.sessionId, {
-        turnInFlight: false,
-      });
+    case "agent_turn_finished": {
+      const store = useAppStore.getState();
+      store.patchConversation(msg.sessionId, { turnInFlight: false });
+      store.resolveTurn(msg.sessionId, msg.turnId, msg.status);
       break;
+    }
     case "agent_item":
       useAppStore.getState().applyAgentItem(msg.sessionId, msg.item);
       break;

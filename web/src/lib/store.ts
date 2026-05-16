@@ -41,7 +41,16 @@ export type ConversationEntry =
   | { kind: "system"; text: string; t: number }
   | { kind: "run"; runId: string; t: number }
   | { kind: "sweep"; sweepId: string; t: number }
-  | { kind: "pr_draft"; pr: PrDraftEntryState; t: number };
+  | { kind: "pr_draft"; pr: PrDraftEntryState; t: number }
+  | {
+      kind: "turn";
+      turnId: string;
+      t: number;
+      startedAt: number;
+      finishedAt: number | null;
+      status: "running" | "ok" | "failed" | "aborted";
+      prompt: string | null;
+    };
 
 export interface ConversationState {
   status: "stopped" | "starting" | "running" | "error";
@@ -140,6 +149,13 @@ interface AppState {
 
   setTokenUsage: (sessionId: string, usage: ThreadTokenUsage) => void;
   setTurnDiff: (sessionId: string, diff: string) => void;
+
+  pushTurnStart: (sessionId: string, turnId: string, prompt: string | null) => void;
+  resolveTurn: (
+    sessionId: string,
+    turnId: string,
+    status: "ok" | "failed" | "aborted",
+  ) => void;
 }
 
 const LOG_CAP = 5_000;
@@ -457,6 +473,50 @@ export const useAppStore = create<AppState>((set) => ({
       const next = new Map(state.lastTurnDiffBySession);
       next.set(sessionId, diff);
       return { lastTurnDiffBySession: next };
+    }),
+
+  pushTurnStart: (sessionId, turnId, prompt) =>
+    set((state) => {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId) ?? emptyConversation();
+      if (prev.entries.some((e) => e.kind === "turn" && e.turnId === turnId)) {
+        return {};
+      }
+      const now = Date.now();
+      next.set(sessionId, {
+        ...prev,
+        entries: [
+          ...prev.entries,
+          {
+            kind: "turn",
+            turnId,
+            t: now,
+            startedAt: now,
+            finishedAt: null,
+            status: "running",
+            prompt,
+          },
+        ],
+      });
+      return { conversationsBySession: next };
+    }),
+
+  resolveTurn: (sessionId, turnId, status) =>
+    set((state) => {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId);
+      if (!prev) return {};
+      let changed = false;
+      const entries = prev.entries.map((e) => {
+        if (e.kind === "turn" && e.turnId === turnId && e.finishedAt === null) {
+          changed = true;
+          return { ...e, finishedAt: Date.now(), status };
+        }
+        return e;
+      });
+      if (!changed) return {};
+      next.set(sessionId, { ...prev, entries });
+      return { conversationsBySession: next };
     }),
 
   applyMessageDelta: (sessionId, itemId, delta) =>
