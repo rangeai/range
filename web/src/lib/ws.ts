@@ -278,5 +278,15 @@ export function applyServerMessage(msg: ServerMessage): void {
           "Conversation compacted — Codex condensed earlier turns.",
         );
       break;
+    case "scaffold_proposed":
+      useAppStore.getState().pushScaffoldProposal(msg.sessionId, msg.proposal);
+      break;
+    case "scaffold_resolved":
+      useAppStore
+        .getState()
+        .updateScaffoldEntry(msg.sessionId, msg.proposalId, {
+          status: msg.decision,
+        });
+      break;
   }
 }

@@ -459,6 +459,49 @@ export interface ServerRunArtifacts {
   artifacts: ArtifactInfo[];
 }
 
+// ─── Scaffold proposal (P1: auto-scaffolded range.yaml) ───────────────────
+
+export type ScaffoldStack =
+  | "mujoco_playground"
+  | "isaac_lab"
+  | "generic_python"
+  | "unknown";
+
+export interface ScaffoldSummary {
+  commands: number;
+  scenarios: number;
+  rewardFunctions: number;
+  checkpoints: number;
+}
+
+export interface ScaffoldProposal {
+  /** Stable id so the same proposal can be referenced by accept/dismiss. */
+  proposalId: string;
+  stack: ScaffoldStack;
+  /** Human-readable label, e.g. "MuJoCo Playground". */
+  stackLabel: string;
+  /** The proposed range.yaml contents. */
+  yamlText: string;
+  summary: ScaffoldSummary;
+  /** Short bullets explaining what was detected and why. */
+  notes: string[];
+}
+
+export interface ServerScaffoldProposed {
+  type: "scaffold_proposed";
+  sessionId: string;
+  proposal: ScaffoldProposal;
+  t: number;
+}
+
+export interface ServerScaffoldResolved {
+  type: "scaffold_resolved";
+  sessionId: string;
+  proposalId: string;
+  decision: "accepted" | "dismissed";
+  t: number;
+}
+
 export type ServerMessage =
   | ServerHello
   | ServerPing
@@ -482,7 +525,9 @@ export type ServerMessage =
   | ServerRunArtifacts
   | ServerAgentTokenUsage
   | ServerAgentTurnDiff
-  | ServerAgentCompacted;
+  | ServerAgentCompacted
+  | ServerScaffoldProposed
+  | ServerScaffoldResolved;
 
 // ─── Browser → Server ──────────────────────────────────────────────────────
 

@@ -150,6 +150,39 @@ export function compactAgent(
   );
 }
 
+export function previewScaffold(
+  sessionId: string,
+): Promise<{ proposal: import("@shared/protocol").ScaffoldProposal | null }> {
+  return jsonRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/scaffold/preview`,
+    { method: "POST" },
+  );
+}
+
+export function acceptScaffold(
+  sessionId: string,
+  proposalId: string,
+  yamlText: string,
+): Promise<{ ok: boolean; path: string }> {
+  return jsonRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/scaffold/accept`,
+    {
+      method: "POST",
+      body: JSON.stringify({ proposalId, yamlText }),
+    },
+  );
+}
+
+export function dismissScaffold(
+  sessionId: string,
+  proposalId: string,
+): Promise<{ ok: boolean }> {
+  return jsonRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/scaffold/dismiss`,
+    { method: "POST", body: JSON.stringify({ proposalId }) },
+  );
+}
+
 export function attachRepo(
   sessionId: string,
   repoPath: string,

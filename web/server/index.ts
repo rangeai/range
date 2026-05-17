@@ -73,6 +73,7 @@ import {
   startRun,
 } from "./runner.ts";
 import { loadProfile } from "./profile.ts";
+import { detectScaffold, writeScaffold } from "./scaffold.ts";
 import { getLatestResults } from "./verification.ts";
 import { draftPr, openPr } from "./pr.ts";
 import { listDirectory, homeDir } from "./fs_browse.ts";
@@ -445,6 +446,31 @@ app.post("/api/sessions/:id/attach-repo", async (c) => {
       });
     });
 
+    // Auto-scaffold: if the attached repo has no range.yaml but a
+    // detector recognizes its shape, offer a proposal in the
+    // conversation. Fire-and-forget — failure should not block attach.
+    void detectScaffold(body.repoPath)
+      .then((proposal) => {
+        if (!proposal) return;
+        broadcast({
+          type: "scaffold_proposed",
+          sessionId,
+          proposal,
+          t: Date.now(),
+        });
+        log.info("sessions", "scaffold proposed", {
+          sessionId,
+          stack: proposal.stack,
+          proposalId: proposal.proposalId,
+        });
+      })
+      .catch((err) => {
+        log.warn("sessions", "scaffold detection failed", {
+          sessionId,
+          err: String(err instanceof Error ? err.message : err),
+        });
+      });
+
     return c.json({ session });
   } catch (err) {
     return c.json(
@@ -452,6 +478,79 @@ app.post("/api/sessions/:id/attach-repo", async (c) => {
       400,
     );
   }
+});
+
+app.post("/api/sessions/:id/scaffold/preview", async (c) => {
+  const sessionId = c.req.param("id");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  if (!session.repoPath) return c.json({ error: "session has no repo" }, 400);
+  try {
+    const proposal = await detectScaffold(session.repoPath);
+    if (!proposal) return c.json({ proposal: null });
+    broadcast({
+      type: "scaffold_proposed",
+      sessionId,
+      proposal,
+      t: Date.now(),
+    });
+    return c.json({ proposal });
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      500,
+    );
+  }
+});
+
+app.post("/api/sessions/:id/scaffold/accept", async (c) => {
+  const sessionId = c.req.param("id");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  if (!session.repoPath) return c.json({ error: "session has no repo" }, 400);
+  let body: { proposalId?: string; yamlText?: string };
+  try {
+    body = (await c.req.json()) as { proposalId?: string; yamlText?: string };
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  if (!body.proposalId || !body.yamlText) {
+    return c.json({ error: "proposalId and yamlText required" }, 400);
+  }
+  const result = await writeScaffold(session.repoPath, body.yamlText);
+  if (!result.written) return c.json({ error: result.error }, 400);
+
+  broadcast({
+    type: "scaffold_resolved",
+    sessionId,
+    proposalId: body.proposalId,
+    decision: "accepted",
+    t: Date.now(),
+  });
+  // Nudge clients to re-read the profile.
+  broadcast({ type: "session_updated", session });
+  return c.json({ ok: true, path: result.path });
+});
+
+app.post("/api/sessions/:id/scaffold/dismiss", async (c) => {
+  const sessionId = c.req.param("id");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  let body: { proposalId?: string };
+  try {
+    body = (await c.req.json()) as { proposalId?: string };
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  if (!body.proposalId) return c.json({ error: "proposalId required" }, 400);
+  broadcast({
+    type: "scaffold_resolved",
+    sessionId,
+    proposalId: body.proposalId,
+    decision: "dismissed",
+    t: Date.now(),
+  });
+  return c.json({ ok: true });
 });
 
 app.get("/api/sessions/:id/verification", (c) => {

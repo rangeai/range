@@ -5,11 +5,18 @@ import type {
   ProfileLoadResult,
   Run,
   RunLogEntry,
+  ScaffoldProposal,
   ServerAgentApprovalRequest,
   Session,
   ThreadTokenUsage,
   VerificationResult,
 } from "@shared/protocol";
+
+export type ScaffoldEntryStatus =
+  | "pending"
+  | "accepted"
+  | "dismissed"
+  | "error";
 
 export interface PendingApproval {
   requestId: number;
@@ -42,6 +49,14 @@ export type ConversationEntry =
   | { kind: "run"; runId: string; t: number }
   | { kind: "sweep"; sweepId: string; t: number }
   | { kind: "pr_draft"; pr: PrDraftEntryState; t: number }
+  | {
+      kind: "scaffold_proposal";
+      proposal: ScaffoldProposal;
+      editedYaml: string | null;
+      status: ScaffoldEntryStatus;
+      errorMessage: string | null;
+      t: number;
+    }
   | {
       kind: "turn";
       turnId: string;
@@ -155,6 +170,20 @@ interface AppState {
     sessionId: string,
     turnId: string,
     status: "ok" | "failed" | "aborted",
+  ) => void;
+
+  pushScaffoldProposal: (
+    sessionId: string,
+    proposal: ScaffoldProposal,
+  ) => void;
+  updateScaffoldEntry: (
+    sessionId: string,
+    proposalId: string,
+    patch: Partial<{
+      editedYaml: string | null;
+      status: ScaffoldEntryStatus;
+      errorMessage: string | null;
+    }>,
   ) => void;
 }
 
@@ -511,6 +540,57 @@ export const useAppStore = create<AppState>((set) => ({
         if (e.kind === "turn" && e.turnId === turnId && e.finishedAt === null) {
           changed = true;
           return { ...e, finishedAt: Date.now(), status };
+        }
+        return e;
+      });
+      if (!changed) return {};
+      next.set(sessionId, { ...prev, entries });
+      return { conversationsBySession: next };
+    }),
+
+  pushScaffoldProposal: (sessionId, proposal) =>
+    set((state) => {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId) ?? emptyConversation();
+      if (
+        prev.entries.some(
+          (e) =>
+            e.kind === "scaffold_proposal" &&
+            e.proposal.proposalId === proposal.proposalId,
+        )
+      ) {
+        return {};
+      }
+      next.set(sessionId, {
+        ...prev,
+        entries: [
+          ...prev.entries,
+          {
+            kind: "scaffold_proposal",
+            proposal,
+            editedYaml: null,
+            status: "pending",
+            errorMessage: null,
+            t: Date.now(),
+          },
+        ],
+      });
+      return { conversationsBySession: next };
+    }),
+
+  updateScaffoldEntry: (sessionId, proposalId, patch) =>
+    set((state) => {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId);
+      if (!prev) return {};
+      let changed = false;
+      const entries = prev.entries.map((e) => {
+        if (
+          e.kind === "scaffold_proposal" &&
+          e.proposal.proposalId === proposalId
+        ) {
+          changed = true;
+          return { ...e, ...patch };
         }
         return e;
       });

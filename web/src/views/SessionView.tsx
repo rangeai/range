@@ -1000,6 +1000,17 @@ function ConversationEntryView({
   if (entry.kind === "pr_draft") {
     return <InlinePrDraft pr={entry.pr} sessionId={sessionId} />;
   }
+  if (entry.kind === "scaffold_proposal") {
+    return (
+      <InlineScaffoldProposal
+        proposal={entry.proposal}
+        editedYaml={entry.editedYaml}
+        status={entry.status}
+        errorMessage={entry.errorMessage}
+        sessionId={sessionId}
+      />
+    );
+  }
   if (entry.kind === "turn") {
     // Turn markers are consumed by ConversationTimeline's grouping;
     // they shouldn't reach here. Render nothing if one slips through.
@@ -1116,6 +1127,163 @@ function InlinePrDraft({
                 </div>
               )}
             </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InlineScaffoldProposal({
+  proposal,
+  editedYaml,
+  status,
+  errorMessage,
+  sessionId,
+}: {
+  proposal: import("@shared/protocol").ScaffoldProposal;
+  editedYaml: string | null;
+  status: import("../lib/store").ScaffoldEntryStatus;
+  errorMessage: string | null;
+  sessionId: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [yamlDraft, setYamlDraft] = useState(editedYaml ?? proposal.yamlText);
+  const [busy, setBusy] = useState(false);
+  const updateScaffold = useAppStore((s) => s.updateScaffoldEntry);
+
+  const isAccepted = status === "accepted";
+  const isDismissed = status === "dismissed";
+  const isResolved = isAccepted || isDismissed;
+
+  const accept = async () => {
+    setBusy(true);
+    try {
+      await api.acceptScaffold(sessionId, proposal.proposalId, yamlDraft);
+      updateScaffold(sessionId, proposal.proposalId, {
+        status: "accepted",
+        editedYaml: yamlDraft !== proposal.yamlText ? yamlDraft : null,
+      });
+    } catch (e) {
+      const msg = String(e instanceof Error ? e.message : e);
+      updateScaffold(sessionId, proposal.proposalId, {
+        status: "error",
+        errorMessage: msg,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const dismiss = async () => {
+    setBusy(true);
+    try {
+      await api.dismissScaffold(sessionId, proposal.proposalId);
+      updateScaffold(sessionId, proposal.proposalId, { status: "dismissed" });
+    } catch (e) {
+      const msg = String(e instanceof Error ? e.message : e);
+      updateScaffold(sessionId, proposal.proposalId, {
+        status: "error",
+        errorMessage: msg,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const { commands, scenarios, rewardFunctions } = proposal.summary;
+
+  return (
+    <div className="flex gap-3">
+      <AgentBadge label="yml" tone="tool" />
+      <div className="flex-1 min-w-0">
+        <div className="border border-[var(--br-2)] rounded-lg bg-[var(--bg-1)] overflow-hidden">
+          <div className="px-3 py-2 flex items-center gap-2 border-b border-[var(--br-1)]">
+            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--accent)] font-medium">
+              scaffold proposal
+            </span>
+            <span className="text-[10.5px] text-fg-3">
+              {proposal.stackLabel}
+            </span>
+            <span className="text-[10.5px] text-fg-3 font-mono">
+              · {commands} cmd · {scenarios} scn · {rewardFunctions} reward fn
+            </span>
+            {isAccepted && (
+              <span className="ml-auto text-[10.5px] text-[var(--ok)] font-mono">
+                accepted ✓
+              </span>
+            )}
+            {isDismissed && (
+              <span className="ml-auto text-[10.5px] text-fg-3 italic">
+                dismissed
+              </span>
+            )}
+          </div>
+
+          {proposal.notes.length > 0 && !isResolved && (
+            <ul className="px-3 py-2 border-b border-[var(--br-1)] text-[11.5px] text-fg-2 space-y-1">
+              {proposal.notes.map((n, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="text-fg-3">·</span>
+                  <span>{n}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {!isResolved && (
+            <>
+              {editing ? (
+                <textarea
+                  value={yamlDraft}
+                  onChange={(e) => setYamlDraft(e.target.value)}
+                  rows={18}
+                  spellCheck={false}
+                  className="w-full bg-transparent outline-none resize-y font-mono text-[12px] text-fg-1 leading-relaxed px-3 py-2"
+                />
+              ) : (
+                <pre className="px-3 py-2 font-mono text-[11.5px] text-fg-1 leading-relaxed overflow-x-auto max-h-72 overflow-y-auto whitespace-pre">
+                  {yamlDraft}
+                </pre>
+              )}
+
+              <div className="px-3 py-2 border-t border-[var(--br-1)] flex items-center gap-1.5 bg-[var(--bg)]">
+                <button
+                  onClick={accept}
+                  disabled={busy}
+                  className="text-[11.5px] font-medium text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded transition"
+                >
+                  {busy ? "writing…" : "accept · write range.yaml"}
+                </button>
+                <button
+                  onClick={() => setEditing((v) => !v)}
+                  disabled={busy}
+                  className="text-[11.5px] text-fg-1 hover:bg-[var(--bg-2)] px-2 py-1.5 rounded transition"
+                >
+                  {editing ? "preview" : "edit"}
+                </button>
+                <button
+                  onClick={dismiss}
+                  disabled={busy}
+                  className="text-[11.5px] text-fg-3 hover:text-fg-1 px-2 py-1.5 rounded transition ml-auto"
+                >
+                  dismiss
+                </button>
+              </div>
+            </>
+          )}
+
+          {isAccepted && (
+            <div className="px-3 py-2 text-[11.5px] text-fg-3 italic">
+              range.yaml written. Scenarios + commands are now available in
+              the slash picker.
+            </div>
+          )}
+
+          {errorMessage && (
+            <div className="px-3 py-2 text-[11px] text-[var(--err)] border-t border-[var(--br-1)] break-words">
+              {errorMessage}
+            </div>
           )}
         </div>
       </div>
