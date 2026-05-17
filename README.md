@@ -1,113 +1,135 @@
 # Range
 
-**A Codex-first development harness for simulation-heavy software.**
+**An agent-driven IDE for engineers training robot policies in
+simulation.** Attach a repo (your own, MuJoCo Playground, or
+Isaac Lab), Range understands its shape, runs training scenarios,
+watches metrics, investigates crashes, edits code, and ships PRs
+— all from a chat-first UI backed by Codex.
 
-This repository holds the product specifications, scenario walkthroughs, and UX mockups for Range — a development tool that gives Codex a *proving ground* for robotics, simulation, training, and physical-AI work. Range itself isn't built yet. The artifacts here define what we're building before we build it.
-
----
-
-## Status
-
-**Pre-implementation.** The repo currently contains documents and mockups — no source code. The next concrete step is Phase 1 of the Range MVP spec: wiring the mockups to a real backend and running the first end-to-end session against **Yard** (a paired, deliberately minimal robotics sim built for dogfooding).
-
----
-
-## What's in this repo
-
-| Type | File | What it is |
-|---|---|---|
-| **★ Canonical PRD** | [`docs/range_prd_v1_0.md`](docs/range_prd_v1_0.md) | **The authoritative product reference.** Vision, problem, users, user stories, UX wireframes, architecture, target stacks, roadmap. Start here. |
-| Positioning | [`docs/range_positioning_v0_1.md`](docs/range_positioning_v0_1.md) | NVIDIA-independence policy, audience commitments, allowed/forbidden dependencies |
-| Stack support | [`docs/range_sim_stack_support_v0_1.md`](docs/range_sim_stack_support_v0_1.md) | Top-2 stacks officially supported (MuJoCo, ROS 2 + Gazebo) with reasoning |
-| Intro | [`ELI_5.md`](ELI_5.md) | What Yard is and the components used to build it, for engineers new to robotics simulation |
-| MVP spec | [`docs/range_mvp_spec_v0_1.md`](docs/range_mvp_spec_v0_1.md) | The scoped MVP build plan — phases paired with Yard |
-| Sim project | [`docs/yard_product_spec_v0_1.md`](docs/yard_product_spec_v0_1.md) | Yard — the deliberately tiny robotics simulator we use to dogfood Range |
-| Scenarios | [`docs/range_scenarios_v0_1.md`](docs/range_scenarios_v0_1.md) | Three first-walkthrough scenarios across personas (Priya / Anika / Karthik) |
-| Learnings | [`docs/companion_learnings_v0_1.md`](docs/companion_learnings_v0_1.md) | What we borrow, build, and avoid from The-Vibe-Company/companion (MIT-licensed Codex/Claude Code orchestration UI) |
-| Earlier spec | [`docs/range_product_spec_v0_4_codex_sim_streaming.md`](docs/range_product_spec_v0_4_codex_sim_streaming.md) | Original v0.4 product spec — kept as historical reference; superseded by the PRD |
-| Mockups | [`mockups/`](mockups/) | Six self-contained HTML mockups covering the app's main surfaces |
+Built to dogfood through **Yard** ([github.com/rangeai/yard](https://github.com/rangeai/yard)),
+a tiny ~1,400-LOC MuJoCo sim that ships planted bugs so we can
+live the investigation flows end-to-end.
 
 ---
 
-## Where to start
+## Status — v0.5
 
-Different reading paths depending on what brought you here.
+Implemented and verified end-to-end:
 
-**You want the canonical product picture.**
-1. Read [`docs/range_prd_v1_0.md`](docs/range_prd_v1_0.md) — vision, users, user stories, UX wireframes, architecture, roadmap. Self-contained.
+- **P1 — Auto-scaffold `range.yaml`** on repo attach. Detects
+  MuJoCo Playground and Isaac Lab shapes; proposes a complete
+  profile as an inline approval card.
+- **P2 — NaN / instability investigation flow.** `/investigate`
+  walks `events.jsonl`, identifies the first NaN tick, sends Codex
+  a structured trajectory report + investigation directives.
+- **P3 — Hydra + W&B integration helper.** `/wire wandb-hydra`
+  scans for the canonical broken patterns (missing
+  `start_method="thread"`, DictConfig passed unconverted) and
+  patches them with per-file approval.
+- **P4 — Checkpoints + reward functions as first-class entities.**
+  `/eval <checkpoint>` injects `RANGE_CHECKPOINT` for inference
+  runs; `/reward show <name>` surfaces declared reward function
+  source inline.
+- **Lazy-start Codex + idle-shutdown.** No more 30 stale agent
+  processes after a day of work.
+- **Streaming perf.** Server-side 16ms delta coalescing, deferred
+  Markdown rendering, memoized timeline grouping, targeted
+  selectors. 5–10× WS frame reduction per turn.
 
-**You want to *see* what we're building.**
-1. Open [`mockups/mockup-index.html`](mockups/mockup-index.html) in a browser.
-2. Click through the five linked screens (auth → home → live session → freeform → plan).
-
-**You're new to robotics simulation.**
-1. Read [`ELI_5.md`](ELI_5.md).
-2. Then [`docs/range_prd_v1_0.md`](docs/range_prd_v1_0.md) for the product picture.
-
-**You're planning to implement.**
-1. Start with [`docs/range_prd_v1_0.md`](docs/range_prd_v1_0.md) for product context.
-2. Then [`docs/range_mvp_spec_v0_1.md`](docs/range_mvp_spec_v0_1.md) for the phased build plan with P0/P1 cuts and resolved decisions.
+Next on the roadmap: **P5** — plan tracking + interactive
+trajectory viewer.
 
 ---
 
-## Repo structure
+## Start here
+
+**You're a new collaborator who just got access.**
+
+1. Read [`docs/user_guide.md`](docs/user_guide.md). ELI5 framing,
+   what Range is, the cast of repos, every scenario you can run,
+   every slash command, the canonical investigation flows. Built
+   for software engineers with zero robotics experience.
+2. Then [`docs/dev_setup.md`](docs/dev_setup.md) to get the dev
+   server running on your Mac.
+
+**You want the strategic picture.**
+
+1. [`docs/range_product_spec_v0_5_sim_engineer_workflow.md`](docs/range_product_spec_v0_5_sim_engineer_workflow.md)
+   — audience analysis, 10 confirmed pain points from field
+   research, the prioritized P1–P5 roadmap with explicit
+   deprioritization table.
+
+**You want the original product picture.**
+
+1. [`docs/range_prd_v1_0.md`](docs/range_prd_v1_0.md) — earlier
+   canonical PRD. Architecture, target stacks, user stories.
+   Superseded for direction by the v0.5 spec but still useful
+   context.
+
+---
+
+## Repo layout
 
 ```
 range/
-├── README.md                                                   # You are here
-├── ELI_5.md                                                    # Robotics sim explained for engineers new to it
-├── .gitignore
+├── README.md                                                   # you are here
 ├── docs/
-│   ├── range_prd_v1_0.md                                       # ★ Canonical PRD — start here
+│   ├── user_guide.md                                           # ★ start here for new collaborators
+│   ├── dev_setup.md                                            # ★ how to install + first run
+│   ├── range_product_spec_v0_5_sim_engineer_workflow.md        # ★ v0.5 spec (current direction)
+│   ├── direction_2026_05_15.md                                 # decision log: agentic-only, target audience
+│   ├── direction_2026_05_14.md                                 # decision log: dogfood vs product
+│   ├── range_prd_v1_0.md                                       # original canonical PRD
 │   ├── range_positioning_v0_1.md                               # NVIDIA-independence policy
-│   ├── range_sim_stack_support_v0_1.md                         # Top-2 stacks (MuJoCo, ROS 2 + Gazebo)
-│   ├── range_mvp_spec_v0_1.md                                  # Phased MVP build plan
-│   ├── range_scenarios_v0_1.md                                 # Three persona-anchored walkthrough candidates
-│   ├── yard_product_spec_v0_1.md                               # The paired dogfood sim project
-│   ├── companion_learnings_v0_1.md                             # What we borrow from Companion (MIT)
-│   └── range_product_spec_v0_4_codex_sim_streaming.md          # Original v0.4 — historical reference
-└── mockups/
-    ├── mockup-index.html                                       # Launcher — start here, links the rest
-    ├── mockup-auth.html                                        # Connect GitHub / Jira / Slack flow
-    ├── mockup-home.html                                        # Default view with conversational composer
-    ├── mockup-plan.html                                        # All PRs across sessions
-    ├── mockup-session-freeform.html                            # Freeform chat session, no tracked task
-    └── mockup-implementation.html                              # Live Codex session with evidence streaming
+│   ├── range_mvp_spec_v0_1.md                                  # earlier MVP build plan
+│   ├── range_scenarios_v0_1.md                                 # original persona walkthroughs
+│   ├── range_sim_stack_support_v0_1.md                         # supported stacks
+│   ├── range_product_spec_v0_4_codex_sim_streaming.md          # v0.4 spec (architecture, superseded for direction)
+│   ├── yard_product_spec_v0_1.md                               # Yard's product spec
+│   ├── companion_learnings_v0_1.md                             # what we borrow from Companion (MIT)
+│   └── mocks/                                                  # earlier UI mocks
+├── ELI_5.md                                                    # robotics sim explained (older intro; user_guide.md is the current one)
+├── mockups/                                                    # static HTML mockups from before implementation landed
+├── range.yaml                                                  # Range's own profile (for working on Range with Range)
+├── web/                                                        # the implementation
+│   ├── server/                                                   # Bun + Hono backend
+│   │   ├── index.ts                                                # REST + WS routes
+│   │   ├── codex.ts                                                # Codex subprocess + JSON-RPC (lazy-start, resume, idle-shutdown)
+│   │   ├── scaffold.ts                                             # P1 auto-scaffold (Playground, Isaac Lab detectors)
+│   │   ├── trajectory.ts                                           # P2 NaN inspector
+│   │   ├── wire.ts                                                 # P3 Hydra+W&B patcher
+│   │   ├── profile.ts                                              # range.yaml parser (reward_functions, checkpoints)
+│   │   └── ... (runner, runs, sessions, verification, pr, db, hub, log)
+│   ├── src/                                                      # React 19 frontend
+│   │   ├── views/SessionView.tsx                                   # main chat + composer + inline cards
+│   │   ├── views/Home.tsx                                          # session list + new-session composer
+│   │   ├── lib/store.ts                                            # Zustand store (memoized, perf-tuned)
+│   │   ├── lib/ws.ts                                               # WebSocket dispatcher
+│   │   └── lib/api.ts                                              # REST helpers
+│   ├── cli/range.ts                                              # the `range` CLI Codex calls into
+│   ├── shared/protocol.ts                                        # WS/REST type contract
+│   ├── tests/fixtures/                                           # canonical broken setups (e.g. hydra-wandb-broken)
+│   └── package.json
+└── LICENSE                                                     # MIT
 ```
 
 ---
 
-## How to view the mockups
+## Range ↔ Yard
 
-The mockups are static HTML files with Tailwind loaded via CDN. **No build step. No install.** To view:
+Range and Yard are co-built. Yard is the smallest robotics
+simulator that exercises Range's hardest workflows. Every Yard
+pain becomes a Range feature requirement, validated by friction
+rather than guessed at.
 
-1. Clone the repo
-2. Open [`mockups/mockup-index.html`](mockups/mockup-index.html) in any modern browser
-3. Click through
+The v0.5 spec ([§7 Test substrate](docs/range_product_spec_v0_5_sim_engineer_workflow.md))
+formalizes substrate ordering:
 
-Each mockup has a light/dark theme toggle in the top bar. Preference persists across screens via `localStorage`. Default reads the system color-scheme preference.
-
----
-
-## The Range ↔ Yard relationship
-
-Range and Yard are co-built. Yard is the smallest robotics simulator that exercises Range's hardest workflows. Every Yard pain becomes a Range feature requirement, validated by frustration rather than guessed at.
-
-Both specs are phased to pair. Phase 1 of Range MVP ships when Phase 1 of Yard works inside it. Phase 2 of Range MVP enables the first evidence-backed PR against a Yard bug. Phase 3 stresses the cross-layer (cross-repo) verification flow.
-
-See [`docs/yard_product_spec_v0_1.md`](docs/yard_product_spec_v0_1.md) §4 and [`docs/range_mvp_spec_v0_1.md`](docs/range_mvp_spec_v0_1.md) §5 for the paired phasing.
-
-This pattern — dogfooding through a paired minimal product — is the strategy, not an accident.
-
----
-
-## Working conventions
-
-- Specs are versioned in their filename (e.g., `_v0_4`, `_v0_1`) so future iterations don't overwrite history
-- Markdown specs live in [`docs/`](docs/)
-- HTML mockups live in [`mockups/`](mockups/), each self-contained (open one without the others)
-- The repo is intentionally lightweight at this stage; we'll add structure (e.g., a `src/` tree) when there's code to put in it
-- Commits squash-merge friendly; messages describe intent, not just scope
+1. **MuJoCo Playground** — primary dogfood (Mac-runnable, real
+   audience shape)
+2. **Yard** — planted-bug substrate for end-to-end loops
+3. **Isaac Lab** — file-shape fixture (no Mac runtime)
+4. **tests/fixtures/** — unit-test substrates
 
 ---
 
