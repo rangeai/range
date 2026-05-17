@@ -1,138 +1,255 @@
 # Range
 
-**An agent-driven IDE for engineers training robot policies in
-simulation.** Attach a repo (your own, MuJoCo Playground, or
-Isaac Lab), Range understands its shape, runs training scenarios,
-watches metrics, investigates crashes, edits code, and ships PRs
-— all from a chat-first UI backed by Codex.
+> An agentic IDE for engineers training robot policies in simulation.
 
-Built to dogfood through **Yard** ([github.com/rangeai/yard](https://github.com/rangeai/yard)),
-a tiny ~1,400-LOC MuJoCo sim that ships planted bugs so we can
-live the investigation flows end-to-end.
+You already have a sim. You already have an experiment tracker. You
+already have a config framework. You already have an LLM coding
+assistant. What you don't have is the thing that **understands all
+four at once**, watches your training runs, and helps when they go
+sideways.
 
----
-
-## Status — v0.5
-
-Implemented and verified end-to-end:
-
-- **P1 — Auto-scaffold `range.yaml`** on repo attach. Detects
-  MuJoCo Playground and Isaac Lab shapes; proposes a complete
-  profile as an inline approval card.
-- **P2 — NaN / instability investigation flow.** `/investigate`
-  walks `events.jsonl`, identifies the first NaN tick, sends Codex
-  a structured trajectory report + investigation directives.
-- **P3 — Hydra + W&B integration helper.** `/wire wandb-hydra`
-  scans for the canonical broken patterns (missing
-  `start_method="thread"`, DictConfig passed unconverted) and
-  patches them with per-file approval.
-- **P4 — Checkpoints + reward functions as first-class entities.**
-  `/eval <checkpoint>` injects `RANGE_CHECKPOINT` for inference
-  runs; `/reward show <name>` surfaces declared reward function
-  source inline.
-- **Lazy-start Codex + idle-shutdown.** No more 30 stale agent
-  processes after a day of work.
-- **Streaming perf.** Server-side 16ms delta coalescing, deferred
-  Markdown rendering, memoized timeline grouping, targeted
-  selectors. 5–10× WS frame reduction per turn.
-
-Next on the roadmap: **P5** — plan tracking + interactive
-trajectory viewer.
+That's Range.
 
 ---
 
-## Start here
+## What it actually does
 
-**You're a new collaborator who just got access.**
+You attach a repo — yours, or one of the public ones like
+[MuJoCo Playground](https://github.com/google-deepmind/mujoco_playground)
+or [Isaac Lab](https://github.com/isaac-sim/IsaacLab). Range reads
+its shape and gives you a chat-first workspace that knows about your
+scenarios, your reward functions, your checkpoints, and the
+canonical foot-guns of the libraries you're using.
 
-1. Read [`docs/user_guide.md`](docs/user_guide.md). ELI5 framing,
-   what Range is, the cast of repos, every scenario you can run,
-   every slash command, the canonical investigation flows. Built
-   for software engineers with zero robotics experience.
-2. Then [`docs/dev_setup.md`](docs/dev_setup.md) to get the dev
-   server running on your Mac.
+A typical morning:
 
-**You want the strategic picture.**
+```text
+┌─ you ──────────────────────────────────────────────────────────────┐
+│ /scaffold                                                          │
+└────────────────────────────────────────────────────────────────────┘
 
-1. [`docs/range_product_spec_v0_5_sim_engineer_workflow.md`](docs/range_product_spec_v0_5_sim_engineer_workflow.md)
-   — audience analysis, 10 confirmed pain points from field
-   research, the prioritized P1–P5 roadmap with explicit
-   deprioritization table.
+┌─ range ────────────────────────────────────────────────────────────┐
+│ 📋 scaffold proposal · MuJoCo Playground                           │
+│    • detected `pyproject.toml` with mujoco-mjx + brax              │
+│    • 54 envs across locomotion / manipulation / dm_control         │
+│    • 53 reward methods found across env files                      │
+│    • picked 3 representative scenarios                             │
+│    [ accept · write range.yaml ]  [ edit ]  [ dismiss ]            │
+└────────────────────────────────────────────────────────────────────┘
 
-**You want the original product picture.**
+┌─ you ──────────────────────────────────────────────────────────────┐
+│ /g1_joystick_flat_terrain                                          │
+└────────────────────────────────────────────────────────────────────┘
 
-1. [`docs/range_prd_v1_0.md`](docs/range_prd_v1_0.md) — earlier
-   canonical PRD. Architecture, target stacks, user stories.
-   Superseded for direction by the v0.5 spec but still useful
-   context.
+┌─ range ────────────────────────────────────────────────────────────┐
+│ ▶ g1_joystick_flat_terrain · running · 47s                         │
+│   reward 0.234 → 0.892   episodes 8,192   FPS 14.2k                │
+│   ✗ failed — NaN at step 1,447                                     │
+└────────────────────────────────────────────────────────────────────┘
 
----
+┌─ you ──────────────────────────────────────────────────────────────┐
+│ /investigate                                                       │
+└────────────────────────────────────────────────────────────────────┘
 
-## Repo layout
-
-```
-range/
-├── README.md                                                   # you are here
-├── docs/
-│   ├── user_guide.md                                           # ★ start here for new collaborators
-│   ├── dev_setup.md                                            # ★ how to install + first run
-│   ├── range_product_spec_v0_5_sim_engineer_workflow.md        # ★ v0.5 spec (current direction)
-│   ├── direction_2026_05_15.md                                 # decision log: agentic-only, target audience
-│   ├── direction_2026_05_14.md                                 # decision log: dogfood vs product
-│   ├── range_prd_v1_0.md                                       # original canonical PRD
-│   ├── range_positioning_v0_1.md                               # NVIDIA-independence policy
-│   ├── range_mvp_spec_v0_1.md                                  # earlier MVP build plan
-│   ├── range_scenarios_v0_1.md                                 # original persona walkthroughs
-│   ├── range_sim_stack_support_v0_1.md                         # supported stacks
-│   ├── range_product_spec_v0_4_codex_sim_streaming.md          # v0.4 spec (architecture, superseded for direction)
-│   ├── yard_product_spec_v0_1.md                               # Yard's product spec
-│   ├── companion_learnings_v0_1.md                             # what we borrow from Companion (MIT)
-│   └── mocks/                                                  # earlier UI mocks
-├── ELI_5.md                                                    # robotics sim explained (older intro; user_guide.md is the current one)
-├── mockups/                                                    # static HTML mockups from before implementation landed
-├── range.yaml                                                  # Range's own profile (for working on Range with Range)
-├── web/                                                        # the implementation
-│   ├── server/                                                   # Bun + Hono backend
-│   │   ├── index.ts                                                # REST + WS routes
-│   │   ├── codex.ts                                                # Codex subprocess + JSON-RPC (lazy-start, resume, idle-shutdown)
-│   │   ├── scaffold.ts                                             # P1 auto-scaffold (Playground, Isaac Lab detectors)
-│   │   ├── trajectory.ts                                           # P2 NaN inspector
-│   │   ├── wire.ts                                                 # P3 Hydra+W&B patcher
-│   │   ├── profile.ts                                              # range.yaml parser (reward_functions, checkpoints)
-│   │   └── ... (runner, runs, sessions, verification, pr, db, hub, log)
-│   ├── src/                                                      # React 19 frontend
-│   │   ├── views/SessionView.tsx                                   # main chat + composer + inline cards
-│   │   ├── views/Home.tsx                                          # session list + new-session composer
-│   │   ├── lib/store.ts                                            # Zustand store (memoized, perf-tuned)
-│   │   ├── lib/ws.ts                                               # WebSocket dispatcher
-│   │   └── lib/api.ts                                              # REST helpers
-│   ├── cli/range.ts                                              # the `range` CLI Codex calls into
-│   ├── shared/protocol.ts                                        # WS/REST type contract
-│   ├── tests/fixtures/                                           # canonical broken setups (e.g. hydra-wandb-broken)
-│   └── package.json
-└── LICENSE                                                     # MIT
+┌─ range ────────────────────────────────────────────────────────────┐
+│ Inspecting trajectory for run_mp9hguo9odj1ht…                      │
+│ ▸ first NaN at tick 1,447 (t=7.235s)                               │
+│ ▸ affected fields: ctrl[0], ctrl[1]                                │
+│ ▸ last clean state showed min_depth approaching brake threshold    │
+│                                                                    │
+│ codex › reads pd_to_goal.py · finds the stale sentinel branch      │
+│ codex › proposes a 4-line fix · diff card appears inline           │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
+That whole loop is ~3 minutes. No leaving the chat. No grepping
+through wandb. No digging through `events.jsonl` by hand.
+
 ---
 
-## Range ↔ Yard
+## What's actually shipped
 
-Range and Yard are co-built. Yard is the smallest robotics
-simulator that exercises Range's hardest workflows. Every Yard
-pain becomes a Range feature requirement, validated by friction
-rather than guessed at.
+### 🪄 Auto-scaffold on attach
 
-The v0.5 spec ([§7 Test substrate](docs/range_product_spec_v0_5_sim_engineer_workflow.md))
-formalizes substrate ordering:
+Drop in a repo with no `range.yaml`. Range detects the stack
+(Playground, Isaac Lab, generic Python coming) and proposes a
+complete profile: commands, scenarios, reward function pointers,
+checkpoint patterns. You accept, edit, or dismiss. Five-second
+onboarding instead of an hour of YAML.
 
-1. **MuJoCo Playground** — primary dogfood (Mac-runnable, real
-   audience shape)
-2. **Yard** — planted-bug substrate for end-to-end loops
-3. **Isaac Lab** — file-shape fixture (no Mac runtime)
-4. **tests/fixtures/** — unit-test substrates
+### 🩻 NaN / instability investigation
+
+Trajectories silently corrupt. Reward goes to garbage. The bisect
+across seeds takes a day. Range's `/investigate`:
+
+- Walks `events.jsonl`, filters to trajectory ticks
+- Finds the first NaN/Inf and the field that went bad
+- Captures the last 5 clean ticks (the "what good looks like"
+  anchor) + the first 5 contaminated ticks
+- Hands Codex a structured report with investigation directives
+
+Codex finishes the investigation. We've reproducibly hit
+&lt;5 turns to root-cause + fix proposal on Yard's planted bugs.
+
+### 🪛 `/wire wandb-hydra` — patch the canonical foot-guns
+
+Three bugs every Hydra + W&B user has tripped over:
+
+1. `wandb.init()` hangs without `settings=wandb.Settings(start_method="thread")`
+2. Passing a `DictConfig` to `wandb.config` breaks serialization
+3. `wandb.config.update(cfg)` has the same bug
+
+`/wire wandb-hydra` scans the repo (skipping `.venv`/comments/docstrings),
+generates per-file patches with each transform explained, and lands
+them through an inline approval card. The patched code passes
+`python -m py_compile`.
+
+### 📊 Checkpoints + reward functions as first-class entities
+
+`range.yaml` declares your reward methods and checkpoint patterns.
+Then:
+
+- `/reward show g1_joystick_flat_terrain__tracking_lin_vel` — pulls
+  the actual function source inline, syntax-highlighted, no leaving
+  the chat
+- `/eval /path/to/policy.pkl cartpole_balance` — re-runs the
+  scenario with `RANGE_CHECKPOINT` env injected so your training
+  script loads weights instead of training from scratch
+
+### 🧠 Codex-native chat
+
+The agent isn't bolted on — it *is* the workspace. Slash commands
+let you swap models, sandbox levels, reasoning effort, and approval
+modes mid-session. Conversations resume across idle-shutdown via
+`thread/resume`. PRs draft + open inline with `/pr`.
+
+### ⚡ Built for the laptop
+
+- Lazy-start: Codex only spawns when you actually need it
+- 20-min idle-shutdown: no orphaned agent processes
+- 16ms server-side delta coalescing: 5–10× fewer WebSocket frames
+  per turn
+- Memoized React timeline: long sessions stay snappy
+
+---
+
+## Who this is for
+
+| You | Range fits |
+|---|---|
+| ML engineer training quadruped / humanoid locomotion in MuJoCo Playground | ✅ Primary audience |
+| RL researcher iterating on reward shaping for manipulation | ✅ |
+| Isaac Lab user on a Linux GPU box | ✅ (detection now, remote-exec landing v0.7) |
+| Solo founder hacking on a JAX RL prototype | ✅ |
+| Pure web/app developer | ❌ — this isn't Cursor |
+| Building a brand-new simulator | ❌ — Range sits *on top of* a sim, it isn't one |
+
+---
+
+## Try it
+
+> 💻 macOS, 10 minutes, no GPU required.
+
+```bash
+# 1. Prereqs (skip if you have them)
+brew install bun uv git
+npm install -g @openai/codex && codex login
+
+# 2. Clone + install
+git clone git@github.com:rangeai/range.git ~/personal/range
+cd ~/personal/range/web && bun install
+
+# 3. Optional: clone Yard, our tiny dogfood sim
+git clone git@github.com:rangeai/yard.git ~/personal/yard
+(cd ~/personal/yard && uv sync)
+
+# 4. Run
+bun run dev
+open http://localhost:5173/
+```
+
+In the UI: **new session → attach `~/personal/yard` → type
+`/warehouse_a` and hit enter.** First run end-to-end inside 30
+seconds.
+
+Full walkthrough: [`docs/user_guide.md`](docs/user_guide.md).
+Full install reference: [`docs/dev_setup.md`](docs/dev_setup.md).
+
+---
+
+## Why now
+
+Range is built against a specific bet: **70% of the daily pain in
+sim-RL workflows is debugging, observability, and tool-stitching
+— not algorithms or physics.** We confirmed it against the public
+record:
+
+- Isaac Lab onboarding is "30–60 minutes of YAML before you get
+  value" (Toward Humanoids, 2025)
+- Open issue `isaac-sim/IsaacLab#4047`: checkpoint resume is
+  silently broken
+- `wandb/wandb#4686`: Hydra+W&B sweep configs don't compose
+- Isaac Lab Known Issues lists NaN-on-observation as a routine
+  occurrence
+- HN #47102305: "robotics DevOps is failing to scale" — every
+  team's pipeline is a hand-rolled island
+
+Range targets those workflows directly. The v0.5 product spec
+([read it here](docs/range_product_spec_v0_5_sim_engineer_workflow.md))
+walks through the audience research, the cited pain points, the
+prioritized roadmap, and the things we explicitly *aren't* building
+yet (3D scene viewer, hyperparameter search, remote compute — all
+deferred behind specific customer signals).
+
+---
+
+## Roadmap
+
+| Phase | What | Status |
+|---|---|---|
+| **P1** | Auto-scaffold `range.yaml` on attach | ✅ shipped |
+| **P2** | NaN / instability investigation flow | ✅ shipped |
+| **P3** | `/wire wandb-hydra` integration helper | ✅ shipped |
+| **P4** | Checkpoints + reward functions as primitives | ✅ shipped |
+| **P5** | Live plan tracking + interactive trajectory scrubber | 🔜 next |
+| **v0.7** | Remote compute (Linux + RTX) for Isaac Lab users | 📋 planned |
+
+---
+
+## Built on
+
+- [Bun](https://bun.sh) — the runtime (server + tooling + native SQLite)
+- [Hono](https://hono.dev) — the HTTP + WebSocket layer
+- [React 19](https://react.dev) — the frontend
+- [Zustand](https://zustand-demo.pmnd.rs/) — state management
+- [Codex CLI](https://github.com/openai/codex) — the agent backend
+- [MuJoCo](https://mujoco.org) — the sim everything dogfoods against
+
+---
+
+## Pair-built with Yard
+
+[**Yard**](https://github.com/rangeai/yard) is a deliberately tiny
+~1,400-LOC MuJoCo sim built to dogfood Range. Every Yard pain
+becomes a Range feature requirement. Every Range feature gets
+validated against a Yard scenario.
+
+Three planted bugs ship with Yard so you can live the investigation
+flows end-to-end:
+
+- `YARD_BUG_HEADING_DRIFT` — heading-wrap bug, surfaces only on
+  long episodes
+- `YARD_BUG_DEPTH_CLIP` — engine clips depth, bot doesn't see
+  walls
+- `YARD_BUG_PROXIMITY_NAN` — stale sentinel emits NaN wheel
+  commands in narrow aisles
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [`LICENSE`](LICENSE).
+
+---
+
+<sub>v0.5 · Built for engineers who would rather debug a NaN than write another YAML file.</sub>
