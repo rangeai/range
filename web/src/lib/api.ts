@@ -216,6 +216,38 @@ export function dismissWire(
   );
 }
 
+export function evalCheckpoint(
+  sessionId: string,
+  checkpoint: string,
+  scenario?: string,
+): Promise<RunScenarioResponse> {
+  return jsonRequest<RunScenarioResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/eval`,
+    {
+      method: "POST",
+      body: JSON.stringify({ checkpoint, scenario }),
+    },
+  );
+}
+
+export interface RewardSourceResponse {
+  name: string;
+  file: string;
+  function: string;
+  description: string | null;
+  source: string;
+  extracted: boolean;
+}
+
+export function showReward(
+  sessionId: string,
+  name: string,
+): Promise<RewardSourceResponse> {
+  return jsonRequest<RewardSourceResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/reward/${encodeURIComponent(name)}`,
+  );
+}
+
 export function attachRepo(
   sessionId: string,
   repoPath: string,

@@ -77,6 +77,10 @@ function variantEnv(
 export interface RunScenarioInput {
   sessionId: string;
   scenarioName: string;
+  /** Extra env injected on top of the scenario's static `env` block.
+   *  Used by `/eval` to forward `RANGE_CHECKPOINT=<path>` so user
+   *  training scripts can pick it up. */
+  extraEnv?: Record<string, string>;
 }
 
 export interface RunScenarioOutcome {
@@ -117,6 +121,7 @@ export async function runScenario(
     const env: Record<string, string> = {
       ...(scenario.env ?? {}),
       ...variantEnv(variant),
+      ...(input.extraEnv ?? {}),
     };
     const run = await startRun({
       sessionId: input.sessionId,

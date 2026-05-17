@@ -156,6 +156,26 @@ export interface Scenario {
   description?: string;
 }
 
+/** A reward function — a method on an env class that contributes
+ *  to the per-step reward. Declared in `range.yaml` so Range can
+ *  show it inline, A/B compare variants, etc. */
+export interface ProfileRewardFunction {
+  name: string;
+  file: string;
+  /** The Python method name within `file`, e.g. `_reward_tracking_lin_vel`. */
+  function: string;
+  description?: string;
+}
+
+/** A checkpoint glob pattern — where the user's training script
+ *  writes policy snapshots. `/eval checkpoint=<path>` re-runs a
+ *  scenario against a frozen checkpoint. */
+export interface ProfileCheckpoint {
+  name: string;
+  pattern: string;
+  description?: string;
+}
+
 export interface Profile {
   version: number;
   project: {
@@ -167,6 +187,8 @@ export interface Profile {
   commands: ProfileCommand[];
   scenarios: Scenario[];
   gates: VerificationGate[];
+  rewardFunctions: ProfileRewardFunction[];
+  checkpoints: ProfileCheckpoint[];
 }
 
 export type VerificationStatus = "pass" | "warn" | "fail" | "error";

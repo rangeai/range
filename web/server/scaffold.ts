@@ -71,15 +71,22 @@ function parsePlaygroundEnvKeys(initPyText: string): string[] {
   return Array.from(new Set(keys));
 }
 
-function countRewardMethods(text: string): number {
-  // Count `def _reward_<name>(` in an env file. Used for the summary.
-  const m = text.match(/def\s+_reward_[A-Za-z0-9_]+\s*\(/g);
-  return m ? m.length : 0;
+/** Discover reward function methods in an env file. Returns method
+ *  names (without the `_reward_` prefix in user-facing display, but
+ *  full name on disk). */
+function findRewardMethods(text: string): string[] {
+  const out: string[] = [];
+  const re = /def\s+(_reward_[A-Za-z0-9_]+)\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) out.push(m[1]);
+  return out;
 }
 
 interface PlaygroundDiscovery {
   envsByCategory: Record<string, string[]>;
   rewardCount: number;
+  /** Reward function methods found, keyed by relative file path. */
+  rewardsByFile: Map<string, string[]>;
   trainScripts: string[];
 }
 
@@ -101,6 +108,7 @@ async function discoverPlayground(
   const categories = ["locomotion", "manipulation", "dm_control_suite"];
   const envsByCategory: Record<string, string[]> = {};
   let rewardCount = 0;
+  const rewardsByFile = new Map<string, string[]>();
 
   for (const cat of categories) {
     const catDir = join(srcRoot, cat);
@@ -120,8 +128,14 @@ async function discoverPlayground(
       const files = await readdir(robotDir).catch(() => []);
       for (const f of files) {
         if (!f.endsWith(".py")) continue;
-        const text = await readFileOr(join(robotDir, f));
-        rewardCount += countRewardMethods(text);
+        const fullPath = join(robotDir, f);
+        const text = await readFileOr(fullPath);
+        const methods = findRewardMethods(text);
+        rewardCount += methods.length;
+        if (methods.length > 0) {
+          const rel = `mujoco_playground/_src/${cat}/${entry.name}/${f}`;
+          rewardsByFile.set(rel, methods);
+        }
       }
     }
   }
@@ -138,7 +152,7 @@ async function discoverPlayground(
     }
   }
 
-  return { envsByCategory, rewardCount, trainScripts };
+  return { envsByCategory, rewardCount, rewardsByFile, trainScripts };
 }
 
 /**
@@ -248,11 +262,67 @@ async function buildPlaygroundYaml(
     lines.push("    env:");
     lines.push("      RANGE_RUN_DIR: \"${RANGE_RUN_DIR}\"");
   }
+
+  // Reward functions: surface a small representative slice. Emitting
+  // every method (~50 across the repo) would bloat the yaml; the user
+  // can add more by hand or discover others via `/reward show` later.
+  const rewardEntries = pickRewardFunctionSlice(d.rewardsByFile, scenarios);
+  if (rewardEntries.length > 0) {
+    lines.push("");
+    lines.push("reward_functions:");
+    for (const r of rewardEntries) {
+      lines.push(`  - name: ${r.name}`);
+      lines.push(`    file: ${r.file}`);
+      lines.push(`    function: ${r.function}`);
+    }
+  }
+
+  // Checkpoints: Brax PPO writes via orbax-checkpoint under whatever
+  // dir the training script chooses. Playground's `learning/` scripts
+  // use a --logdir / output flag; we encode a sensible default that
+  // also covers the common per-env subdir pattern.
+  lines.push("");
+  lines.push("checkpoints:");
+  lines.push("  - name: brax_ppo");
+  lines.push(`    pattern: "logs/**/policy_*"`);
+  lines.push(
+    "    description: Brax PPO orbax checkpoints (configure --logdir to control output)",
+  );
+
   lines.push("");
   lines.push("verification:");
   lines.push("  gates: []");
   lines.push("");
   return lines.join("\n");
+}
+
+/** Pick a slim, scenario-aligned subset of reward methods. For each
+ *  scaffold scenario, emit up to 3 reward methods from the env's
+ *  primary file. Keeps the yaml readable. */
+function pickRewardFunctionSlice(
+  rewardsByFile: Map<string, string[]>,
+  scenarios: Array<{ name: string; envName: string }>,
+): Array<{ name: string; file: string; function: string }> {
+  const out: Array<{ name: string; file: string; function: string }> = [];
+  for (const s of scenarios) {
+    const envLower = s.envName.toLowerCase();
+    for (const [file, methods] of rewardsByFile) {
+      const m = file.match(/_src\/[^/]+\/([^/]+)\/[^/]+\.py$/);
+      if (!m) continue;
+      // Family names use underscores (`aloha_hand`); env names don't
+      // (`AlohaHandOver`). Strip both to match.
+      const family = m[1].toLowerCase().replace(/_/g, "");
+      if (!envLower.startsWith(family)) continue;
+      for (const fn of methods.slice(0, 3)) {
+        const baseName = fn.replace(/^_reward_/, "");
+        const niceName = `${s.name}__${baseName}`;
+        if (out.some((x) => x.name === niceName)) continue;
+        out.push({ name: niceName, file, function: fn });
+      }
+      break;
+    }
+  }
+  return out;
 }
 
 async function detectPlayground(

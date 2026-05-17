@@ -78,6 +78,8 @@ import {
   applyWirePatches,
   detectAndWireWandbHydra,
 } from "./wire.ts";
+import { readFile, access } from "node:fs/promises";
+import { join as pathJoin } from "node:path";
 import {
   formatReportForCodex,
   inspectTrajectory,
@@ -795,6 +797,143 @@ app.post("/api/sessions/:id/scenarios/:name/run", async (c) => {
     );
   }
 });
+
+// /eval — run a scenario with RANGE_CHECKPOINT injected so the
+// user's training script knows to load weights instead of training
+// from scratch. The convention for picking up the env var is up to
+// the user's script.
+app.post("/api/sessions/:id/eval", async (c) => {
+  const sessionId = c.req.param("id");
+  let body: { checkpoint?: string; scenario?: string };
+  try {
+    body = (await c.req.json()) as typeof body;
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  if (!body.checkpoint || typeof body.checkpoint !== "string") {
+    return c.json({ error: "checkpoint path required" }, 400);
+  }
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  if (!session.repoPath)
+    return c.json({ error: "session has no repo attached" }, 400);
+
+  // If no scenario specified, pick the first scenario from the profile.
+  let scenarioName = body.scenario;
+  if (!scenarioName) {
+    const profileResult = await loadProfile(session.repoPath);
+    const profile = profileResult.profile;
+    if (!profile || profile.scenarios.length === 0) {
+      return c.json(
+        { error: "no scenarios in range.yaml — pass `scenario` explicitly" },
+        400,
+      );
+    }
+    scenarioName = profile.scenarios[0]!.name;
+  }
+  try {
+    const outcome = await runScenario({
+      sessionId,
+      scenarioName,
+      extraEnv: { RANGE_CHECKPOINT: body.checkpoint },
+    });
+    return c.json(outcome, 201);
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      400,
+    );
+  }
+});
+
+// /reward show — return the source text of a reward function by
+// name (matched against profile.reward_functions). Used by the
+// slash builtin to surface the implementation inline.
+app.get("/api/sessions/:id/reward/:name", async (c) => {
+  const sessionId = c.req.param("id");
+  const name = c.req.param("name");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  if (!session.repoPath)
+    return c.json({ error: "session has no repo" }, 400);
+  const profileResult = await loadProfile(session.repoPath);
+  const profile = profileResult.profile;
+  if (!profile) return c.json({ error: "no range.yaml profile" }, 400);
+  const reward = profile.rewardFunctions.find((r) => r.name === name);
+  if (!reward) return c.json({ error: `reward function "${name}" not found` }, 404);
+
+  const filePath = pathJoin(session.repoPath, reward.file);
+  try {
+    await access(filePath);
+  } catch {
+    return c.json({ error: `file not found: ${reward.file}` }, 404);
+  }
+  const text = await readFile(filePath, "utf8");
+  // Extract just the function body (and its docstring if any) for
+  // display. We grep for `def <function>(` and walk until the next
+  // top-level def or end of file.
+  const source = extractPyFunction(text, reward.function);
+  return c.json({
+    name: reward.name,
+    file: reward.file,
+    function: reward.function,
+    description: reward.description ?? null,
+    source: source ?? text,
+    extracted: source !== null,
+  });
+});
+
+function extractPyFunction(text: string, fnName: string): string | null {
+  const lines = text.split("\n");
+  const startRe = new RegExp(`^(\\s*)def\\s+${fnName}\\s*\\(`);
+  let startIdx = -1;
+  let baseIndent = "";
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i]!.match(startRe);
+    if (m) {
+      startIdx = i;
+      baseIndent = m[1] ?? "";
+      break;
+    }
+  }
+  if (startIdx < 0) return null;
+  // Skip through a multi-line signature: balance the parens that
+  // started in the def line. The body begins on the first line after
+  // the closing `)`.
+  let signatureEnd = startIdx;
+  let parenDepth = 0;
+  let bodyStart = -1;
+  for (let i = startIdx; i < lines.length; i++) {
+    const line = lines[i]!;
+    for (const c of line) {
+      if (c === "(") parenDepth++;
+      else if (c === ")") parenDepth--;
+    }
+    signatureEnd = i;
+    if (parenDepth === 0 && i > startIdx) {
+      bodyStart = i + 1;
+      break;
+    }
+    if (parenDepth === 0 && line.includes(":")) {
+      bodyStart = i + 1;
+      break;
+    }
+  }
+  if (bodyStart < 0) bodyStart = signatureEnd + 1;
+
+  let endIdx = lines.length;
+  for (let j = bodyStart; j < lines.length; j++) {
+    const line = lines[j]!;
+    if (line.trim().length === 0) continue;
+    const indentMatch = line.match(/^(\s*)/);
+    const indent = indentMatch ? indentMatch[1]! : "";
+    if (indent.length <= baseIndent.length && /\S/.test(line)) {
+      endIdx = j;
+      break;
+    }
+  }
+  return lines.slice(startIdx, endIdx).join("\n");
+}
 
 app.get("/api/runs/:id/artifacts", async (c) => {
   const id = c.req.param("id");

@@ -22,8 +22,10 @@ import { access, readFile } from "node:fs/promises";
 import { log } from "./log.ts";
 import type {
   Profile,
+  ProfileCheckpoint,
   ProfileCommand,
   ProfileLoadResult,
+  ProfileRewardFunction,
   Scenario,
   ScenarioSweep,
   VerificationCriterion,
@@ -96,6 +98,9 @@ interface RawYaml {
   verification?: {
     gates?: unknown;
   };
+  reward_functions?: unknown;
+  rewardFunctions?: unknown;
+  checkpoints?: unknown;
 }
 
 function coerceSweep(raw: unknown): ScenarioSweep | undefined {
@@ -221,8 +226,60 @@ function coerceProfile(raw: unknown): Profile {
 
   const scenarios = coerceScenarios(r.scenarios);
   const gates = coerceGates(r.verification?.gates);
+  const rewardFunctions = coerceRewardFunctions(
+    r.reward_functions ?? r.rewardFunctions,
+  );
+  const checkpoints = coerceCheckpoints(r.checkpoints);
 
-  return { version, project, commands, scenarios, gates };
+  return {
+    version,
+    project,
+    commands,
+    scenarios,
+    gates,
+    rewardFunctions,
+    checkpoints,
+  };
+}
+
+function coerceRewardFunctions(raw: unknown): ProfileRewardFunction[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ProfileRewardFunction[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const r = item as Record<string, unknown>;
+    const name = typeof r.name === "string" ? r.name : null;
+    const file = typeof r.file === "string" ? r.file : null;
+    const fn = typeof r.function === "string" ? r.function : null;
+    if (!name || !file || !fn) continue;
+    out.push({
+      name,
+      file,
+      function: fn,
+      description:
+        typeof r.description === "string" ? r.description : undefined,
+    });
+  }
+  return out;
+}
+
+function coerceCheckpoints(raw: unknown): ProfileCheckpoint[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ProfileCheckpoint[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const r = item as Record<string, unknown>;
+    const name = typeof r.name === "string" ? r.name : null;
+    const pattern = typeof r.pattern === "string" ? r.pattern : null;
+    if (!name || !pattern) continue;
+    out.push({
+      name,
+      pattern,
+      description:
+        typeof r.description === "string" ? r.description : undefined,
+    });
+  }
+  return out;
 }
 
 export async function loadProfile(

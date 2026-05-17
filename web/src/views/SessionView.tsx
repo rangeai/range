@@ -2109,6 +2109,22 @@ function MessageComposer({
         "patch a known-fragile integration (currently: Hydra + W&B)",
       argHint: "wandb-hydra",
     });
+    items.push({
+      kind: "builtin",
+      layer: "range",
+      name: "eval",
+      description:
+        "re-run a scenario with RANGE_CHECKPOINT set (loads a frozen policy instead of training)",
+      argHint: "<checkpoint-path> [scenario]",
+    });
+    items.push({
+      kind: "builtin",
+      layer: "range",
+      name: "reward",
+      description:
+        "show the source of a declared reward function inline",
+      argHint: "show <reward-name>",
+    });
 
     // Codex builtins (operate on Codex's thread / config).
     items.push({
@@ -2262,6 +2278,44 @@ function MessageComposer({
       } else if (item.kind === "builtin" && item.name === "clear") {
         await api.clearAgent(session.id);
         clearConversation(session.id);
+      } else if (item.kind === "builtin" && item.name === "eval") {
+        const parts = slashArgs.split(/\s+/).filter((s) => s.length > 0);
+        const checkpoint = parts[0];
+        const scenario = parts[1];
+        if (!checkpoint) {
+          throw new Error("usage: /eval <checkpoint-path> [scenario]");
+        }
+        pushSystem(
+          session.id,
+          `Eval run with RANGE_CHECKPOINT=${checkpoint}${scenario ? ` (scenario: ${scenario})` : ""}…`,
+        );
+        await api.evalCheckpoint(session.id, checkpoint, scenario);
+      } else if (item.kind === "builtin" && item.name === "reward") {
+        const parts = slashArgs.split(/\s+/).filter((s) => s.length > 0);
+        const sub = parts[0];
+        const name = parts[1];
+        if (sub !== "show" || !name) {
+          throw new Error("usage: /reward show <reward-name>");
+        }
+        const r = await api.showReward(session.id, name);
+        const desc = r.description ? `\n\n_${r.description}_\n` : "";
+        const body =
+          "# Reward · `" +
+          r.name +
+          "`\n\n" +
+          "**File:** `" +
+          r.file +
+          "`  \n**Function:** `" +
+          r.function +
+          "`" +
+          desc +
+          "\n\n```python\n" +
+          (r.extracted
+            ? r.source
+            : r.source.slice(0, 4000) +
+              (r.source.length > 4000 ? "\n# … (truncated)" : "")) +
+          "\n```";
+        pushSystem(session.id, body);
       } else if (item.kind === "builtin" && item.name === "wire") {
         const sub = slashArgs.trim();
         if (sub !== "wandb-hydra") {
