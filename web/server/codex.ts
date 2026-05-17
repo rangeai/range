@@ -809,6 +809,9 @@ function handleNotification(
     case "thread/compacted":
       onThreadCompacted(cs, params);
       break;
+    case "turn/plan/updated":
+      onTurnPlanUpdated(cs, params);
+      break;
     default:
       log.debug("codex", "unhandled notification", {
         sessionId: cs.sessionId,
@@ -883,6 +886,46 @@ function onThreadCompacted(
     sessionId: cs.sessionId,
     threadId,
     turnId,
+  });
+}
+
+/**
+ * Codex's `turn/plan/updated` notification carries the agent's
+ * latest plan (an ordered list of `{step, status}` pairs).
+ * Status arrives in camelCase from Codex; we normalize to
+ * snake_case to match Range's protocol-wide naming convention.
+ */
+function onTurnPlanUpdated(
+  cs: CodexSession,
+  params: Record<string, unknown>,
+): void {
+  const threadId =
+    (params.threadId as string | undefined) ?? cs.threadId ?? "";
+  const turnId = (params.turnId as string | undefined) ?? "";
+  const rawPlan = Array.isArray(params.plan) ? params.plan : [];
+  const plan = rawPlan
+    .map((entry) => {
+      const r = entry as { step?: unknown; status?: unknown };
+      if (typeof r.step !== "string") return null;
+      const rawStatus = typeof r.status === "string" ? r.status : "pending";
+      const status =
+        rawStatus === "inProgress"
+          ? "in_progress"
+          : rawStatus === "completed"
+            ? "completed"
+            : "pending";
+      return { step: r.step, status };
+    })
+    .filter((s): s is { step: string; status: "pending" | "in_progress" | "completed" } => s !== null);
+  const explanation =
+    typeof params.explanation === "string" ? params.explanation : null;
+  emit({
+    type: "agent_plan_updated",
+    sessionId: cs.sessionId,
+    threadId,
+    turnId,
+    plan,
+    explanation,
   });
 }
 

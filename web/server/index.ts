@@ -84,6 +84,7 @@ import {
   formatReportForCodex,
   inspectTrajectory,
 } from "./trajectory.ts";
+import { readNpz } from "./npz.ts";
 import { getLatestResults } from "./verification.ts";
 import { draftPr, openPr } from "./pr.ts";
 import { listDirectory, homeDir } from "./fs_browse.ts";
@@ -956,6 +957,74 @@ app.get("/api/runs/:id/artifacts/:name", async (c) => {
   const file = Bun.file(filePath);
   if (!(await file.exists())) return c.json({ error: "not found" }, 404);
   return new Response(file);
+});
+
+app.get("/api/runs/:id/trajectory", async (c) => {
+  const id = c.req.param("id");
+  const run = getRun(id);
+  if (!run) return c.json({ error: "run not found" }, 404);
+  const maxPoints = Math.max(
+    100,
+    Math.min(20000, Number(c.req.query("maxPoints") ?? 2000)),
+  );
+  const npzPath = `${run.runDir}/trajectory.npz`;
+  const file = Bun.file(npzPath);
+  if (!(await file.exists())) {
+    return c.json(
+      { error: `no trajectory.npz at ${npzPath}` },
+      404,
+    );
+  }
+  try {
+    const payload = await readNpz(npzPath, maxPoints);
+    return c.json(payload);
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      500,
+    );
+  }
+});
+
+app.get("/api/runs/:id/observation", async (c) => {
+  const id = c.req.param("id");
+  const run = getRun(id);
+  if (!run) return c.json({ error: "run not found" }, 404);
+  const stepParam = c.req.query("step");
+  const step = Number(stepParam);
+  if (!Number.isFinite(step) || step < 0) {
+    return c.json({ error: "step must be a non-negative integer" }, 400);
+  }
+  const eventsPath = `${run.runDir}/events.jsonl`;
+  const file = Bun.file(eventsPath);
+  if (!(await file.exists())) {
+    return c.json({ error: `no events.jsonl at ${eventsPath}` }, 404);
+  }
+  const text = await file.text();
+  const lines = text.split("\n").filter((l) => l.length > 0);
+  // Walk trajectory ticks (skip Range's own run_log events) and pick
+  // the Nth one. Same heuristic the trajectory inspector uses.
+  let tickIdx = 0;
+  for (const line of lines) {
+    let obj: Record<string, unknown>;
+    try {
+      // Tolerate Python's NaN/Infinity literals.
+      obj = JSON.parse(
+        line.replace(/\b(NaN|-Infinity|Infinity)\b/g, "null"),
+      ) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (typeof obj.t !== "number" || !Array.isArray(obj.pose)) continue;
+    if (tickIdx === step) {
+      return c.json({ step, observation: obj });
+    }
+    tickIdx++;
+  }
+  return c.json(
+    { error: `step ${step} out of range (only ${tickIdx} ticks found)` },
+    404,
+  );
 });
 
 app.get("/api/runs/:id/trajectory/inspect", async (c) => {

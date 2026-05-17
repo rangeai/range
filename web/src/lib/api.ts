@@ -332,6 +332,42 @@ export function inspectTrajectory(
   );
 }
 
+export interface TrajectoryField {
+  shape: number[];
+  dtype: string;
+  /** Numbers, with nulls for non-finite entries (NaN/Inf). */
+  data: (number | null)[];
+}
+
+export interface TrajectoryResponse {
+  fields: Record<string, TrajectoryField>;
+  ticks: number;
+  downsampled: boolean;
+}
+
+export function getTrajectory(
+  runId: string,
+  maxPoints = 2000,
+): Promise<TrajectoryResponse> {
+  return jsonRequest(
+    `/api/runs/${encodeURIComponent(runId)}/trajectory?maxPoints=${maxPoints}`,
+  );
+}
+
+export interface ObservationResponse {
+  step: number;
+  observation: Record<string, unknown>;
+}
+
+export function getObservation(
+  runId: string,
+  step: number,
+): Promise<ObservationResponse> {
+  return jsonRequest(
+    `/api/runs/${encodeURIComponent(runId)}/observation?step=${step}`,
+  );
+}
+
 export function listRunArtifacts(
   runId: string,
 ): Promise<{ artifacts: import("@shared/protocol").ArtifactInfo[] }> {

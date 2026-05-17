@@ -298,5 +298,10 @@ export function applyServerMessage(msg: ServerMessage): void {
           status: msg.decision,
         });
       break;
+    case "agent_plan_updated":
+      useAppStore
+        .getState()
+        .setPlan(msg.sessionId, msg.turnId, msg.plan);
+      break;
   }
 }

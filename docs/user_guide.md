@@ -321,6 +321,7 @@ badges:
 | `/wire wandb-hydra` | Scans the repo for Hydra + W&B and patches the canonical broken patterns (missing `start_method="thread"`, DictConfig passed unconverted, etc.). Inline approval card with per-file diffs. |
 | `/eval <checkpoint-path> [scenario]` | Re-runs a scenario with `RANGE_CHECKPOINT=<path>` env injected. Your training script reads it and loads weights instead of training from scratch. |
 | `/reward show <name>` | Surfaces the source code of a declared reward function inline (name comes from the `reward_functions:` block of `range.yaml`). |
+| `/obs <run-id> <step>` | Dumps the observation vector at a specific tick of a run as a JSON block. |
 
 ### Codex builtins
 
@@ -420,7 +421,36 @@ each to see metrics.
 (Note: v0.5 does the launch + record; the explicit side-by-side
 diff card is on the roadmap.)
 
-### 9.4 Reward function inspection (P4)
+### 9.4 Live plan + trajectory scrubber (P5)
+
+**When to use it:** Codex is in the middle of a multi-step task and
+you want to see the plan as it works. Or: a scenario produced a
+trajectory artifact and you want to scrub through it visually.
+
+**Live plan tracking** is automatic. Whenever Codex emits a plan via
+its `update_plan` tool, a checklist appears pinned at the top of the
+current turn — `pending` items in muted grey, `in_progress` pulsing
+blue, `completed` items struck through in green. No action needed.
+
+**Trajectory scrubber** appears as a "📈 view trajectory" button on
+any run that produced a `trajectory.npz` artifact. Click it:
+
+- The server downsamples to 2000 points (so the viewer stays
+  responsive even for million-tick trajectories).
+- One SVG panel per 1D field — `t`, `x`, `y`, `yaw`, `speed`,
+  `ctrl[0]`, `ctrl[1]`, `min_depth`, `collided`, etc.
+- A vertical cursor follows your mouse across all panels in sync.
+  The right edge of each panel shows the value at the cursor + the
+  field's full [min, max] range.
+- NaN/Inf entries render as gaps in the line — instantly visible
+  where things went wrong.
+
+For one-off lookups: `/obs <run-id> <step>` dumps the full
+observation vector at any tick as a JSON block inline. Useful when
+Codex is investigating and asks you "what did pose look like at tick
+1,447?"
+
+### 9.5 Reward function inspection (P4)
 
 **When to use it:** You want to read what `_reward_tracking_lin_vel`
 actually does without leaving Range.

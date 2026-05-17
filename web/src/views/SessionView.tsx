@@ -943,6 +943,9 @@ function TurnCard({
           </span>
         )}
       </button>
+      {open && (
+        <TurnPlanSection sessionId={sessionId} turnId={turn.turnId} />
+      )}
       {open && items.length > 0 && (
         <div className="border-t border-[var(--br-1)] px-4 py-3 space-y-4">
           {items.map(({ entry, idx }) => (
@@ -954,6 +957,65 @@ function TurnCard({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Live plan section for a turn. Pulls the latest plan from the
+ * store (set by `agent_plan_updated` WS messages) and renders it
+ * as a checklist above the turn's child items. Shows nothing if
+ * the turn has no plan.
+ */
+function TurnPlanSection({
+  sessionId,
+  turnId,
+}: {
+  sessionId: string;
+  turnId: string;
+}) {
+  const plan = useAppStore(
+    (s) => s.planByTurn.get(sessionId)?.get(turnId),
+  );
+  if (!plan || plan.length === 0) return null;
+
+  return (
+    <div className="border-t border-[var(--br-1)] px-4 py-3 bg-[var(--bg)]">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-fg-3 font-medium mb-2">
+        plan
+      </div>
+      <ul className="space-y-1">
+        {plan.map((p, i) => {
+          const isDone = p.status === "completed";
+          const isActive = p.status === "in_progress";
+          const dotColor = isDone
+            ? "var(--ok)"
+            : isActive
+              ? "var(--accent)"
+              : "var(--br-2)";
+          return (
+            <li key={i} className="flex items-start gap-2 text-[12.5px]">
+              <span
+                className={`mt-1.5 inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                  isActive ? "pulse-live" : ""
+                }`}
+                style={{ background: dotColor }}
+              />
+              <span
+                className={`flex-1 min-w-0 leading-relaxed ${
+                  isDone
+                    ? "text-fg-3 line-through"
+                    : isActive
+                      ? "text-fg-1"
+                      : "text-fg-2"
+                }`}
+              >
+                {p.step}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -2125,6 +2187,14 @@ function MessageComposer({
         "show the source of a declared reward function inline",
       argHint: "show <reward-name>",
     });
+    items.push({
+      kind: "builtin",
+      layer: "range",
+      name: "obs",
+      description:
+        "show the observation vector at a specific tick of a run",
+      argHint: "<run-id> <step>",
+    });
 
     // Codex builtins (operate on Codex's thread / config).
     items.push({
@@ -2290,6 +2360,24 @@ function MessageComposer({
           `Eval run with RANGE_CHECKPOINT=${checkpoint}${scenario ? ` (scenario: ${scenario})` : ""}…`,
         );
         await api.evalCheckpoint(session.id, checkpoint, scenario);
+      } else if (item.kind === "builtin" && item.name === "obs") {
+        const parts = slashArgs.split(/\s+/).filter((s) => s.length > 0);
+        const runId = parts[0];
+        const step = Number(parts[1]);
+        if (!runId || !Number.isFinite(step) || step < 0) {
+          throw new Error("usage: /obs <run-id> <step>");
+        }
+        const res = await api.getObservation(runId, step);
+        // Render as a markdown code block.
+        const body =
+          "# Observation · run `" +
+          runId +
+          "` · tick " +
+          res.step +
+          "\n\n```json\n" +
+          JSON.stringify(res.observation, null, 2) +
+          "\n```";
+        pushSystem(session.id, body);
       } else if (item.kind === "builtin" && item.name === "reward") {
         const parts = slashArgs.split(/\s+/).filter((s) => s.length > 0);
         const sub = parts[0];
@@ -3030,7 +3118,299 @@ function ArtifactPreview({
       </div>
     );
   }
+  if (kind === "npy") {
+    return <TrajectoryPreview url={url} name={name} />;
+  }
   return null;
+}
+
+/**
+ * NPZ trajectory viewer. On click, fetches the per-field arrays
+ * from /api/runs/:id/trajectory (server-side downsampled to 2000
+ * points), renders one SVG panel per 1D field, with a shared
+ * scrub cursor synced across panels.
+ *
+ * URL shape: /api/runs/<runId>/artifacts/<name>. We extract
+ * `runId` from the path because that's what the trajectory
+ * endpoint keys off of.
+ */
+function TrajectoryPreview({
+  url,
+  name,
+}: {
+  url: string;
+  name: string;
+}) {
+  const [data, setData] = useState<
+    import("@shared/protocol").ArtifactInfo extends never
+      ? never
+      : Awaited<ReturnType<typeof api.getTrajectory>> | null
+  >(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [cursor, setCursor] = useState<number>(0);
+
+  // Only support trajectory.npz for now — other .npy/.npz files
+  // get a generic "binary, download to inspect" treatment.
+  const isTrajectory = name === "trajectory.npz";
+  if (!isTrajectory) {
+    return (
+      <div className="border-t border-[var(--br-1)] bg-[var(--bg)] px-3 py-2 text-[11px] text-fg-3 italic">
+        binary NumPy array — preview only available for{" "}
+        <span className="font-mono text-fg-2">trajectory.npz</span>.
+      </div>
+    );
+  }
+
+  // url: /api/runs/<runId>/artifacts/trajectory.npz
+  const runIdMatch = url.match(/\/api\/runs\/([^/]+)\/artifacts\//);
+  const runId = runIdMatch ? decodeURIComponent(runIdMatch[1]!) : null;
+
+  const load = async () => {
+    if (!runId) {
+      setErr("could not parse run id from artifact url");
+      return;
+    }
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await api.getTrajectory(runId);
+      setData(res);
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!data && !loading) {
+    return (
+      <div className="border-t border-[var(--br-1)] bg-[var(--bg)] px-3 py-2 flex items-center gap-2">
+        <button
+          onClick={load}
+          className="text-[11.5px] font-medium text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] px-3 py-1 rounded transition"
+        >
+          📈 view trajectory
+        </button>
+        {err && (
+          <span className="text-[11px] text-[var(--err)] italic">{err}</span>
+        )}
+      </div>
+    );
+  }
+  if (loading || !data) {
+    return (
+      <div className="border-t border-[var(--br-1)] bg-[var(--bg)] px-3 py-2 text-[11px] text-fg-3 italic">
+        loading trajectory…
+      </div>
+    );
+  }
+
+  // Pick 1D fields, excluding `t` (used as x-axis). Sort so the
+  // typical Yard field set lands in a sensible order.
+  const fieldNames = Object.keys(data.fields).filter((k) => {
+    const f = data.fields[k]!;
+    return f.shape.length === 1 && f.shape[0] > 1;
+  });
+  const tField = data.fields["t"];
+  const N = tField
+    ? tField.shape[0]
+    : Math.max(...fieldNames.map((k) => data.fields[k]!.shape[0]!));
+  const ts = tField?.data ?? null;
+
+  // Sort: keep `t` for axis only, render the rest in priority order
+  const priorityOrder = [
+    "x",
+    "y",
+    "yaw",
+    "speed",
+    "left_v_cmd",
+    "right_v_cmd",
+    "ctrl_left",
+    "ctrl_right",
+    "min_depth",
+    "collided",
+  ];
+  const sortedFields = fieldNames
+    .filter((k) => k !== "t")
+    .sort((a, b) => {
+      const ai = priorityOrder.indexOf(a);
+      const bi = priorityOrder.indexOf(b);
+      if (ai === bi) return a.localeCompare(b);
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
+
+  const onScrub = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const frac = Math.max(0, Math.min(1, x / rect.width));
+    setCursor(Math.round(frac * (N - 1)));
+  };
+
+  return (
+    <div className="border-t border-[var(--br-1)] bg-[var(--bg)] p-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="text-[10px] uppercase tracking-[0.14em] text-fg-3 font-medium">
+          trajectory · {N} {data.downsampled ? `of ${data.ticks}` : ""} ticks ·{" "}
+          {sortedFields.length} fields
+        </div>
+        <div className="text-[10.5px] font-mono text-fg-2">
+          tick {cursor}
+          {ts && typeof ts[cursor] === "number"
+            ? ` · t=${(ts[cursor] as number).toFixed(3)}s`
+            : ""}
+        </div>
+      </div>
+      <div
+        onMouseMove={onScrub}
+        className="space-y-1.5 cursor-crosshair select-none"
+      >
+        {sortedFields.map((k) => (
+          <TrajectoryPanel
+            key={k}
+            name={k}
+            data={data.fields[k]!.data}
+            cursor={cursor}
+            isBool={data.fields[k]!.dtype === "bool"}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** A single SVG panel: 480×40 typical. Renders a polyline of the
+ *  field's values, with nulls (NaN) shown as gaps. A vertical
+ *  cursor line marks the current scrub position. */
+function TrajectoryPanel({
+  name,
+  data,
+  cursor,
+  isBool,
+}: {
+  name: string;
+  data: (number | null)[];
+  cursor: number;
+  isBool: boolean;
+}) {
+  const W = 480;
+  const H = isBool ? 14 : 36;
+
+  const { min, max, valueAtCursor, hasNaN } = useMemo(() => {
+    let mn = Infinity,
+      mx = -Infinity,
+      nan = false;
+    for (const v of data) {
+      if (v === null || !Number.isFinite(v)) {
+        nan = true;
+        continue;
+      }
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
+    if (!Number.isFinite(mn)) {
+      mn = 0;
+      mx = 1;
+    }
+    if (mn === mx) {
+      mn -= 0.5;
+      mx += 0.5;
+    }
+    return {
+      min: mn,
+      max: mx,
+      valueAtCursor: data[cursor] ?? null,
+      hasNaN: nan,
+    };
+  }, [data, cursor]);
+
+  // Build the polyline path, breaking at nulls so gaps render
+  // visually.
+  const path = useMemo(() => {
+    const segs: string[] = [];
+    let pending = true;
+    for (let i = 0; i < data.length; i++) {
+      const v = data[i];
+      if (v === null || !Number.isFinite(v)) {
+        pending = true;
+        continue;
+      }
+      const x = (i / Math.max(1, data.length - 1)) * W;
+      const y = isBool
+        ? v
+          ? 1
+          : H - 1
+        : H - ((v - min) / (max - min)) * (H - 2) - 1;
+      segs.push((pending ? "M" : "L") + x.toFixed(1) + "," + y.toFixed(1));
+      pending = false;
+    }
+    return segs.join(" ");
+  }, [data, min, max, H, isBool]);
+
+  const cursorX =
+    (Math.min(cursor, data.length - 1) /
+      Math.max(1, data.length - 1)) *
+    W;
+  const stroke = hasNaN ? "var(--err)" : "var(--accent)";
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="text-[10.5px] font-mono text-fg-2 w-24 flex-shrink-0 truncate">
+        {name}
+      </div>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="flex-1 h-9 bg-[var(--bg-1)] border border-[var(--br-1)] rounded"
+      >
+        {isBool ? (
+          <g>
+            {data.map((v, i) => {
+              if (v === null || !v) return null;
+              const x =
+                (i / Math.max(1, data.length - 1)) * W;
+              return (
+                <rect
+                  key={i}
+                  x={x}
+                  y={2}
+                  width={Math.max(1, W / data.length)}
+                  height={H - 4}
+                  fill="var(--err)"
+                />
+              );
+            })}
+          </g>
+        ) : (
+          <path d={path} fill="none" stroke={stroke} strokeWidth="1" />
+        )}
+        <line
+          x1={cursorX}
+          y1={0}
+          x2={cursorX}
+          y2={H}
+          stroke="var(--fg-3)"
+          strokeWidth="0.5"
+          strokeDasharray="2,2"
+        />
+      </svg>
+      <div className="text-[10.5px] font-mono text-fg-3 w-20 text-right flex-shrink-0">
+        {valueAtCursor === null
+          ? "NaN"
+          : isBool
+            ? valueAtCursor
+              ? "yes"
+              : "no"
+            : (valueAtCursor as number).toFixed(3)}
+      </div>
+      <div className="text-[9.5px] font-mono text-fg-3/60 w-24 text-right flex-shrink-0">
+        [{Number.isFinite(min) ? min.toFixed(2) : "?"},{" "}
+        {Number.isFinite(max) ? max.toFixed(2) : "?"}]
+      </div>
+    </div>
+  );
 }
 
 function ArtifactKindBadge({ kind }: { kind: ArtifactInfo["kind"] }) {

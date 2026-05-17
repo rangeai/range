@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type {
   AgentItem,
   ArtifactInfo,
+  PlanStep,
   ProfileLoadResult,
   Run,
   RunLogEntry,
@@ -107,6 +108,10 @@ interface AppState {
   verificationBySession: Map<string, Map<string, VerificationResult>>;
   tokenUsageBySession: Map<string, ThreadTokenUsage>;
   lastTurnDiffBySession: Map<string, string>;
+  /** Latest plan per (session, turn). Codex pushes turn/plan/updated
+   *  notifications; we keep the most recent one per turn so the
+   *  TurnCard can render a live checklist. */
+  planByTurn: Map<string, Map<string, PlanStep[]>>;
 
   goHome: () => void;
   openSession: (id: string) => void;
@@ -174,6 +179,7 @@ interface AppState {
 
   setTokenUsage: (sessionId: string, usage: ThreadTokenUsage) => void;
   setTurnDiff: (sessionId: string, diff: string) => void;
+  setPlan: (sessionId: string, turnId: string, plan: PlanStep[]) => void;
 
   pushTurnStart: (sessionId: string, turnId: string, prompt: string | null) => void;
   resolveTurn: (
@@ -220,6 +226,7 @@ export const useAppStore = create<AppState>((set) => ({
   verificationBySession: new Map(),
   tokenUsageBySession: new Map(),
   lastTurnDiffBySession: new Map(),
+  planByTurn: new Map(),
 
   goHome: () => set({ view: { kind: "home" } }),
   openSession: (id) => set({ view: { kind: "session", id } }),
@@ -522,6 +529,15 @@ export const useAppStore = create<AppState>((set) => ({
       const next = new Map(state.lastTurnDiffBySession);
       next.set(sessionId, diff);
       return { lastTurnDiffBySession: next };
+    }),
+
+  setPlan: (sessionId, turnId, plan) =>
+    set((state) => {
+      const next = new Map(state.planByTurn);
+      const inner = new Map(next.get(sessionId) ?? new Map());
+      inner.set(turnId, plan);
+      next.set(sessionId, inner);
+      return { planByTurn: next };
     }),
 
   pushTurnStart: (sessionId, turnId, prompt) =>

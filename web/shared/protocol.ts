@@ -443,6 +443,22 @@ export interface ServerAgentTurnDiff {
   diff: string;
 }
 
+export type PlanStepStatus = "pending" | "in_progress" | "completed";
+
+export interface PlanStep {
+  step: string;
+  status: PlanStepStatus;
+}
+
+export interface ServerAgentPlanUpdated {
+  type: "agent_plan_updated";
+  sessionId: string;
+  threadId: string;
+  turnId: string;
+  plan: PlanStep[];
+  explanation: string | null;
+}
+
 export interface ServerAgentCompacted {
   type: "agent_compacted";
   sessionId: string;
@@ -588,6 +604,7 @@ export type ServerMessage =
   | ServerAgentTokenUsage
   | ServerAgentTurnDiff
   | ServerAgentCompacted
+  | ServerAgentPlanUpdated
   | ServerScaffoldProposed
   | ServerScaffoldResolved
   | ServerWireProposed

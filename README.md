@@ -116,6 +116,16 @@ Then:
   scenario with `RANGE_CHECKPOINT` env injected so your training
   script loads weights instead of training from scratch
 
+### 📈 Live plans + trajectory scrubber
+
+Codex's plan renders as a checklist pinned to the top of each
+turn — `pending` items fade, `in_progress` pulses, `completed`
+strike through, all in real time as the agent works. When a run
+writes a `trajectory.npz`, an inline SVG viewer pops up: one panel
+per field, a shared cursor synced across them, NaN gaps shown as
+breaks. `/obs <run-id> <step>` dumps the full observation vector
+at any tick.
+
 ### 🧠 Codex-native chat
 
 The agent isn't bolted on — it *is* the workspace. Slash commands
@@ -205,14 +215,16 @@ deferred behind specific customer signals).
 
 ## Roadmap
 
+**v0.5 is complete.** All five planned phases shipped.
+
 | Phase | What | Status |
 |---|---|---|
 | **P1** | Auto-scaffold `range.yaml` on attach | ✅ shipped |
 | **P2** | NaN / instability investigation flow | ✅ shipped |
 | **P3** | `/wire wandb-hydra` integration helper | ✅ shipped |
 | **P4** | Checkpoints + reward functions as primitives | ✅ shipped |
-| **P5** | Live plan tracking + interactive trajectory scrubber | 🔜 next |
-| **v0.7** | Remote compute (Linux + RTX) for Isaac Lab users | 📋 planned |
+| **P5** | Live plan tracking + interactive trajectory scrubber | ✅ shipped |
+| **v0.7** | Remote compute (Linux + RTX) for Isaac Lab users — the monetization gate | 📋 planned |
 
 ---
 
