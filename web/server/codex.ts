@@ -50,9 +50,48 @@ interface CodexSession {
   itemTexts: Map<string, string>;
   itemMeta: Map<string, { kind: string }>;
   eventFile: WriteStream;
+  /** Last point at which we exchanged any data with Codex (incoming
+   *  notification, outgoing turn). Used by the idle sweeper to decide
+   *  when to shut a session down. */
+  lastActivityAt: number;
 }
 
 const sessions = new Map<string, CodexSession>();
+
+/** Idle-shutdown horizon. After this many ms with no Codex activity
+ *  and no in-flight turn, the per-session Codex process is torn down.
+ *  Bring-up cost on next use is ~2–5s (Codex spawn + thread/resume).
+ */
+const IDLE_SHUTDOWN_MS = 20 * 60 * 1000;
+const IDLE_SWEEP_INTERVAL_MS = 60 * 1000;
+
+function touchActivity(cs: CodexSession): void {
+  cs.lastActivityAt = Date.now();
+}
+
+let idleSweeper: ReturnType<typeof setInterval> | null = null;
+function ensureIdleSweeper(): void {
+  if (idleSweeper) return;
+  idleSweeper = setInterval(() => {
+    const now = Date.now();
+    for (const [sessionId, cs] of sessions) {
+      // Don't reap a session with pending JSON-RPC traffic — that means a
+      // turn is mid-flight (sendRequest hasn't resolved).
+      if (cs.pendingRequests.size > 0) continue;
+      if (now - cs.lastActivityAt < IDLE_SHUTDOWN_MS) continue;
+      log.info("codex", "idle shutdown", {
+        sessionId,
+        idleMs: now - cs.lastActivityAt,
+      });
+      void stopAgent(sessionId).catch((err) =>
+        log.warn("codex", "idle shutdown failed", {
+          sessionId,
+          err: String(err instanceof Error ? err.message : err),
+        }),
+      );
+    }
+  }, IDLE_SWEEP_INTERVAL_MS);
+}
 
 function threadDir(sessionId: string): string {
   return join(homedir(), ".range", "threads", sessionId);
@@ -173,6 +212,11 @@ export function isAgentRunning(sessionId: string): boolean {
  *  starts with a blank slate. The old log moves to events.jsonl.<ts>
  *  next to it; we never delete history outright. */
 export async function archiveAgentHistory(sessionId: string): Promise<void> {
+  // /clear semantics: we want a *fresh* conversation, not a resumed
+  // one — drop the persisted thread id so next start does thread/start
+  // rather than thread/resume.
+  setSessionCodexThreadId(sessionId, null);
+
   const dir = threadDir(sessionId);
   const src = join(dir, "events.jsonl");
   try {
@@ -301,8 +345,10 @@ export async function startAgent(
     itemTexts: new Map(),
     itemMeta: new Map(),
     eventFile,
+    lastActivityAt: Date.now(),
   };
   sessions.set(sessionId, cs);
+  ensureIdleSweeper();
 
   void readLoop(cs).catch((err) => {
     log.error("codex", "read loop crashed", {
@@ -338,20 +384,50 @@ export async function startAgent(
       threadParams.effort = session.reasoningEffort;
       threadParams.reasoningEffort = session.reasoningEffort;
     }
-    const threadResp = (await sendRequest(cs, "thread/start", threadParams)) as {
-      thread?: { id?: string };
-      threadId?: string;
-    };
+
+    // If the session already has a persisted thread, resume it so the
+    // user's prior context survives idle-shutdown / process restarts.
+    // Resume falls back to a fresh start if Codex says the thread is
+    // gone (e.g. on-disk store cleared).
+    const existingThreadId = session.codexThreadId;
+    let threadResp:
+      | { thread?: { id?: string }; threadId?: string }
+      | undefined;
+    if (existingThreadId) {
+      try {
+        threadResp = (await sendRequest(cs, "thread/resume", {
+          ...threadParams,
+          threadId: existingThreadId,
+        })) as { thread?: { id?: string }; threadId?: string };
+        log.info("codex", "thread resumed", {
+          sessionId,
+          threadId: existingThreadId,
+        });
+      } catch (err) {
+        log.warn("codex", "resume failed, starting fresh thread", {
+          sessionId,
+          existingThreadId,
+          err: String(err instanceof Error ? err.message : err),
+        });
+        threadResp = undefined;
+      }
+    }
+    if (!threadResp) {
+      threadResp = (await sendRequest(cs, "thread/start", threadParams)) as {
+        thread?: { id?: string };
+        threadId?: string;
+      };
+    }
 
     const threadId =
-      threadResp?.thread?.id ?? threadResp?.threadId ?? "";
+      threadResp?.thread?.id ?? threadResp?.threadId ?? existingThreadId ?? "";
     if (!threadId) {
       throw new Error("thread/start returned no thread id");
     }
     cs.threadId = threadId;
     setSessionCodexThreadId(sessionId, threadId);
 
-    log.info("codex", "thread started", { sessionId, threadId });
+    log.info("codex", "thread ready", { sessionId, threadId });
     emit({ type: "agent_started", sessionId, threadId });
     const updated = getSession(sessionId);
     if (updated)
@@ -372,10 +448,17 @@ export async function sendUserMessage(
   sessionId: string,
   prompt: string,
 ): Promise<{ turnId: string }> {
-  const cs = sessions.get(sessionId);
+  // Lazy-start: if the session's Codex isn't running (idle-shutdown,
+  // never opened, etc.), spin it up first.
+  let cs = sessions.get(sessionId);
   if (!cs || !cs.threadId) {
-    throw new Error(`no live Codex session for ${sessionId}`);
+    await startAgent(sessionId);
+    cs = sessions.get(sessionId);
   }
+  if (!cs || !cs.threadId) {
+    throw new Error(`failed to start Codex for ${sessionId}`);
+  }
+  touchActivity(cs);
 
   const resp = (await sendRequest(cs, "turn/start", {
     threadId: cs.threadId,
@@ -397,6 +480,25 @@ export async function stopAgent(sessionId: string): Promise<boolean> {
   if (!cs) return false;
   teardown(cs, "stopped by user");
   return true;
+}
+
+/**
+ * Synchronously tear down every running Codex child. Called from the
+ * server's SIGINT/SIGTERM handler so we don't leak children when the
+ * server exits.
+ */
+export function stopAllAgents(): void {
+  const ids = [...sessions.keys()];
+  for (const id of ids) {
+    const cs = sessions.get(id);
+    if (!cs) continue;
+    try {
+      cs.proc.kill("SIGKILL");
+    } catch {
+      /* best-effort */
+    }
+    teardown(cs, "server shutdown");
+  }
 }
 
 // ─── JSON-RPC plumbing ─────────────────────────────────────────────────────
@@ -459,6 +561,9 @@ async function readLoop(cs: CodexSession): Promise<void> {
       if (line.length === 0) continue;
       try {
         const msg = JSON.parse(line);
+        // Any incoming traffic counts as activity — keeps a busy
+        // session alive past the idle horizon.
+        touchActivity(cs);
         handleMessage(cs, msg);
       } catch (err) {
         log.warn("codex", "non-JSON line", {
@@ -1031,7 +1136,9 @@ function teardown(cs: CodexSession, reason: string): void {
   } catch {
     // already closed
   }
-  setSessionCodexThreadId(cs.sessionId, null);
+  // Keep codex_thread_id persisted across teardown so the next
+  // start can `thread/resume` into the same conversation. Only
+  // archiveAgentHistory (`/clear`) clears it deliberately.
   emit({
     type: "agent_stopped",
     sessionId: cs.sessionId,

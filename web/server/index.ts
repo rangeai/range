@@ -92,6 +92,7 @@ import {
   sendUserMessage,
   startAgent,
   stopAgent,
+  stopAllAgents,
 } from "./codex.ts";
 import { broadcast, registerSender } from "./hub.ts";
 
@@ -163,24 +164,46 @@ app.post("/api/sessions", async (c) => {
   });
   broadcast({ type: "session_created", session });
 
-  // Auto-start Codex. Best-effort: failures here don't fail session
-  // creation — the user can retry from the session view. If the session
-  // was created with a prompt, send it as the first turn so the user's
-  // initial message gets a reply (without it the prompt only lives in
-  // Codex's base instructions and goes unanswered).
-  void (async () => {
-    try {
-      await startAgent(session.id);
-      if (session.prompt && session.prompt.trim().length > 0) {
-        await sendUserMessage(session.id, session.prompt);
-      }
-    } catch (err) {
-      log.warn("sessions", "auto-start or initial prompt failed", {
+  // Lazy-start: don't spawn Codex up front. It boots on the first
+  // user action (slash builtin, message, etc.) and shuts down after
+  // an idle horizon. If the session has an initial prompt, send it
+  // now — that triggers the lazy-start and lands the first turn.
+  if (session.prompt && session.prompt.trim().length > 0) {
+    void sendUserMessage(session.id, session.prompt).catch((err) => {
+      log.warn("sessions", "initial prompt failed", {
         sessionId: session.id,
         err: String(err instanceof Error ? err.message : err),
       });
-    }
-  })();
+    });
+  }
+
+  // Auto-scaffold: if the session was created with a repo attached (i.e.
+  // via the home composer rather than via the separate attach-repo flow),
+  // run the same detector pipeline. Mirrors the /attach-repo handler.
+  if (session.repoPath) {
+    const repoPath = session.repoPath;
+    void detectScaffold(repoPath)
+      .then((proposal) => {
+        if (!proposal) return;
+        broadcast({
+          type: "scaffold_proposed",
+          sessionId: session.id,
+          proposal,
+          t: Date.now(),
+        });
+        log.info("sessions", "scaffold proposed", {
+          sessionId: session.id,
+          stack: proposal.stack,
+          proposalId: proposal.proposalId,
+        });
+      })
+      .catch((err) => {
+        log.warn("sessions", "scaffold detection failed", {
+          sessionId: session.id,
+          err: String(err instanceof Error ? err.message : err),
+        });
+      });
+  }
 
   const response: CreateSessionResponse = { session };
   return c.json(response, 201);
@@ -439,16 +462,17 @@ app.post("/api/sessions/:id/attach-repo", async (c) => {
     broadcast({ type: "session_updated", session });
 
     // If Codex is running, restart it so the new cwd + baseInstructions
-    // take effect immediately.
+    // take effect immediately. Otherwise leave it asleep — next user
+    // action will lazy-start with the new repo state.
     if (isAgentRunning(sessionId)) {
       await stopAgent(sessionId);
-    }
-    void startAgent(sessionId).catch((err) => {
-      log.warn("sessions", "restart after attach failed", {
-        sessionId,
-        err: String(err instanceof Error ? err.message : err),
+      void startAgent(sessionId).catch((err) => {
+        log.warn("sessions", "restart after attach failed", {
+          sessionId,
+          err: String(err instanceof Error ? err.message : err),
+        });
       });
-    });
+    }
 
     // Auto-scaffold: if the attached repo has no range.yaml but a
     // detector recognizes its shape, offer a proposal in the
@@ -793,9 +817,6 @@ app.post("/api/sessions/:id/agent/start", async (c) => {
 
 app.post("/api/sessions/:id/agent/message", async (c) => {
   const sessionId = c.req.param("id");
-  if (!isAgentRunning(sessionId)) {
-    return c.json({ error: "agent not running for this session" }, 400);
-  }
   let body: AgentMessageRequest;
   try {
     body = (await c.req.json()) as AgentMessageRequest;
@@ -806,6 +827,7 @@ app.post("/api/sessions/:id/agent/message", async (c) => {
     return c.json({ error: "prompt is required" }, 400);
   }
   try {
+    // sendUserMessage handles lazy-start if Codex isn't running yet.
     const { turnId } = await sendUserMessage(sessionId, body.prompt);
     const response: AgentMessageResponse = { turnId };
     return c.json(response, 201);
@@ -968,8 +990,21 @@ log.info(
   `range listening on http://${server.hostname}:${server.port}`,
 );
 
-process.on("SIGINT", () => {
-  log.info("server", "SIGINT received, stopping");
+function shutdown(reason: string): never {
+  log.info("server", `${reason} received, stopping`);
+  // Synchronously SIGKILL every spawned Codex child so we don't leak
+  // processes on exit. Hot-reload (bun --hot) doesn't re-run module
+  // top-level, so the only reap path is here.
+  try {
+    stopAllAgents();
+  } catch (err) {
+    log.warn("server", "stopAllAgents failed during shutdown", {
+      err: String(err instanceof Error ? err.message : err),
+    });
+  }
   server.stop();
   process.exit(0);
-});
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
