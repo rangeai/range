@@ -10,6 +10,7 @@ import type {
   Session,
   ThreadTokenUsage,
   VerificationResult,
+  WireProposal,
 } from "@shared/protocol";
 
 export type ScaffoldEntryStatus =
@@ -17,6 +18,8 @@ export type ScaffoldEntryStatus =
   | "accepted"
   | "dismissed"
   | "error";
+
+export type WireEntryStatus = ScaffoldEntryStatus;
 
 export interface PendingApproval {
   requestId: number;
@@ -54,6 +57,13 @@ export type ConversationEntry =
       proposal: ScaffoldProposal;
       editedYaml: string | null;
       status: ScaffoldEntryStatus;
+      errorMessage: string | null;
+      t: number;
+    }
+  | {
+      kind: "wire_proposal";
+      proposal: WireProposal;
+      status: WireEntryStatus;
       errorMessage: string | null;
       t: number;
     }
@@ -182,6 +192,16 @@ interface AppState {
     patch: Partial<{
       editedYaml: string | null;
       status: ScaffoldEntryStatus;
+      errorMessage: string | null;
+    }>,
+  ) => void;
+
+  pushWireProposal: (sessionId: string, proposal: WireProposal) => void;
+  updateWireEntry: (
+    sessionId: string,
+    proposalId: string,
+    patch: Partial<{
+      status: WireEntryStatus;
       errorMessage: string | null;
     }>,
   ) => void;
@@ -599,13 +619,70 @@ export const useAppStore = create<AppState>((set) => ({
       return { conversationsBySession: next };
     }),
 
+  pushWireProposal: (sessionId, proposal) =>
+    set((state) => {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId) ?? emptyConversation();
+      if (
+        prev.entries.some(
+          (e) =>
+            e.kind === "wire_proposal" &&
+            e.proposal.proposalId === proposal.proposalId,
+        )
+      )
+        return {};
+      next.set(sessionId, {
+        ...prev,
+        entries: [
+          ...prev.entries,
+          {
+            kind: "wire_proposal",
+            proposal,
+            status: "pending",
+            errorMessage: null,
+            t: Date.now(),
+          },
+        ],
+      });
+      return { conversationsBySession: next };
+    }),
+
+  updateWireEntry: (sessionId, proposalId, patch) =>
+    set((state) => {
+      const next = new Map(state.conversationsBySession);
+      const prev = next.get(sessionId);
+      if (!prev) return {};
+      let changed = false;
+      const entries = prev.entries.map((e) => {
+        if (
+          e.kind === "wire_proposal" &&
+          e.proposal.proposalId === proposalId
+        ) {
+          changed = true;
+          return { ...e, ...patch };
+        }
+        return e;
+      });
+      if (!changed) return {};
+      next.set(sessionId, { ...prev, entries });
+      return { conversationsBySession: next };
+    }),
+
   applyMessageDelta: (sessionId, itemId, delta) =>
     set((state) => {
       const next = new Map(state.conversationsBySession);
       const prev = next.get(sessionId) ?? emptyConversation();
-      const idx = prev.entries.findIndex(
-        (e) => e.kind === "agent_item" && e.item.id === itemId,
-      );
+      // Streaming deltas almost always target the most recent
+      // agent_item — scan from the end so long conversations don't
+      // pay an O(n) findIndex per token.
+      let idx = -1;
+      for (let i = prev.entries.length - 1; i >= 0; i--) {
+        const e = prev.entries[i]!;
+        if (e.kind === "agent_item" && e.item.id === itemId) {
+          idx = i;
+          break;
+        }
+      }
       let entries = prev.entries;
       if (idx >= 0) {
         const existing = entries[idx]!;

@@ -75,6 +75,10 @@ import {
 import { loadProfile } from "./profile.ts";
 import { detectScaffold, writeScaffold } from "./scaffold.ts";
 import {
+  applyWirePatches,
+  detectAndWireWandbHydra,
+} from "./wire.ts";
+import {
   formatReportForCodex,
   inspectTrajectory,
 } from "./trajectory.ts";
@@ -558,6 +562,87 @@ app.post("/api/sessions/:id/scaffold/accept", async (c) => {
   // Nudge clients to re-read the profile.
   broadcast({ type: "session_updated", session });
   return c.json({ ok: true, path: result.path });
+});
+
+app.post("/api/sessions/:id/wire/wandb-hydra/preview", async (c) => {
+  const sessionId = c.req.param("id");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  if (!session.repoPath) return c.json({ error: "session has no repo" }, 400);
+  try {
+    const proposal = await detectAndWireWandbHydra(session.repoPath);
+    if (!proposal) return c.json({ proposal: null });
+    broadcast({
+      type: "wire_proposed",
+      sessionId,
+      proposal,
+      t: Date.now(),
+    });
+    return c.json({ proposal });
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      500,
+    );
+  }
+});
+
+app.post("/api/sessions/:id/wire/wandb-hydra/accept", async (c) => {
+  const sessionId = c.req.param("id");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  if (!session.repoPath) return c.json({ error: "session has no repo" }, 400);
+  let body: {
+    proposalId?: string;
+    patches?: import("../shared/protocol.ts").WirePatch[];
+  };
+  try {
+    body = (await c.req.json()) as typeof body;
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  if (!body.proposalId || !Array.isArray(body.patches)) {
+    return c.json({ error: "proposalId and patches required" }, 400);
+  }
+  const result = await applyWirePatches(session.repoPath, body.patches);
+  if (result.errors.length > 0) {
+    return c.json(
+      {
+        error: result.errors.join("; "),
+        writtenBeforeFailure: result.written,
+      },
+      400,
+    );
+  }
+  broadcast({
+    type: "wire_resolved",
+    sessionId,
+    proposalId: body.proposalId,
+    decision: "accepted",
+    t: Date.now(),
+  });
+  return c.json({ ok: true, written: result.written });
+});
+
+app.post("/api/sessions/:id/wire/wandb-hydra/dismiss", async (c) => {
+  const sessionId = c.req.param("id");
+  const session = getSession(sessionId);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  let body: { proposalId?: string };
+  try {
+    body = (await c.req.json()) as { proposalId?: string };
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  if (!body.proposalId) return c.json({ error: "proposalId required" }, 400);
+  broadcast({
+    type: "wire_resolved",
+    sessionId,
+    proposalId: body.proposalId,
+    decision: "dismissed",
+    t: Date.now(),
+  });
+  return c.json({ ok: true });
 });
 
 app.post("/api/sessions/:id/scaffold/dismiss", async (c) => {

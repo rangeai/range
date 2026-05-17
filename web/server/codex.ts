@@ -1045,6 +1045,9 @@ function onItemCompleted(
 ): void {
   const raw = getItemFromParams(params);
   if (!raw) return;
+  // Flush any pending coalesced deltas for this item BEFORE we send
+  // the completion message, so the browser applies them in order.
+  if (raw.id) flushDelta(cs.sessionId, raw.id);
   if (
     (raw.type === "agentMessage" || raw.type === "reasoning") &&
     (typeof raw.text !== "string" || raw.text.length === 0)
@@ -1055,6 +1058,53 @@ function onItemCompleted(
   emit({ type: "agent_item", sessionId: cs.sessionId, item });
   cs.itemTexts.delete(raw.id!);
   cs.itemMeta.delete(raw.id!);
+}
+
+// ─── Delta coalescing ─────────────────────────────────────────────────────
+// Codex emits item/agentMessage/delta one token at a time. Forwarding
+// each one to the browser as its own WS frame produces ~60 store
+// updates per second and ~60 React re-renders. Buffer per
+// (sessionId, itemId); flush every COALESCE_MS into a single combined
+// delta. Trailing text is flushed explicitly when the item completes
+// or the turn ends.
+
+const COALESCE_MS = 16;
+const pendingDeltas = new Map<string, string>();
+const pendingFlushTimers = new Map<
+  string,
+  ReturnType<typeof setTimeout>
+>();
+
+function deltaKey(sessionId: string, itemId: string): string {
+  return `${sessionId}:${itemId}`;
+}
+
+function flushDelta(sessionId: string, itemId: string): void {
+  const key = deltaKey(sessionId, itemId);
+  const timer = pendingFlushTimers.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    pendingFlushTimers.delete(key);
+  }
+  const buffered = pendingDeltas.get(key);
+  if (!buffered) return;
+  pendingDeltas.delete(key);
+  emit({
+    type: "agent_message_delta",
+    sessionId,
+    itemId,
+    delta: buffered,
+  });
+}
+
+function flushPendingForSession(sessionId: string): void {
+  const prefix = `${sessionId}:`;
+  for (const key of [...pendingDeltas.keys()]) {
+    if (key.startsWith(prefix)) {
+      const itemId = key.slice(prefix.length);
+      flushDelta(sessionId, itemId);
+    }
+  }
 }
 
 function onAgentMessageDelta(
@@ -1078,12 +1128,12 @@ function onAgentMessageDelta(
   const prev = cs.itemTexts.get(itemId) ?? "";
   cs.itemTexts.set(itemId, prev + delta);
 
-  emit({
-    type: "agent_message_delta",
-    sessionId: cs.sessionId,
-    itemId,
-    delta,
-  });
+  const key = deltaKey(cs.sessionId, itemId);
+  pendingDeltas.set(key, (pendingDeltas.get(key) ?? "") + delta);
+  if (!pendingFlushTimers.has(key)) {
+    const t = setTimeout(() => flushDelta(cs.sessionId, itemId), COALESCE_MS);
+    pendingFlushTimers.set(key, t);
+  }
 }
 
 function onTurnCompleted(
@@ -1094,6 +1144,9 @@ function onTurnCompleted(
   const turnId = (turn?.id ?? params.turnId ?? "") as string;
   const status =
     (params.status as "ok" | "failed" | "aborted" | undefined) ?? "ok";
+  // Flush any coalesced deltas that haven't fired yet so the browser
+  // sees the trailing text before turn_finished fans out.
+  flushPendingForSession(cs.sessionId);
   emit({
     type: "agent_turn_finished",
     sessionId: cs.sessionId,

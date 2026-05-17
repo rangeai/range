@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import * as api from "../lib/api";
 import { useAppStore } from "../lib/store";
@@ -789,22 +789,28 @@ function ConversationTimeline({
         items: { entry: ConversationEntry; idx: number }[];
         idx: number;
       };
-  const blocks: Block[] = [];
-  let openTurn: Extract<Block, { kind: "turn" }> | null = null;
-  conv.entries.forEach((entry, idx) => {
-    if (entry.kind === "turn") {
-      openTurn = { kind: "turn", turn: entry, items: [], idx };
-      blocks.push(openTurn);
-    } else if (entry.kind === "user") {
-      // A user message ends the previous turn's collection.
-      openTurn = null;
-      blocks.push({ kind: "loose", entry, idx });
-    } else if (openTurn) {
-      openTurn.items.push({ entry, idx });
-    } else {
-      blocks.push({ kind: "loose", entry, idx });
-    }
-  });
+  // Memoized on the entries reference. The store hands us a new array
+  // on every change (delta, new entry, turn boundary), so identity
+  // equality is the right key — when nothing changed, we reuse the
+  // previous grouping without re-walking.
+  const blocks = useMemo<Block[]>(() => {
+    const out: Block[] = [];
+    let openTurn: Extract<Block, { kind: "turn" }> | null = null;
+    conv.entries.forEach((entry, idx) => {
+      if (entry.kind === "turn") {
+        openTurn = { kind: "turn", turn: entry, items: [], idx };
+        out.push(openTurn);
+      } else if (entry.kind === "user") {
+        openTurn = null;
+        out.push({ kind: "loose", entry, idx });
+      } else if (openTurn) {
+        openTurn.items.push({ entry, idx });
+      } else {
+        out.push({ kind: "loose", entry, idx });
+      }
+    });
+    return out;
+  }, [conv.entries]);
 
   return (
     <div className="border border-[var(--br-1)] rounded-lg bg-[var(--bg-1)] p-4 space-y-4">
@@ -952,7 +958,11 @@ function TurnCard({
   );
 }
 
-function ConversationEntryView({
+// Memoized so that when a streaming delta updates one entry, the
+// other (unchanged) entries don't re-render. Default shallow prop
+// comparison is correct here — `entry` is a stable reference for
+// unchanged entries, and `sessionId` is a string.
+const ConversationEntryView = memo(function ConversationEntryView({
   entry,
   sessionId,
 }: {
@@ -1011,13 +1021,23 @@ function ConversationEntryView({
       />
     );
   }
+  if (entry.kind === "wire_proposal") {
+    return (
+      <InlineWireProposal
+        proposal={entry.proposal}
+        status={entry.status}
+        errorMessage={entry.errorMessage}
+        sessionId={sessionId}
+      />
+    );
+  }
   if (entry.kind === "turn") {
     // Turn markers are consumed by ConversationTimeline's grouping;
     // they shouldn't reach here. Render nothing if one slips through.
     return null;
   }
   return <AgentItemView item={entry.item} />;
-}
+});
 
 function InlinePrDraft({
   pr,
@@ -1291,6 +1311,181 @@ function InlineScaffoldProposal({
   );
 }
 
+function InlineWireProposal({
+  proposal,
+  status,
+  errorMessage,
+  sessionId,
+}: {
+  proposal: import("@shared/protocol").WireProposal;
+  status: import("../lib/store").WireEntryStatus;
+  errorMessage: string | null;
+  sessionId: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [expandedPath, setExpandedPath] = useState<string | null>(null);
+  const updateWire = useAppStore((s) => s.updateWireEntry);
+  const isAccepted = status === "accepted";
+  const isDismissed = status === "dismissed";
+  const isResolved = isAccepted || isDismissed;
+
+  const accept = async () => {
+    setBusy(true);
+    try {
+      await api.acceptWire(
+        sessionId,
+        proposal.proposalId,
+        proposal.patches,
+      );
+      updateWire(sessionId, proposal.proposalId, { status: "accepted" });
+    } catch (e) {
+      const msg = String(e instanceof Error ? e.message : e);
+      updateWire(sessionId, proposal.proposalId, {
+        status: "error",
+        errorMessage: msg,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const dismiss = async () => {
+    setBusy(true);
+    try {
+      await api.dismissWire(sessionId, proposal.proposalId);
+      updateWire(sessionId, proposal.proposalId, { status: "dismissed" });
+    } catch (e) {
+      const msg = String(e instanceof Error ? e.message : e);
+      updateWire(sessionId, proposal.proposalId, {
+        status: "error",
+        errorMessage: msg,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fileCount = proposal.patches.length;
+  const totalChanges = proposal.patches.reduce(
+    (n, p) => n + p.changes.length,
+    0,
+  );
+
+  return (
+    <div className="flex gap-3">
+      <AgentBadge label="wire" tone="tool" />
+      <div className="flex-1 min-w-0">
+        <div className="border border-[var(--br-2)] rounded-lg bg-[var(--bg-1)] overflow-hidden">
+          <div className="px-3 py-2 flex items-center gap-2 border-b border-[var(--br-1)]">
+            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--accent)] font-medium">
+              wire proposal
+            </span>
+            <span className="text-[10.5px] text-fg-3">
+              {proposal.kind === "wandb-hydra" ? "Hydra ↔ W&B" : proposal.kind}
+            </span>
+            <span className="text-[10.5px] text-fg-3 font-mono">
+              · {fileCount} file{fileCount === 1 ? "" : "s"} · {totalChanges} change{totalChanges === 1 ? "" : "s"}
+            </span>
+            {isAccepted && (
+              <span className="ml-auto text-[10.5px] text-[var(--ok)] font-mono">
+                applied ✓
+              </span>
+            )}
+            {isDismissed && (
+              <span className="ml-auto text-[10.5px] text-fg-3 italic">
+                dismissed
+              </span>
+            )}
+          </div>
+
+          {proposal.notes.length > 0 && !isResolved && (
+            <ul className="px-3 py-2 border-b border-[var(--br-1)] text-[11.5px] text-fg-2 space-y-1">
+              {proposal.notes.map((n, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="text-fg-3">·</span>
+                  <span>{n}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {!isResolved &&
+            proposal.patches.map((p) => (
+              <div
+                key={p.path}
+                className="border-b border-[var(--br-1)] last:border-b-0"
+              >
+                <button
+                  onClick={() =>
+                    setExpandedPath(expandedPath === p.path ? null : p.path)
+                  }
+                  className="w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-[var(--bg-2)] transition"
+                >
+                  <span className="text-fg-3 text-[10.5px]">
+                    {expandedPath === p.path ? "▾" : "▸"}
+                  </span>
+                  <span className="font-mono text-[11.5px] text-fg-1 flex-1 truncate">
+                    {p.path}
+                  </span>
+                  <span className="text-[10.5px] text-fg-3 font-mono">
+                    {p.changes.length} change{p.changes.length === 1 ? "" : "s"}
+                  </span>
+                </button>
+                {expandedPath === p.path && (
+                  <div className="px-3 pb-3">
+                    <ul className="text-[11.5px] text-fg-2 space-y-1 mb-2">
+                      {p.changes.map((c, i) => (
+                        <li key={i} className="flex gap-2">
+                          <span className="text-fg-3">·</span>
+                          <span>{c}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <pre className="font-mono text-[11px] text-fg-1 leading-relaxed bg-[var(--bg)] border border-[var(--br-1)] rounded p-2 max-h-72 overflow-auto whitespace-pre">
+                      {p.newText}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            ))}
+
+          {!isResolved && (
+            <div className="px-3 py-2 border-t border-[var(--br-1)] flex items-center gap-1.5 bg-[var(--bg)]">
+              <button
+                onClick={accept}
+                disabled={busy}
+                className="text-[11.5px] font-medium text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded transition"
+              >
+                {busy ? "writing…" : `accept · write ${fileCount} file${fileCount === 1 ? "" : "s"}`}
+              </button>
+              <button
+                onClick={dismiss}
+                disabled={busy}
+                className="text-[11.5px] text-fg-3 hover:text-fg-1 px-2 py-1.5 rounded transition ml-auto"
+              >
+                dismiss
+              </button>
+            </div>
+          )}
+
+          {isAccepted && (
+            <div className="px-3 py-2 text-[11.5px] text-fg-3 italic">
+              Patches applied. Hydra-launched W&B should no longer hang and
+              configs will serialize correctly.
+            </div>
+          )}
+
+          {errorMessage && (
+            <div className="px-3 py-2 text-[11px] text-[var(--err)] border-t border-[var(--br-1)] break-words">
+              {errorMessage}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Looks up the live Run by id and renders a RunRow card inline. */
 function InlineRunEntry({
   runId,
@@ -1521,7 +1716,10 @@ function approvalBody(approval: PendingApproval): string | null {
   return parts.length ? parts.join("\n") : null;
 }
 
-function AgentItemView({ item }: { item: AgentItem }) {
+// Memoized: only the streaming item's reference changes during a
+// delta. The other items in the same turn keep their identity and
+// skip re-render thanks to React.memo's shallow comparison.
+const AgentItemView = memo(function AgentItemView({ item }: { item: AgentItem }) {
   const inProgress = item.state === "started";
   switch (item.kind) {
     case "message":
@@ -1530,7 +1728,15 @@ function AgentItemView({ item }: { item: AgentItem }) {
           <AgentBadge label="cdx" />
           <div className="flex-1 min-w-0 text-[13.5px] text-fg-1 break-words">
             {item.text ? (
-              <Markdown>{item.text}</Markdown>
+              // Defer Markdown parsing until the message finishes streaming.
+              // ReactMarkdown re-parses the full AST on every delta otherwise;
+              // for a long assistant message that's dozens of unnecessary
+              // parses. Plain text mid-stream, Markdown on completion.
+              inProgress ? (
+                <span className="whitespace-pre-wrap">{item.text}</span>
+              ) : (
+                <Markdown>{item.text}</Markdown>
+              )
             ) : inProgress ? (
               "…"
             ) : (
@@ -1583,7 +1789,7 @@ function AgentItemView({ item }: { item: AgentItem }) {
     default:
       return <UnknownItemView item={item} />;
   }
-}
+});
 
 function UnknownItemView({
   item,
@@ -1666,7 +1872,11 @@ function ReasoningItemView({
         </button>
         {open && item.text && (
           <div className="mt-1 text-[12px] text-fg-3 italic border-l-2 border-[var(--br-1)] pl-3">
-            <Markdown>{item.text}</Markdown>
+            {inProgress ? (
+              <span className="whitespace-pre-wrap">{item.text}</span>
+            ) : (
+              <Markdown>{item.text}</Markdown>
+            )}
           </div>
         )}
       </div>
@@ -1891,6 +2101,14 @@ function MessageComposer({
         "kick off a NaN / instability investigation on the latest failed run",
       argHint: "[run-id]  (defaults to latest failed)",
     });
+    items.push({
+      kind: "builtin",
+      layer: "range",
+      name: "wire",
+      description:
+        "patch a known-fragile integration (currently: Hydra + W&B)",
+      argHint: "wandb-hydra",
+    });
 
     // Codex builtins (operate on Codex's thread / config).
     items.push({
@@ -2044,6 +2262,21 @@ function MessageComposer({
       } else if (item.kind === "builtin" && item.name === "clear") {
         await api.clearAgent(session.id);
         clearConversation(session.id);
+      } else if (item.kind === "builtin" && item.name === "wire") {
+        const sub = slashArgs.trim();
+        if (sub !== "wandb-hydra") {
+          throw new Error("usage: /wire wandb-hydra");
+        }
+        pushSystem(session.id, "Scanning repo for Hydra + W&B foot-guns…");
+        const { proposal } = await api.previewWireWandbHydra(session.id);
+        if (!proposal) {
+          pushSystem(
+            session.id,
+            "No W&B usage detected in this repo — nothing to wire.",
+          );
+        }
+        // If proposal is non-null, the WS broadcast already pushed the
+        // card into the conversation via pushWireProposal.
       } else if (item.kind === "builtin" && item.name === "investigate") {
         // Pick the target run: explicit arg, else the most-recent failed
         // run for this session.

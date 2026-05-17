@@ -183,6 +183,39 @@ export function dismissScaffold(
   );
 }
 
+export function previewWireWandbHydra(
+  sessionId: string,
+): Promise<{ proposal: import("@shared/protocol").WireProposal | null }> {
+  return jsonRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/wire/wandb-hydra/preview`,
+    { method: "POST" },
+  );
+}
+
+export function acceptWire(
+  sessionId: string,
+  proposalId: string,
+  patches: import("@shared/protocol").WirePatch[],
+): Promise<{ ok: boolean; written: string[] }> {
+  return jsonRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/wire/wandb-hydra/accept`,
+    {
+      method: "POST",
+      body: JSON.stringify({ proposalId, patches }),
+    },
+  );
+}
+
+export function dismissWire(
+  sessionId: string,
+  proposalId: string,
+): Promise<{ ok: boolean }> {
+  return jsonRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/wire/wandb-hydra/dismiss`,
+    { method: "POST", body: JSON.stringify({ proposalId }) },
+  );
+}
+
 export function attachRepo(
   sessionId: string,
   repoPath: string,

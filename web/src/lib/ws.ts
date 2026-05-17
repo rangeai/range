@@ -288,5 +288,15 @@ export function applyServerMessage(msg: ServerMessage): void {
           status: msg.decision,
         });
       break;
+    case "wire_proposed":
+      useAppStore.getState().pushWireProposal(msg.sessionId, msg.proposal);
+      break;
+    case "wire_resolved":
+      useAppStore
+        .getState()
+        .updateWireEntry(msg.sessionId, msg.proposalId, {
+          status: msg.decision,
+        });
+      break;
   }
 }

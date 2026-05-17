@@ -502,6 +502,46 @@ export interface ServerScaffoldResolved {
   t: number;
 }
 
+// ─── Wire proposal (P3: /wire wandb-hydra) ────────────────────────────────
+
+export type WireKind = "wandb-hydra";
+
+export interface WirePatch {
+  /** Path relative to the repo root. */
+  path: string;
+  oldText: string;
+  newText: string;
+  changes: string[];
+}
+
+export interface WireProposal {
+  proposalId: string;
+  kind: WireKind;
+  detected: {
+    hydra: boolean;
+    wandb: boolean;
+    hydraSignals: string[];
+    wandbSignals: string[];
+  };
+  patches: WirePatch[];
+  notes: string[];
+}
+
+export interface ServerWireProposed {
+  type: "wire_proposed";
+  sessionId: string;
+  proposal: WireProposal;
+  t: number;
+}
+
+export interface ServerWireResolved {
+  type: "wire_resolved";
+  sessionId: string;
+  proposalId: string;
+  decision: "accepted" | "dismissed";
+  t: number;
+}
+
 export type ServerMessage =
   | ServerHello
   | ServerPing
@@ -527,7 +567,9 @@ export type ServerMessage =
   | ServerAgentTurnDiff
   | ServerAgentCompacted
   | ServerScaffoldProposed
-  | ServerScaffoldResolved;
+  | ServerScaffoldResolved
+  | ServerWireProposed
+  | ServerWireResolved;
 
 // ─── Browser → Server ──────────────────────────────────────────────────────
 

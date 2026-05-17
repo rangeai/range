@@ -1,0 +1,7 @@
+project: hydra-wandb-broken-fixture
+env_name: Cartpole
+algo:
+  name: ppo
+  lr: 3e-4
+  num_envs: 16
+seed: 42
