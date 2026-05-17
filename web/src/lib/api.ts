@@ -244,6 +244,29 @@ export function abortRun(id: string): Promise<{ ok: boolean }> {
   });
 }
 
+export interface TrajectoryInspectResponse {
+  report: {
+    runId: string;
+    runDir: string;
+    totalTicks: number;
+    cleanTicks: number;
+    contaminatedTicks: number;
+    firstHit: { tick: number; t: number; fields: string[] } | null;
+    lastCleanContext: Record<string, unknown>[];
+    contaminatedContext: Record<string, unknown>[];
+  };
+  /** Markdown block ready to paste into a Codex prompt. */
+  promptBlock: string;
+}
+
+export function inspectTrajectory(
+  runId: string,
+): Promise<TrajectoryInspectResponse> {
+  return jsonRequest(
+    `/api/runs/${encodeURIComponent(runId)}/trajectory/inspect`,
+  );
+}
+
 export function listRunArtifacts(
   runId: string,
 ): Promise<{ artifacts: import("@shared/protocol").ArtifactInfo[] }> {

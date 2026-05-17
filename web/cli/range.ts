@@ -579,6 +579,163 @@ async function runsCompare(args: ParsedArgs): Promise<number> {
   return 0;
 }
 
+// ─── trajectory inspect ───────────────────────────────────────────────────
+
+interface NaNHit {
+  tick: number;
+  t: number;
+  fields: string[];
+}
+
+interface InspectReport {
+  runId: string;
+  runDir: string;
+  totalTicks: number;
+  cleanTicks: number;
+  contaminatedTicks: number;
+  firstHit: NaNHit | null;
+  lastCleanContext: Record<string, unknown>[];
+  contaminatedContext: Record<string, unknown>[];
+}
+
+/**
+ * `events.jsonl` is written by Python's `json.dumps`, which emits the
+ * non-standard literals `NaN`, `Infinity`, `-Infinity` for IEEE-754
+ * specials. JS `JSON.parse` rejects those, so we normalize to a string
+ * marker first, parse, and remember which fields were special.
+ */
+const SPECIAL_RE = /\b(NaN|-Infinity|Infinity)\b/g;
+const SPECIAL_MARKER_RE = /"__SPECIAL_(NaN|-Infinity|Infinity)__"/g;
+
+function parseEventLine(line: string): Record<string, unknown> {
+  const normalized = line.replace(SPECIAL_RE, (m) => `"__SPECIAL_${m}__"`);
+  return JSON.parse(normalized) as Record<string, unknown>;
+}
+
+function prettyPrintEvent(obj: Record<string, unknown>): string {
+  return JSON.stringify(obj).replace(
+    SPECIAL_MARKER_RE,
+    (_, kind) => String(kind),
+  );
+}
+
+/**
+ * Trajectory ticks have `t` as a finite number AND a `pose` array.
+ * Range also appends its own runner-state events (type=run_log etc)
+ * to the same file — those get filtered out.
+ */
+function isTrajectoryTick(obj: Record<string, unknown>): boolean {
+  return typeof obj.t === "number" && Array.isArray(obj.pose);
+}
+
+function findSpecialFields(obj: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === "string" && v.startsWith("__SPECIAL_")) {
+      out.push(k);
+    } else if (Array.isArray(v)) {
+      for (let i = 0; i < v.length; i++) {
+        const child = v[i];
+        if (typeof child === "string" && child.startsWith("__SPECIAL_")) {
+          out.push(`${k}[${i}]`);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+async function trajectoryInspect(args: ParsedArgs): Promise<number> {
+  const runId = args.positional[0];
+  if (!runId) {
+    throw new UsageError(
+      "usage: range trajectory inspect <run-id> [--context N]",
+    );
+  }
+  const context = Math.max(1, Number(args.flags["context"] ?? 5));
+
+  const { run } = await rangeGet<{ run: Run }>(
+    `/api/runs/${encodeURIComponent(runId)}`,
+  );
+  const eventsPath = `${run.runDir}/events.jsonl`;
+  const file = Bun.file(eventsPath);
+  if (!(await file.exists())) {
+    throw new Error(`no events.jsonl found at ${eventsPath}`);
+  }
+  const text = await file.text();
+  const lines = text.split("\n").filter((l) => l.length > 0);
+
+  let firstHit: NaNHit | null = null;
+  const lastCleanRing: Record<string, unknown>[] = [];
+  const contaminatedSample: Record<string, unknown>[] = [];
+  let contaminated = 0;
+  let clean = 0;
+
+  let tickIdx = 0;
+  for (const line of lines) {
+    let obj: Record<string, unknown>;
+    try {
+      obj = parseEventLine(line);
+    } catch {
+      continue;
+    }
+    if (!isTrajectoryTick(obj)) continue;
+    const specialFields = findSpecialFields(obj);
+    if (specialFields.length === 0) {
+      clean++;
+      lastCleanRing.push(obj);
+      if (lastCleanRing.length > context) lastCleanRing.shift();
+    } else {
+      contaminated++;
+      if (firstHit === null) {
+        firstHit = {
+          tick: tickIdx,
+          t: typeof obj.t === "number" ? obj.t : -1,
+          fields: specialFields,
+        };
+      }
+      if (contaminatedSample.length < context) contaminatedSample.push(obj);
+    }
+    tickIdx++;
+  }
+
+  const report: InspectReport = {
+    runId,
+    runDir: run.runDir,
+    totalTicks: lines.length,
+    cleanTicks: clean,
+    contaminatedTicks: contaminated,
+    firstHit,
+    lastCleanContext: lastCleanRing,
+    contaminatedContext: contaminatedSample,
+  };
+
+  if (isJson(args.flags)) {
+    printJson(report);
+    return 0;
+  }
+
+  console.log(`trajectory inspect — run ${shortId(runId)}`);
+  console.log(`  trajectory ticks: ${clean + contaminated}`);
+  console.log(`  clean: ${report.cleanTicks}  contaminated: ${report.contaminatedTicks}`);
+  if (!firstHit) {
+    console.log(`  no NaN/Inf detected.`);
+    return 0;
+  }
+  console.log(
+    `  first NaN/Inf: tick ${firstHit.tick}  t=${firstHit.t.toFixed(3)}s`,
+  );
+  console.log(`  affected fields: ${firstHit.fields.join(", ")}`);
+
+  if (report.lastCleanContext.length > 0) {
+    console.log(`  last ${report.lastCleanContext.length} clean tick(s):`);
+    for (const o of report.lastCleanContext) console.log(`    ${prettyPrintEvent(o)}`);
+  }
+  console.log(`  first contaminated tick(s):`);
+  for (const o of report.contaminatedContext) console.log(`    ${prettyPrintEvent(o)}`);
+  return 0;
+}
+
 async function gatesList(args: ParsedArgs): Promise<number> {
   const id = await resolveSessionId(args.flags);
   const { result } = await rangeGet<{ result: { profile: Profile | null } }>(
@@ -683,6 +840,7 @@ const dispatch: Record<string, Handler> = {
   "runs logs": runsLogs,
   "runs wait": runsWait,
   "runs compare": runsCompare,
+  "trajectory inspect": trajectoryInspect,
   "gates list": gatesList,
   "gates results": gatesResults,
   "pr draft": prDraft,
@@ -709,6 +867,7 @@ Usage: range <group> <subcommand> [flags]
             show <id> | metrics <id> | artifacts <id> | logs <id> [--tail N]
             download <id> <artifact> [--out path]
             wait <id> [--timeout 600] | compare <id1> <id2> [...]
+  trajectory inspect <run-id> [--context N]
   gates     list | results
   pr        draft | open --title T --body-file F
 

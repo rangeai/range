@@ -1883,6 +1883,14 @@ function MessageComposer({
       name: "clear",
       description: "archive history + restart Codex + clear chat (keeps runs)",
     });
+    items.push({
+      kind: "builtin",
+      layer: "range",
+      name: "investigate",
+      description:
+        "kick off a NaN / instability investigation on the latest failed run",
+      argHint: "[run-id]  (defaults to latest failed)",
+    });
 
     // Codex builtins (operate on Codex's thread / config).
     items.push({
@@ -2036,6 +2044,47 @@ function MessageComposer({
       } else if (item.kind === "builtin" && item.name === "clear") {
         await api.clearAgent(session.id);
         clearConversation(session.id);
+      } else if (item.kind === "builtin" && item.name === "investigate") {
+        // Pick the target run: explicit arg, else the most-recent failed
+        // run for this session.
+        let targetRunId = slashArgs.trim() || null;
+        if (!targetRunId) {
+          const runs = useAppStore
+            .getState()
+            .runsBySession.get(session.id);
+          if (runs) {
+            const failed = [...runs.values()]
+              .filter((r) => r.state === "failed")
+              .sort((a, b) => b.createdAt - a.createdAt);
+            targetRunId = failed[0]?.id ?? null;
+          }
+        }
+        if (!targetRunId) {
+          throw new Error(
+            "no failed run found in this session — pass a run id explicitly: /investigate <run-id>",
+          );
+        }
+        pushSystem(session.id, `Inspecting trajectory for ${targetRunId}…`);
+        const { report, promptBlock } = await api.inspectTrajectory(targetRunId);
+        if (!report.firstHit) {
+          pushSystem(
+            session.id,
+            `Trajectory is clean — no NaN/Inf detected in ${report.totalTicks} ticks. Nothing to investigate.`,
+          );
+        } else {
+          const prompt =
+            promptBlock +
+            "\n\n" +
+            "Investigate this. Steps:\n" +
+            "1. Identify which code path is responsible for the contaminated " +
+            "field(s). Look at the source files that produce these values.\n" +
+            "2. Bisect: try running the same scenario with the env var " +
+            "`YARD_BUG_*` toggled off to confirm the bug is the cause.\n" +
+            "3. Propose a fix as a code edit. Keep it minimal — the bug is " +
+            "behind a guard; remove the guard or fix the underlying logic.\n" +
+            "Use `range trajectory inspect <run-id>` for follow-up runs.";
+          await api.sendAgentMessage(session.id, prompt);
+        }
       } else if (item.kind === "builtin" && item.name === "model") {
         if (!slashArgs) throw new Error("usage: /model <name>");
         const res = await api.setModel(session.id, slashArgs);

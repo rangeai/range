@@ -74,6 +74,10 @@ import {
 } from "./runner.ts";
 import { loadProfile } from "./profile.ts";
 import { detectScaffold, writeScaffold } from "./scaffold.ts";
+import {
+  formatReportForCodex,
+  inspectTrajectory,
+} from "./trajectory.ts";
 import { getLatestResults } from "./verification.ts";
 import { draftPr, openPr } from "./pr.ts";
 import { listDirectory, homeDir } from "./fs_browse.ts";
@@ -704,6 +708,22 @@ app.get("/api/runs/:id/artifacts/:name", async (c) => {
   const file = Bun.file(filePath);
   if (!(await file.exists())) return c.json({ error: "not found" }, 404);
   return new Response(file);
+});
+
+app.get("/api/runs/:id/trajectory/inspect", async (c) => {
+  const id = c.req.param("id");
+  const run = getRun(id);
+  if (!run) return c.json({ error: "run not found" }, 404);
+  try {
+    const report = await inspectTrajectory(id);
+    const promptBlock = formatReportForCodex(report, run.scenarioName ?? null);
+    return c.json({ report, promptBlock });
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      400,
+    );
+  }
 });
 
 app.post("/api/runs/:id/abort", async (c) => {
