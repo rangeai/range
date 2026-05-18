@@ -72,6 +72,34 @@ help with. Range targets it directly.
 
 ---
 
+## 3a. Picking an agent backend (Codex vs OpenCode)
+
+Range talks to *some* AI agent under the hood; the agent reads your
+code, makes plans, edits files, and runs commands on your behalf.
+There are two backends shipped with v0.6, and you pick one when
+creating a session:
+
+| | **Codex** (default) | **OpenCode** |
+|---|---|---|
+| **What it is** | OpenAI's official agent CLI | Open-source, provider-agnostic agent |
+| **LLMs supported** | OpenAI (GPT-5, o1, etc.) | Anthropic, OpenAI, Google, Ollama (local), and more — anything OpenCode supports |
+| **License of agent itself** | Closed | MIT |
+| **Compliance-friendly?** | OpenAI only | Pick the provider that fits |
+| **Best for** | Fastest setup, OpenAI users | Teams that need a specific provider, local models, or BYOK |
+
+Both backends speak the same Range surface — scaffolds, scenarios,
+`/investigate`, `/wire`, `/eval`, `/reward show`, `/obs`,
+trajectory scrubber, plan tracking. A few Codex-specific slash
+items (`/model`, `/think`, `/approvals`) are hidden on OpenCode
+sessions because they map to Codex's `thread/start` params; the
+rest work identically.
+
+You change backends only at session-create time (radio button in
+the home composer). Switching backends mid-session would lose
+conversation context; instead, create a new session.
+
+---
+
 ## 3. The cast: Range, Yard, Playground, Isaac Lab
 
 Range plays nice with anything; in practice it ships with three

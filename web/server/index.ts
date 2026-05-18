@@ -89,10 +89,12 @@ import { getLatestResults } from "./verification.ts";
 import { draftPr, openPr } from "./pr.ts";
 import { listDirectory, homeDir } from "./fs_browse.ts";
 import { runScenario } from "./scenarios.ts";
-// codex.ts is imported for its side effect of registering codexBackend
-// in the agent registry. The free-function exports are no longer used
-// directly — every per-session agent call routes through backendFor().
+// codex.ts and opencode.ts are imported for their side effect of
+// registering their respective backends in the agent registry. The
+// free-function exports from codex.ts (composeBaseInstructions etc.)
+// are still used for Range-side concerns that aren't backend-specific.
 import "./codex.ts";
+import "./opencode.ts";
 import {
   archiveAgentHistory,
   composeBaseInstructions,

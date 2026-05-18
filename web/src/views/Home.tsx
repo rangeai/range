@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
 import * as api from "../lib/api";
 import { sessionsByRecency, useAppStore } from "../lib/store";
-import type { Session, SessionKind } from "@shared/protocol";
+import type {
+  AgentBackendName,
+  Session,
+  SessionKind,
+} from "@shared/protocol";
 
 /**
  * Home is "no session selected" — just the composer. The session list
@@ -33,6 +37,7 @@ function recentRepoPaths(map: Map<string, Session>): string[] {
 function Hero({ sessions }: { sessions: Map<string, Session> }) {
   const [prompt, setPrompt] = useState("");
   const [repoPath, setRepoPath] = useState("");
+  const [backend, setBackend] = useState<AgentBackendName>("codex");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const upsertSession = useAppStore((s) => s.upsertSession);
@@ -49,6 +54,7 @@ function Hero({ sessions }: { sessions: Map<string, Session> }) {
         kind,
         prompt: prompt.trim() || null,
         repoPath: repoPath.trim() || null,
+        backend,
       });
       upsertSession(res.session);
       openSession(res.session.id);
@@ -155,6 +161,26 @@ function Hero({ sessions }: { sessions: Map<string, Session> }) {
             )}
           </div>
 
+          <div className="px-5 py-2 border-t border-[var(--br-1)] flex items-center gap-2 bg-[var(--bg)]">
+            <span className="text-[10.5px] uppercase tracking-[0.14em] text-fg-3 font-medium">
+              backend
+            </span>
+            <BackendChip
+              active={backend === "codex"}
+              onClick={() => setBackend("codex")}
+              disabled={busy}
+              label="codex"
+              hint="OpenAI · default"
+            />
+            <BackendChip
+              active={backend === "opencode"}
+              onClick={() => setBackend("opencode")}
+              disabled={busy}
+              label="opencode"
+              hint="any provider · OSS"
+            />
+          </div>
+
           <div className="px-5 py-2.5 border-t border-[var(--br-1)] flex items-center gap-3 bg-[var(--bg)]">
             <span className="text-[11px] text-fg-3">
               ⏎ to start a freeform session · or pick a kind →
@@ -251,6 +277,36 @@ function QuickChip({
       className="text-[12px] text-fg-1 border border-[var(--br-1)] bg-[var(--bg-1)] hover:border-[var(--br-3)] hover:bg-[var(--bg-2)] disabled:opacity-60 rounded-md px-3 py-1.5 transition"
     >
       {children}
+    </button>
+  );
+}
+
+function BackendChip({
+  active,
+  onClick,
+  disabled,
+  label,
+  hint,
+}: {
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`text-[11px] px-2.5 py-1 rounded-md border transition disabled:opacity-60 ${
+        active
+          ? "border-[var(--accent)] bg-[var(--accent-soft)] text-fg-1"
+          : "border-[var(--br-1)] bg-[var(--bg-1)] text-fg-2 hover:border-[var(--br-3)] hover:bg-[var(--bg-2)]"
+      }`}
+      title={hint}
+    >
+      <span className="font-mono">{label}</span>
+      <span className="ml-1.5 text-fg-3 text-[10px]">{hint}</span>
     </button>
   );
 }

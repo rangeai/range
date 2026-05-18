@@ -133,6 +133,19 @@ let you swap models, sandbox levels, reasoning effort, and approval
 modes mid-session. Conversations resume across idle-shutdown via
 `thread/resume`. PRs draft + open inline with `/pr`.
 
+### 🔀 Pick your agent backend
+
+Two backends ship with v0.6:
+
+- **Codex** — OpenAI's official CLI. Fast setup, OpenAI models.
+- **OpenCode** — open-source, MIT, talks to any LLM provider
+  (Anthropic, Google, Ollama for local models, OpenAI, more).
+
+Choose at session create. Same Range surface either way: every
+scaffold, scenario, slash builtin, and investigation flow works
+on both. Codex-specific reasoning/effort knobs hide gracefully on
+OpenCode sessions.
+
 ### ⚡ Built for the laptop
 
 - Lazy-start: Codex only spawns when you actually need it
@@ -215,7 +228,7 @@ deferred behind specific customer signals).
 
 ## Roadmap
 
-**v0.5 is complete.** All five planned phases shipped.
+**v0.5 is complete. v0.6 (multi-backend) just landed.**
 
 | Phase | What | Status |
 |---|---|---|
@@ -224,6 +237,7 @@ deferred behind specific customer signals).
 | **P3** | `/wire wandb-hydra` integration helper | ✅ shipped |
 | **P4** | Checkpoints + reward functions as primitives | ✅ shipped |
 | **P5** | Live plan tracking + interactive trajectory scrubber | ✅ shipped |
+| **v0.6** | OpenCode backend — any LLM provider (Anthropic, Google, Ollama, …) | ✅ shipped |
 | **v0.7** | Remote compute (Linux + RTX) for Isaac Lab users — the monetization gate | 📋 planned |
 
 ---

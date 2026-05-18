@@ -488,11 +488,20 @@ function ApprovalSettings({ session }: { session: Session }) {
 function CodexPills({ session }: { session: Session }) {
   const usage = useAppStore((s) => s.tokenUsageBySession.get(session.id));
   const pills: Array<{ label: string; value: string; title: string }> = [];
+  // Backend is always shown so it's obvious which agent is driving.
+  pills.push({
+    label: "agent",
+    value: session.backend,
+    title:
+      session.backend === "opencode"
+        ? "OpenCode — provider-agnostic OSS agent (any LLM)"
+        : "Codex — OpenAI's agent CLI",
+  });
   if (session.model) {
     pills.push({
       label: "model",
       value: session.model,
-      title: `Codex is using model: ${session.model}`,
+      title: `Model: ${session.model}`,
     });
   }
   if (session.reasoningEffort) {
@@ -2196,21 +2205,34 @@ function MessageComposer({
       argHint: "<run-id> <step>",
     });
 
-    // Codex builtins (operate on Codex's thread / config).
-    items.push({
-      kind: "builtin",
-      layer: "codex",
-      name: "model",
-      description: `switch the LLM (current: ${session.model ?? "default"})`,
-      argHint: "<name>  e.g. gpt-5, claude-sonnet-4.5",
-    });
-    items.push({
-      kind: "builtin",
-      layer: "codex",
-      name: "think",
-      description: `set reasoning effort (current: ${session.reasoningEffort ?? "default"})`,
-      argHint: "low | medium | high",
-    });
+    // Agent-layer builtins. Some are Codex-specific (model/think/
+    // approvals depend on Codex's thread/start params); the rest are
+    // universal (compact, tokens, diff, sandbox via permission
+    // ruleset). For OpenCode sessions we hide the Codex-only ones.
+    const isCodex = session.backend === "codex";
+    if (isCodex) {
+      items.push({
+        kind: "builtin",
+        layer: "codex",
+        name: "model",
+        description: `switch the LLM (current: ${session.model ?? "default"})`,
+        argHint: "<name>  e.g. gpt-5, claude-sonnet-4.5",
+      });
+      items.push({
+        kind: "builtin",
+        layer: "codex",
+        name: "think",
+        description: `set reasoning effort (current: ${session.reasoningEffort ?? "default"})`,
+        argHint: "low | medium | high",
+      });
+      items.push({
+        kind: "builtin",
+        layer: "codex",
+        name: "approvals",
+        description: `toggle auto-approve (current: ${session.autoApprove ? "on" : "off"})`,
+        argHint: "on | off",
+      });
+    }
     items.push({
       kind: "builtin",
       layer: "codex",
@@ -2221,22 +2243,17 @@ function MessageComposer({
     items.push({
       kind: "builtin",
       layer: "codex",
-      name: "approvals",
-      description: `toggle auto-approve (current: ${session.autoApprove ? "on" : "off"})`,
-      argHint: "on | off",
-    });
-    items.push({
-      kind: "builtin",
-      layer: "codex",
       name: "compact",
       description: "summarize earlier turns and continue (saves context tokens)",
     });
-    items.push({
-      kind: "builtin",
-      layer: "codex",
-      name: "tokens",
-      description: "show current thread token usage",
-    });
+    if (isCodex) {
+      items.push({
+        kind: "builtin",
+        layer: "codex",
+        name: "tokens",
+        description: "show current thread token usage",
+      });
+    }
     items.push({
       kind: "builtin",
       layer: "codex",

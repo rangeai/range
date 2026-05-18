@@ -74,6 +74,36 @@ codex app-server --help     # this is the JSON-RPC server Range spawns
 You'll also need to authenticate with Codex — that's a one-time
 `codex login` flow.
 
+### 1.4b OpenCode (optional, for the second agent backend)
+
+Range v0.6 supports two agent backends: **Codex** (OpenAI's CLI,
+default) and **OpenCode** (open-source, provider-agnostic). Skip
+this if you only plan to use Codex.
+
+```bash
+curl -fsSL https://opencode.ai/install | bash
+# Or via npm:
+npm install -g opencode-ai
+```
+
+Verify:
+
+```bash
+opencode --version
+opencode serve --help
+```
+
+Then auth at least one provider — OpenCode supports Anthropic,
+OpenAI, Google, Ollama (local), and many others:
+
+```bash
+opencode auth login
+# Interactive picker; pick a provider and follow the prompts.
+```
+
+You don't need to start `opencode serve` manually — Range spawns
+its own shared instance when a session uses the `opencode` backend.
+
 ### 1.5 git, gh (for PR drafting)
 
 ```bash
@@ -231,6 +261,32 @@ Or, less surgically:
 ```bash
 pkill -f "bun.*server/index.ts"
 ```
+
+### "opencode: command not found"
+
+Same family of fix as the codex case — `~/.opencode/bin/opencode`
+is the install location for the standalone installer. Add to PATH:
+
+```bash
+export PATH="$HOME/.opencode/bin:$PATH"
+```
+
+The installer usually adds this to your shell rc; you may need to
+`source ~/.zshrc` in any already-open shell.
+
+### OpenCode session sends a prompt but no response shows up
+
+The integration spawns `opencode serve` as a subprocess and reads
+its own log at `~/.range/opencode-serve.log`. Tail that file:
+
+```bash
+tail -f ~/.range/opencode-serve.log
+```
+
+If you see `AI_APICallError` or 4xx errors against a provider URL,
+the provider isn't configured correctly. Run `opencode auth login`
+to (re-)authenticate. The Anthropic and OpenAI flows are the most
+reliable; provider-routed gateways sometimes drift.
 
 ### Many `codex app-server` processes accumulating
 
