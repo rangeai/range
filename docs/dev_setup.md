@@ -104,6 +104,19 @@ opencode auth login
 You don't need to start `opencode serve` manually — Range spawns
 its own shared instance when a session uses the `opencode` backend.
 
+**Picking a model for OpenCode sessions.** Range's default model
+selector picks the first provider/model OpenCode reports, which
+isn't always what you want. To pin a specific combination, set
+two env vars before starting Range:
+
+```bash
+export RANGE_OPENCODE_PROVIDER=nvidia-inference-gateway
+export RANGE_OPENCODE_MODEL=openai/openai/gpt-5.5
+```
+
+Anything OpenCode lists at `/config/providers` is valid. The
+env-pinned combo applies to every OpenCode session.
+
 ### 1.5 git, gh (for PR drafting)
 
 ```bash

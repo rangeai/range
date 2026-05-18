@@ -326,16 +326,29 @@ function rulesetForSandbox(sandbox: Sandbox): { permission: PermRule[] } {
 }
 
 /**
- * Pick a default (providerID, modelID). The user's OpenCode auth
- * is already configured at install time; we just pick whichever
- * provider is the first one OpenCode reports. If the user wants a
- * specific model they can set it explicitly via `/model` in the
- * future (UI gating TBD for backend-specific value validation).
+ * Pick a default (providerID, modelID). Override via env:
+ *
+ *   RANGE_OPENCODE_PROVIDER=nvidia-inference-gateway
+ *   RANGE_OPENCODE_MODEL=openai/openai/gpt-5.5
+ *
+ * Otherwise: walk `/config/providers` and pick the first
+ * provider/model pair. Throws if nothing is configured.
+ *
+ * (Long-term, this should be a per-session knob threaded through
+ * Range's `model` column instead of a global default. Today the
+ * column is a single string — fine for Codex, ambiguous for
+ * OpenCode's `{providerID, modelID}` shape. Defer the schema
+ * cleanup until we have a real signal.)
  */
 async function defaultModel(): Promise<{
   providerID: string;
   modelID: string;
 }> {
+  const envProvider = process.env.RANGE_OPENCODE_PROVIDER;
+  const envModel = process.env.RANGE_OPENCODE_MODEL;
+  if (envProvider && envModel) {
+    return { providerID: envProvider, modelID: envModel };
+  }
   type ConfigProvidersResponse = {
     providers: {
       id: string;
@@ -409,26 +422,25 @@ async function consumeSseEvents(
           });
         }
       }
-      // Suppress noisy heartbeats from any tracing we add later;
-      // tools that look at the log can use turn boundaries instead.
     }
   }
   log.info("opencode", "SSE stream ended", { workspace });
 }
 
-function handleEvent(ev: Record<string, unknown>): void {
-  const type = typeof ev.type === "string" ? ev.type : "";
+function handleEvent(envelope: Record<string, unknown>): void {
+  const type = typeof envelope.type === "string" ? envelope.type : "";
   if (!type) return;
 
-  // `sessionID` is on most events. For events that target a single
-  // Range session, look up by OpenCode session id.
+  // OpenCode's SSE envelopes wrap event-specific data inside a
+  // `properties` object: `{ id, type, properties: { sessionID, ... } }`.
+  // Unwrap so each handler reads payload fields directly.
+  const ev =
+    typeof envelope.properties === "object" && envelope.properties !== null
+      ? (envelope.properties as Record<string, unknown>)
+      : envelope;
+
   const openCodeSessionId =
-    typeof ev.sessionID === "string"
-      ? ev.sessionID
-      : typeof (ev.properties as { sessionID?: unknown })?.sessionID ===
-          "string"
-        ? ((ev.properties as { sessionID: string }).sessionID as string)
-        : "";
+    typeof ev.sessionID === "string" ? ev.sessionID : "";
 
   const state = openCodeSessionId
     ? findRangeSessionByOpenCodeId(openCodeSessionId)
@@ -937,9 +949,13 @@ export const openCodeBackend: AgentBackend = {
   async compact(rangeSessionId) {
     const state = sessions.get(rangeSessionId);
     if (!state) throw new Error(`opencode session not running: ${rangeSessionId}`);
+    // OpenCode's summarize endpoint requires a model — it runs an
+    // LLM pass to summarize the prior conversation. Use whichever
+    // model the rest of the session is using.
+    const model = await defaultModel();
     await apiPost(
-      `/session/${state.openCodeSessionId}/summarize`,
-      {},
+      `/session/${state.openCodeSessionId}/summarize?directory=${encodeURIComponent(state.workspace)}`,
+      { providerID: model.providerID, modelID: model.modelID },
     );
   },
 
