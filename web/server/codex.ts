@@ -30,6 +30,10 @@ import type {
   Machine,
   RemoteProvider,
 } from "./remote/provider.ts";
+import {
+  clearSessionRemote,
+  setSessionRemote,
+} from "./remote/registry.ts";
 import type {
   AgentItem,
   AgentItemState,
@@ -363,6 +367,7 @@ export async function startAgent(
         remoteEnv: {},
       });
       remoteHandle = { provider, machine, env: envHandle };
+      setSessionRemote(sessionId, remoteHandle);
       // Disable the `unified_exec` codex feature on the remote — its
       // Linux sandbox implementation hits "Failed to create unified
       // exec process: No such file or directory (os error 2)" on
@@ -1298,6 +1303,7 @@ function teardown(cs: CodexSession, reason: string): void {
     // already closed
   }
   if (cs.remote) {
+    clearSessionRemote(cs.sessionId);
     // Best-effort standDown — log but don't block teardown on a
     // misbehaving provider.
     void cs.remote.provider

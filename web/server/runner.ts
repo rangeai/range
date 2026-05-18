@@ -23,6 +23,7 @@ import {
   setRunState,
 } from "./runs.ts";
 import { getSession } from "./sessions.ts";
+import { getSessionRemote } from "./remote/registry.ts";
 import { evaluateGatesForRun } from "./verification.ts";
 import { readdir, stat } from "node:fs/promises";
 import type {
@@ -102,6 +103,21 @@ async function pipeStream(
   }
 }
 
+/**
+ * Pick the env subset worth forwarding to a remote scenario spawn.
+ * Forwarding all of process.env would (a) bloat the remote command
+ * line, (b) leak local-only paths (PATH, HOME) that don't make sense
+ * on the remote side. Keep RANGE_* and any extra vars the caller
+ * explicitly set.
+ */
+function pickRangeEnv(env: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (k.startsWith("RANGE_")) out[k] = v;
+  }
+  return out;
+}
+
 export async function startRun(input: StartRunInput): Promise<Run> {
   const session = getSession(input.sessionId);
   if (!session) {
@@ -171,17 +187,31 @@ async function runInBackground(
   const running = markRunRunning(runId, startedAt);
   if (running) broadcast({ type: "run_started", run: running });
 
+  // If the session has an active remote, the scenario spawns there
+  // (where the GPU is) and its artifacts live on the remote disk.
+  // Range still writes its own per-run events.jsonl locally so the UI
+  // can stream run_log entries.
+  const remote = getSessionRemote(initialRun.sessionId);
+  const isRemote = remote !== null;
+  const effectiveCwd = isRemote ? remote.env.remoteRepoPath : initialRun.cwd;
+  const remoteRunDir = isRemote
+    ? `${remote.env.remoteRepoPath}/.range-runs/${runId}`
+    : null;
+  const scenarioRunDir = isRemote ? remoteRunDir! : initialRun.runDir;
+  const metricsFile = isRemote
+    ? `${remoteRunDir}/metrics.json`
+    : join(initialRun.runDir, "metrics.json");
+
   writeSystem(
-    `starting: ${initialRun.command.join(" ")}  (cwd=${initialRun.cwd})`,
+    `starting${isRemote ? ` [remote ${remote!.machine.providerName}:${remote!.machine.id}]` : ""}: ${initialRun.command.join(" ")}  (cwd=${effectiveCwd})`,
     0,
   );
 
-  const metricsFile = join(initialRun.runDir, "metrics.json");
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
     ...extraEnv,
     RANGE_RUN_ID: runId,
-    RANGE_RUN_DIR: initialRun.runDir,
+    RANGE_RUN_DIR: scenarioRunDir,
     RANGE_METRICS_FILE: metricsFile,
   };
   if (initialRun.scenarioName) env.RANGE_SCENARIO = initialRun.scenarioName;
@@ -204,15 +234,46 @@ async function runInBackground(
     }),
   );
 
-  let proc: Subprocess<"ignore", "pipe", "pipe"> | null = null;
+  // Ensure the remote run dir exists before spawning the scenario. The
+  // provider's spawn() shell-quotes the cwd argument, so a missing
+  // dir would just fail with `cd: No such file or directory`.
+  if (isRemote) {
+    try {
+      const mk = remote!.env.spawn(["mkdir", "-p", remoteRunDir!]);
+      const code = await mk.exited;
+      if (code !== 0) {
+        writeSystem(
+          `pre-spawn: mkdir of remote run dir failed (exit ${code})`,
+          Date.now() - startedAt,
+        );
+      }
+    } catch (err) {
+      writeSystem(
+        `pre-spawn: mkdir of remote run dir threw: ${err instanceof Error ? err.message : err}`,
+        Date.now() - startedAt,
+      );
+    }
+  }
+
+  let proc:
+    | Subprocess<"ignore" | "pipe", "pipe", "pipe">
+    | null = null;
   try {
-    proc = Bun.spawn(expandedCommand, {
-      cwd: initialRun.cwd,
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
-      env,
-    });
+    proc = isRemote
+      ? remote!.env.spawn(expandedCommand, {
+          cwd: effectiveCwd,
+          // The provider's spawn injects these as `VAR=value` prefixes
+          // on the remote shell line — match the subset that scenarios
+          // actually consume so we don't leak local-only vars.
+          env: pickRangeEnv(env),
+        })
+      : Bun.spawn(expandedCommand, {
+          cwd: effectiveCwd,
+          stdin: "ignore",
+          stdout: "pipe",
+          stderr: "pipe",
+          env,
+        });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     writeSystem(`spawn failed: ${msg}`, Date.now() - startedAt);
