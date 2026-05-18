@@ -651,6 +651,416 @@ async function detectIsaacLab(
   };
 }
 
+// ─── Generic Python detector ──────────────────────────────────────────────
+//
+// Catch-all for "this is a Python project we don't have a framework
+// signature for." Reads only structural signals — package manager,
+// entrypoints, config dirs — never the project's actual Python code.
+// Deliberately makes ZERO guesses about CLI flags: the user edits the
+// scaffolded YAML to add their own.
+
+interface PythonLauncher {
+  /** Tokens that invoke Python under the right venv, e.g.
+   *  ["uv", "run", "python"] or ["python3"]. */
+  argv: string[];
+  /** Short label for notes/comments. */
+  kind: "uv" | "poetry" | "pipenv" | "system";
+}
+
+interface CommandSpec {
+  argv: string[];
+  description: string;
+}
+
+interface PythonEntrypoint {
+  /** Scenario name in YAML; safe identifier. */
+  name: string;
+  argv: string[];
+  /** Provenance string surfaced in description + notes. */
+  source: string;
+}
+
+async function detectPythonLauncher(
+  repoPath: string,
+  pyprojectText: string,
+): Promise<PythonLauncher> {
+  if (
+    (await exists(join(repoPath, "uv.lock"))) ||
+    pyprojectText.includes("[tool.uv]")
+  ) {
+    return { argv: ["uv", "run", "python"], kind: "uv" };
+  }
+  if (await exists(join(repoPath, "poetry.lock"))) {
+    return { argv: ["poetry", "run", "python"], kind: "poetry" };
+  }
+  if (
+    (await exists(join(repoPath, "Pipfile"))) ||
+    (await exists(join(repoPath, "Pipfile.lock")))
+  ) {
+    return { argv: ["pipenv", "run", "python"], kind: "pipenv" };
+  }
+  return { argv: ["python3"], kind: "system" };
+}
+
+async function detectInstallCommand(
+  launcher: PythonLauncher,
+  hasRequirements: boolean,
+  hasPyproject: boolean,
+  hasSetupPy: boolean,
+): Promise<CommandSpec | null> {
+  if (launcher.kind === "uv") {
+    return { argv: ["uv", "sync"], description: "Create + sync the venv with uv" };
+  }
+  if (launcher.kind === "poetry") {
+    return {
+      argv: ["poetry", "install"],
+      description: "Install dependencies via Poetry",
+    };
+  }
+  if (launcher.kind === "pipenv") {
+    return {
+      argv: ["pipenv", "install", "--dev"],
+      description: "Install dependencies via Pipenv",
+    };
+  }
+  if (hasRequirements) {
+    return {
+      argv: ["python3", "-m", "pip", "install", "-r", "requirements.txt"],
+      description: "Install dependencies from requirements.txt",
+    };
+  }
+  if (hasPyproject || hasSetupPy) {
+    return {
+      argv: ["python3", "-m", "pip", "install", "-e", "."],
+      description: "Install the project in editable mode",
+    };
+  }
+  return null;
+}
+
+function parseConsoleScripts(pyprojectText: string): { name: string }[] {
+  // Best-effort regex parse of `[project.scripts]` TOML block — we
+  // only care about the script names, not their entry-point modules.
+  const m = pyprojectText.match(/\[project\.scripts\]([\s\S]*?)(?=\n\[|\n*$)/);
+  if (!m) return [];
+  const body = m[1];
+  const out: { name: string }[] = [];
+  const re = /^\s*([A-Za-z_][\w-]*)\s*=\s*"[^"]+"/gm;
+  let mm: RegExpExecArray | null;
+  while ((mm = re.exec(body)) !== null) out.push({ name: mm[1] });
+  return out;
+}
+
+async function findPythonEntrypoints(
+  repoPath: string,
+  launcher: PythonLauncher,
+  pyprojectText: string,
+): Promise<PythonEntrypoint[]> {
+  const entries: PythonEntrypoint[] = [];
+  const seen = new Set<string>();
+
+  // 1. Conventional names at the repo root.
+  for (const fname of ["train.py", "main.py", "run.py"]) {
+    if (!(await exists(join(repoPath, fname)))) continue;
+    const stem = fname.replace(/\.py$/, "");
+    entries.push({
+      name: stem,
+      argv: [...launcher.argv, fname],
+      source: `repo root ${fname}`,
+    });
+    seen.add(stem);
+  }
+
+  // 2. Console scripts declared in pyproject — runnable after `install`.
+  for (const cs of parseConsoleScripts(pyprojectText)) {
+    const safeName = cs.name.replace(/[^A-Za-z0-9_]/g, "_");
+    if (seen.has(safeName)) continue;
+    let argv: string[];
+    if (launcher.kind === "uv") argv = ["uv", "run", cs.name];
+    else if (launcher.kind === "poetry") argv = ["poetry", "run", cs.name];
+    else if (launcher.kind === "pipenv") argv = ["pipenv", "run", cs.name];
+    else argv = [cs.name];
+    entries.push({
+      name: safeName,
+      argv,
+      source: `console_scripts → ${cs.name}`,
+    });
+    seen.add(safeName);
+  }
+
+  // 3. Fallback: depth-limited walk looking for *.py with a __main__
+  //    guard. Skips well-known noise dirs. Capped so a big repo
+  //    doesn't blow up the proposal card.
+  if (entries.length === 0) {
+    const skip = new Set([
+      "tests",
+      "test",
+      "docs",
+      "doc",
+      "build",
+      "dist",
+      ".venv",
+      "venv",
+      "env",
+      "__pycache__",
+      ".git",
+      "node_modules",
+      ".tox",
+      "site-packages",
+      "logs",
+      "log",
+      ".idea",
+      ".vscode",
+      "wandb",
+      "outputs",
+      "checkpoints",
+    ]);
+    type Found = { relPath: string; depth: number };
+    const found: Found[] = [];
+    async function walk(dirAbs: string, dirRel: string, depth: number) {
+      if (depth > 3 || found.length >= 24) return;
+      let items: string[];
+      try {
+        items = await readdir(dirAbs);
+      } catch {
+        return;
+      }
+      for (const f of items) {
+        if (f.startsWith(".") && f !== ".") continue;
+        const abs = join(dirAbs, f);
+        const rel = dirRel ? `${dirRel}/${f}` : f;
+        if (await isDir(abs)) {
+          if (skip.has(f)) continue;
+          await walk(abs, rel, depth + 1);
+        } else if (f.endsWith(".py")) {
+          const text = await readFileOr(abs);
+          if (!/__name__\s*==\s*['"]__main__['"]/.test(text)) continue;
+          found.push({ relPath: rel, depth });
+        }
+        if (found.length >= 24) return;
+      }
+    }
+    await walk(repoPath, "", 0);
+    // Shortest paths first, then lexicographic — keeps the proposal
+    // readable and prioritizes "obvious" entrypoints.
+    found.sort(
+      (a, b) =>
+        a.depth - b.depth ||
+        a.relPath.length - b.relPath.length ||
+        a.relPath.localeCompare(b.relPath),
+    );
+    for (const f of found) {
+      const stem = basename(f.relPath).replace(/\.py$/, "");
+      const dirParts = dirname(f.relPath)
+        .split("/")
+        .filter((s) => s && s !== ".");
+      const base = stem || "main";
+      let candidate = base;
+      // Disambiguate collisions by prefixing the immediate directory.
+      if (seen.has(candidate) && dirParts.length > 0) {
+        candidate = `${dirParts[dirParts.length - 1]}_${base}`;
+      }
+      let suffix = 1;
+      while (seen.has(candidate)) candidate = `${base}_${++suffix}`;
+      const safeName = candidate.replace(/[^A-Za-z0-9_]/g, "_");
+      entries.push({
+        name: safeName,
+        argv: [...launcher.argv, f.relPath],
+        source: `${f.relPath} (has __main__ guard)`,
+      });
+      seen.add(safeName);
+      if (entries.length >= 12) break;
+    }
+  }
+
+  return entries;
+}
+
+function buildGenericPythonYaml(d: {
+  projectName: string;
+  launcher: PythonLauncher;
+  install: CommandSpec | null;
+  test: CommandSpec | null;
+  entrypoints: PythonEntrypoint[];
+  configHints: string[];
+}): string {
+  const lines: string[] = [];
+  lines.push("# Auto-generated by Range — edit freely.");
+  lines.push("# Detected: generic Python project (no framework signature).");
+  lines.push(`# Launcher: ${d.launcher.kind} (${d.launcher.argv.join(" ")})`);
+  if (d.configHints.length > 0) {
+    lines.push(`# Config hints: ${d.configHints.join(", ")}`);
+  }
+  lines.push("# Range can't infer your CLI flags from an arbitrary project —");
+  lines.push("# edit each scenario below to add your --flags.");
+  lines.push("# Use ${RANGE_SEED}, ${RANGE_RUN_DIR}, ${RANGE_CHECKPOINT} etc.");
+  lines.push("# in args for sweep variables.");
+  lines.push("version: 1");
+  lines.push("");
+  lines.push("project:");
+  lines.push(`  name: ${d.projectName}`);
+  lines.push("  description: Auto-detected Python project");
+  lines.push("  stack: generic_python");
+  lines.push("  language: python");
+  lines.push("");
+
+  lines.push("commands:");
+  if (d.install) {
+    lines.push("  install:");
+    lines.push(`    args: ${JSON.stringify(d.install.argv)}`);
+    lines.push(`    description: ${d.install.description}`);
+  }
+  if (d.test) {
+    lines.push("  test:");
+    lines.push(`    args: ${JSON.stringify(d.test.argv)}`);
+    lines.push(`    description: ${d.test.description}`);
+  }
+  if (d.entrypoints.length > 0) {
+    const ep = d.entrypoints[0];
+    lines.push("  smoke:");
+    lines.push(`    args: ${JSON.stringify(ep.argv)}`);
+    lines.push(
+      `    description: Smoke-launch ${ep.name} with no args — edit to add yours`,
+    );
+  }
+  if (!d.install && !d.test && d.entrypoints.length === 0) {
+    lines.push("  # (none — fill in your own)");
+  }
+  lines.push("");
+
+  if (d.entrypoints.length > 0) {
+    lines.push("scenarios:");
+    for (const ep of d.entrypoints) {
+      lines.push(`  - name: ${ep.name}`);
+      lines.push(`    description: ${ep.source}`);
+      lines.push(`    args: ${JSON.stringify(ep.argv)}`);
+      lines.push("    env:");
+      lines.push('      RANGE_RUN_DIR: "${RANGE_RUN_DIR}"');
+    }
+    lines.push("");
+  } else {
+    lines.push("# No runnable entrypoint detected — add your scenario below.");
+    lines.push("scenarios: []");
+    lines.push("");
+  }
+
+  lines.push("verification:");
+  lines.push("  gates: []");
+  lines.push("");
+  return lines.join("\n");
+}
+
+async function detectGenericPython(
+  repoPath: string,
+): Promise<ScaffoldProposal | null> {
+  const hasPyproject = await exists(join(repoPath, "pyproject.toml"));
+  const hasSetupPy = await exists(join(repoPath, "setup.py"));
+  const hasRequirements = await exists(join(repoPath, "requirements.txt"));
+
+  let hasRootPy = false;
+  try {
+    const items = await readdir(repoPath);
+    hasRootPy = items.some((f) => f.endsWith(".py"));
+  } catch {
+    // unreadable — fall through with hasRootPy=false
+  }
+
+  if (!hasPyproject && !hasSetupPy && !hasRequirements && !hasRootPy) {
+    return null;
+  }
+
+  const pyprojectText = hasPyproject
+    ? await readFileOr(join(repoPath, "pyproject.toml"))
+    : "";
+
+  const launcher = await detectPythonLauncher(repoPath, pyprojectText);
+  const install = await detectInstallCommand(
+    launcher,
+    hasRequirements,
+    hasPyproject,
+    hasSetupPy,
+  );
+
+  const hasTestsDir = await isDir(join(repoPath, "tests"));
+  const pytestSignal =
+    pyprojectText.includes("pytest") ||
+    (await readFileOr(join(repoPath, "requirements.txt"))).includes("pytest") ||
+    (await readFileOr(join(repoPath, "requirements-dev.txt"))).includes("pytest");
+  const test: CommandSpec | null =
+    hasTestsDir || pytestSignal
+      ? {
+          argv: [...launcher.argv, "-m", "pytest", "-q"],
+          description: "Run the test suite",
+        }
+      : null;
+
+  const entrypoints = await findPythonEntrypoints(
+    repoPath,
+    launcher,
+    pyprojectText,
+  );
+
+  const configHints: string[] = [];
+  for (const dir of ["configs", "conf", "hyperparams", "hyperparameters"]) {
+    if (await isDir(join(repoPath, dir))) configHints.push(`${dir}/`);
+  }
+
+  const projectName =
+    basename(repoPath).replace(/[^A-Za-z0-9_]/g, "_") || "project";
+
+  const yamlText = buildGenericPythonYaml({
+    projectName,
+    launcher,
+    install,
+    test,
+    entrypoints,
+    configHints,
+  });
+
+  const commandCount =
+    (install ? 1 : 0) + (test ? 1 : 0) + (entrypoints.length > 0 ? 1 : 0);
+  const summary: ScaffoldSummary = {
+    commands: commandCount,
+    scenarios: entrypoints.length,
+    rewardFunctions: 0,
+    checkpoints: 0,
+  };
+
+  const notes: string[] = [];
+  notes.push("Generic Python project — no framework-specific signature matched.");
+  notes.push(
+    launcher.kind === "system"
+      ? "Launcher: system python3 (no lockfile detected)."
+      : `Launcher: ${launcher.kind} (${launcher.argv.join(" ")}).`,
+  );
+  if (entrypoints.length > 0) {
+    notes.push(
+      `Probable entrypoints: ${entrypoints.map((e) => `${e.name} (${e.source})`).join("; ")}.`,
+    );
+  } else {
+    notes.push(
+      "No runnable entrypoint detected — the scaffolded YAML has an empty scenarios list; add your own.",
+    );
+  }
+  if (configHints.length > 0) {
+    notes.push(
+      `Config-style dirs present: ${configHints.join(", ")}. Wire them in via scenario args.`,
+    );
+  }
+  notes.push(
+    "Range can't infer your CLI flags from arbitrary projects — edit each scenario to add --your-flags. Use ${RANGE_*} templates for sweep variables.",
+  );
+
+  return {
+    proposalId: randomUUID(),
+    stack: "generic_python",
+    stackLabel: "Generic Python",
+    yamlText,
+    summary,
+    notes,
+  };
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────
 
 /**
@@ -670,7 +1080,9 @@ export async function detectScaffold(
   const isaacLab = await detectIsaacLab(repoPath);
   if (isaacLab) return isaacLab;
 
-  // Future: detectGenericPython fallback.
+  const generic = await detectGenericPython(repoPath);
+  if (generic) return generic;
+
   return null;
 }
 
