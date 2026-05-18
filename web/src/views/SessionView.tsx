@@ -3917,13 +3917,22 @@ function SweepGroup({ runs }: { runs: Run[] }) {
   );
 }
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const m = Math.floor(s / 60);
+  const rem = Math.floor(s - m * 60);
+  return `${m}m ${rem}s`;
+}
+
 function RunRow({ run }: { run: Run }) {
   const stateColor = runStateColor(run.state);
   const dotClass = runStateDotClass(run.state);
   const cmd = run.command.join(" ");
   const elapsed =
     run.finishedAt && run.startedAt
-      ? `${run.finishedAt - run.startedAt}ms`
+      ? formatDuration(run.finishedAt - run.startedAt)
       : run.startedAt
         ? "running"
         : "queued";
@@ -3993,7 +4002,20 @@ function RunRow({ run }: { run: Run }) {
           >
             {run.state.replace(/_/g, " ")}
           </span>
-          <span className="font-mono text-[10.5px] text-fg-3 w-[60px] text-right">
+          <span
+            className="font-mono text-[11px] tabular-nums w-[70px] text-right"
+            style={{
+              color:
+                run.state === "succeeded" || run.state === "failed"
+                  ? "var(--fg-1)"
+                  : "var(--fg-3)",
+            }}
+            title={
+              run.finishedAt && run.startedAt
+                ? `${run.finishedAt - run.startedAt}ms`
+                : undefined
+            }
+          >
             {elapsed}
           </span>
         </div>
