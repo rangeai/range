@@ -594,6 +594,143 @@ function compactBranch(branch: string): string {
   return branch;
 }
 
+// ─── /transcript renderer ──────────────────────────────────────────────────
+
+function fmtTime(ts: number): string {
+  return new Date(ts).toISOString().replace("T", " ").slice(0, 19);
+}
+
+function fmtCommand(cmd: string | string[]): string {
+  return Array.isArray(cmd) ? cmd.join(" ") : cmd;
+}
+
+function renderConversationAsMarkdown(opts: {
+  session: Session;
+  entries: ConversationEntry[];
+  runs: Map<string, Run>;
+}): string {
+  const { session, entries, runs } = opts;
+  const out: string[] = [];
+
+  out.push(`# Range session transcript`);
+  out.push("");
+  out.push(`- **Session:** \`${session.id}\``);
+  if (session.title) out.push(`- **Title:** ${session.title}`);
+  if (session.repoPath) out.push(`- **Repo:** \`${session.repoPath}\``);
+  out.push(`- **Backend:** ${session.backend ?? "codex"}`);
+  if (session.model) out.push(`- **Model:** ${session.model}`);
+  out.push(`- **Created:** ${fmtTime(session.createdAt)}`);
+  out.push("");
+  out.push("---");
+  out.push("");
+
+  for (const entry of entries) {
+    if (entry.kind === "user") {
+      out.push(`### You · ${fmtTime(entry.t)}`);
+      out.push("");
+      out.push(entry.text);
+      out.push("");
+    } else if (entry.kind === "system") {
+      out.push(`> _${entry.text}_  \`(${fmtTime(entry.t)})\``);
+      out.push("");
+    } else if (entry.kind === "turn") {
+      const ok = entry.status === "ok" ? "✓" : entry.status;
+      out.push(`---`);
+      out.push(`#### Turn ${ok} · ${fmtTime(entry.t)}`);
+      if (entry.prompt) {
+        out.push("");
+        out.push(`> ${entry.prompt.split("\n").join("\n> ")}`);
+      }
+      out.push("");
+    } else if (entry.kind === "agent_item") {
+      const item = entry.item;
+      if (item.kind === "message") {
+        out.push(`**Agent:**`);
+        out.push("");
+        out.push(item.text);
+        out.push("");
+      } else if (item.kind === "reasoning") {
+        out.push(`<details><summary>reasoning</summary>`);
+        out.push("");
+        out.push(item.text);
+        out.push("");
+        out.push(`</details>`);
+        out.push("");
+      } else if (item.kind === "command") {
+        const exit =
+          item.exitCode === undefined || item.exitCode === null
+            ? "?"
+            : item.exitCode;
+        out.push(
+          `\`\`\`bash\n# exit ${exit}${item.durationMs ? ` · ${item.durationMs}ms` : ""}\n$ ${fmtCommand(item.command)}\n\`\`\``,
+        );
+        if (item.output) {
+          out.push("");
+          out.push("```");
+          out.push(item.output.slice(0, 4000));
+          out.push("```");
+        }
+        out.push("");
+      } else if (item.kind === "file_edit") {
+        out.push(
+          `📝 **${item.changeKind}** \`${item.path}\`${item.summary ? ` — ${item.summary}` : ""}`,
+        );
+        out.push("");
+      } else if (item.kind === "mcp_tool") {
+        out.push(`🔌 MCP tool \`${item.server ?? "?"}/${item.tool ?? "?"}\``);
+        if (item.output) {
+          out.push("");
+          out.push("```");
+          out.push(item.output.slice(0, 2000));
+          out.push("```");
+        }
+        out.push("");
+      } else if (item.kind === "web_search") {
+        out.push(`🔎 Web search: \`${item.query ?? "?"}\``);
+        out.push("");
+      }
+    } else if (entry.kind === "run") {
+      const run = runs.get(entry.runId);
+      if (run) {
+        const elapsed =
+          run.startedAt && run.finishedAt
+            ? `${((run.finishedAt - run.startedAt) / 1000).toFixed(1)}s`
+            : run.state;
+        out.push(
+          `▶ **Run** \`${run.scenarioName ?? "(custom)"}\` · ${run.state} · ${elapsed}`,
+        );
+        out.push("");
+        out.push(`\`\`\`\n${fmtCommand(run.command)}\n\`\`\``);
+        out.push("");
+      } else {
+        out.push(`▶ Run \`${entry.runId}\` (not loaded)`);
+        out.push("");
+      }
+    } else if (entry.kind === "scaffold_proposal") {
+      out.push(
+        `📋 Scaffold proposal · ${entry.proposal.stackLabel} · ${entry.status ?? "pending"}`,
+      );
+      out.push("");
+    } else if (entry.kind === "wire_proposal") {
+      out.push(`🪛 Wire proposal · ${entry.status ?? "pending"}`);
+      out.push("");
+    } else if (entry.kind === "approval") {
+      out.push(
+        `⚠️ Approval (${entry.approval.kind}) · ${entry.approval.decision ?? "pending"}`,
+      );
+      out.push("");
+    } else if (entry.kind === "pr_draft") {
+      out.push(`🔁 PR draft`);
+      out.push("");
+    }
+  }
+
+  out.push("");
+  out.push(`_Exported ${fmtTime(Date.now())} by Range \`/transcript\`._`);
+  out.push("");
+  return out.join("\n");
+}
+
 // ─── Conversation block ────────────────────────────────────────────────────
 
 const EMPTY_CONV: ConversationState = {
@@ -2295,6 +2432,13 @@ function MessageComposer({
     items.push({
       kind: "builtin",
       layer: "range",
+      name: "transcript",
+      description:
+        "download this session's conversation as a markdown file (useful for blog/post writeups)",
+    });
+    items.push({
+      kind: "builtin",
+      layer: "range",
       name: "wire",
       description:
         "patch a known-fragile integration (currently: Hydra + W&B)",
@@ -2593,6 +2737,27 @@ function MessageComposer({
         }
         // If proposal is non-null, the WS broadcast already pushed the
         // card into the conversation via pushWireProposal.
+      } else if (item.kind === "builtin" && item.name === "transcript") {
+        const filename = slashArgs.trim() || `transcript-${session.id}.md`;
+        const conv =
+          useAppStore.getState().conversationsBySession.get(session.id);
+        const runs =
+          useAppStore.getState().runsBySession.get(session.id) ?? new Map();
+        const md = renderConversationAsMarkdown({
+          session,
+          entries: conv?.entries ?? [],
+          runs,
+        });
+        const blob = new Blob([md], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        pushSystem(session.id, `Downloaded \`${filename}\` (${md.length} chars).`);
       } else if (item.kind === "builtin" && item.name === "investigate") {
         // Pick the target run: explicit arg, else the most-recent failed
         // run for this session.
