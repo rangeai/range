@@ -1,3 +1,9 @@
+---
+title: Finding a one-line reward bug in MuJoCo Playground with Range
+date: 2026-05-18
+description: A planted cartpole reward bug + Range vs. raw Codex comparison.
+---
+
 # Finding a one-line reward bug in MuJoCo Playground with Range
 
 > **Honesty disclaimer.** This bug was **planted by us** in

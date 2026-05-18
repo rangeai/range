@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+  <!-- A 30° wedge originating from bottom-center, mirroring the
+       in-app .fanmark icon. -->
+  <defs>
+    <mask id="notch">
+      <rect width="24" height="24" fill="white"/>
+      <circle cx="12" cy="22" r="1.5" fill="black"/>
+    </mask>
+  </defs>
+  <path d="M 12 22 L 9 4 L 15 4 Z" fill="oklch(0.9 0.18 110)" mask="url(#notch)"/>
+</svg>

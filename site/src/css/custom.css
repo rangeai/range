@@ -1,0 +1,161 @@
+/**
+ * Range theme — dark by default. The palette mirrors the in-app
+ * Range UI: warm-dark backgrounds, amber accent, monospace-leaning
+ * typography. Light mode is supported via the toggle but tuned for
+ * the dark experience.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Geist:wght@100..900&family=JetBrains+Mono:wght@300..700&display=swap");
+
+/* ─── Dark theme (default) ─────────────────────────────────────── */
+
+[data-theme="dark"] {
+  /* Backgrounds */
+  --ifm-background-color: oklch(0.165 0.006 70);
+  --ifm-background-surface-color: oklch(0.195 0.006 70);
+  --ifm-color-emphasis-100: oklch(0.225 0.006 70);
+  --ifm-color-emphasis-200: oklch(0.26 0.006 70);
+  --ifm-color-emphasis-300: oklch(0.28 0.006 70);
+  --ifm-color-emphasis-400: oklch(0.36 0.006 70);
+  --ifm-color-emphasis-500: oklch(0.46 0.006 70);
+
+  /* Borders */
+  --ifm-toc-border-color: oklch(0.28 0.006 70);
+  --ifm-color-secondary: oklch(0.36 0.006 70);
+
+  /* Foreground / text */
+  --ifm-font-color-base: oklch(0.96 0.005 80);
+  --ifm-font-color-secondary: oklch(0.8 0.005 80);
+  --ifm-color-content-secondary: oklch(0.62 0.005 80);
+
+  /* Accent — amber */
+  --ifm-color-primary: #d4c33d;
+  --ifm-color-primary-dark: #c0ad2a;
+  --ifm-color-primary-darker: #b39e1a;
+  --ifm-color-primary-darkest: #8c7b0e;
+  --ifm-color-primary-light: #ddd25c;
+  --ifm-color-primary-lighter: #e3da72;
+  --ifm-color-primary-lightest: #efe9a4;
+
+  /* Code blocks */
+  --ifm-code-background: oklch(0.225 0.006 70);
+  --ifm-pre-background: oklch(0.195 0.006 70);
+  --docusaurus-highlighted-code-line-bg: oklch(0.28 0.006 70 / 0.6);
+
+  /* Links */
+  --ifm-link-color: var(--ifm-color-primary-light);
+  --ifm-link-hover-color: var(--ifm-color-primary);
+
+  /* Navbar */
+  --ifm-navbar-background-color: oklch(0.195 0.006 70);
+  --ifm-navbar-shadow: 0 1px 0 oklch(0.28 0.006 70);
+
+  /* Range-specific accent semantics, exposed for custom MDX */
+  --range-accent: oklch(0.9 0.18 110);
+  --range-accent-soft: oklch(0.9 0.18 110 / 0.13);
+  --range-ok: oklch(0.78 0.13 155);
+  --range-warn: oklch(0.82 0.14 70);
+  --range-err: oklch(0.72 0.18 25);
+}
+
+/* ─── Light theme (also tuned, but a clear second-class citizen) ── */
+
+:root {
+  --ifm-color-primary: #8c7b0e;
+  --ifm-color-primary-dark: #7e6e0c;
+  --ifm-color-primary-darker: #76680b;
+  --ifm-color-primary-darkest: #61560a;
+  --ifm-color-primary-light: #9a890f;
+  --ifm-color-primary-lighter: #a18f10;
+  --ifm-color-primary-lightest: #b8a317;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.08);
+}
+
+/* ─── Typography ───────────────────────────────────────────────── */
+
+:root {
+  --ifm-font-family-base:
+    "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ifm-font-family-monospace:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --ifm-heading-font-family: "Bricolage Grotesque", var(--ifm-font-family-base);
+  --ifm-heading-font-weight: 400;
+  --ifm-h1-font-size: 2.4rem;
+  --ifm-h2-font-size: 1.6rem;
+  --ifm-h3-font-size: 1.25rem;
+  --ifm-font-size-base: 15px;
+  --ifm-line-height-base: 1.65;
+  --ifm-paragraph-margin-bottom: 1.1em;
+  --ifm-code-font-size: 91%;
+  --ifm-spacing-horizontal: 1rem;
+}
+
+h1, h2, h3, h4 {
+  letter-spacing: -0.015em;
+}
+
+h1 {
+  font-weight: 300;
+}
+
+/* Hairline-light navbar title — matches the in-app header */
+.navbar__title {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  font-size: 1.1rem;
+}
+
+/* Inline code: tighter than default, more visible against dark bg */
+[data-theme="dark"] code {
+  background: oklch(0.225 0.006 70);
+  border: 1px solid oklch(0.28 0.006 70);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.88em;
+}
+
+/* Code blocks: warmer dark, less stark than default */
+[data-theme="dark"] .prism-code,
+[data-theme="dark"] pre {
+  background: oklch(0.195 0.006 70) !important;
+  border: 1px solid oklch(0.28 0.006 70);
+}
+
+/* Sidebar polish */
+.menu__link {
+  font-size: 0.92rem;
+}
+.menu__link--active {
+  font-weight: 500;
+}
+
+/* Tables — denser, more terminal-ish */
+.markdown table {
+  font-size: 0.9rem;
+}
+.markdown table th {
+  background: oklch(0.225 0.006 70);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.75rem;
+}
+
+/* Blockquotes — match the in-app warn-callout style */
+[data-theme="dark"] .markdown blockquote {
+  background: oklch(0.82 0.14 70 / 0.06);
+  border-left: 2px solid oklch(0.82 0.14 70 / 0.6);
+  color: oklch(0.86 0.005 80);
+}
+
+/* Hero / landing tweaks */
+.hero {
+  background:
+    radial-gradient(
+      ellipse 60% 50% at 50% 0%,
+      oklch(0.9 0.18 110 / 0.08),
+      transparent 65%
+    ),
+    var(--ifm-background-color);
+}

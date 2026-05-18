@@ -14,14 +14,15 @@ with upstream, and how to use the planted-bug branches to reproduce
 the benchmark numbers Range cites.
 
 **Each fixture is a self-contained story.** The branch is the
-evidence; the comparison run is the data; and a blog post in
-[`docs/posts/`](posts/) ties them together. Pattern per fixture:
+evidence; the comparison run is the data; and a blog post on the
+[Range site](https://rangeai.github.io/range/blog/) ties them
+together. Pattern per fixture:
 
   1. **Branch on the fork** with the planted bug as a one-commit diff.
   2. **Two transcripts** — `/investigate` via Range, then the same
      prompt against raw Codex CLI. Both saved verbatim.
-  3. **A post** at `docs/posts/fixture-NN-<slug>.md` with hook +
-     bug pattern + naive-debug path + Range path + the numbers.
+  3. **A post** at `site/blog/YYYY-MM-DD-fixture-NN-<slug>.md` with
+     hook + bug pattern + naive-debug path + Range path + the numbers.
      Disclaimers up top so we never look like we're saying
      "Google has a NaN bug."
   4. **Optional video** of the Range flow, once the post is solid.
@@ -97,7 +98,7 @@ Done quarterly is fine; weekly is overkill.
 
 | branch | flow | what's planted | severity | scenario it surfaces in | post |
 |---|---|---|---|---|---|
-| [`range-fixture-cartpole-reward-nan`](https://github.com/rangeai/mujoco_playground/tree/range-fixture-cartpole-reward-nan) | `/investigate` | **(live)** `log(cos+1)` in `_dense_reward` → `log(0)=-inf` at pole-fully-down → NaN propagates into the value loss. | Subtle | `cartpole_balance` | [fixture-01](posts/fixture-01-cartpole-reward-nan.md) |
+| [`range-fixture-cartpole-reward-nan`](https://github.com/rangeai/mujoco_playground/tree/range-fixture-cartpole-reward-nan) | `/investigate` | **(live)** `log(cos+1)` in `_dense_reward` → `log(0)=-inf` at pole-fully-down → NaN propagates into the value loss. | Subtle | `cartpole_balance` | [fixture-01](https://rangeai.github.io/range/blog/fixture-01-cartpole-reward-nan) |
 | `range-fixture-g1-reward-blowup`         | `/investigate` | (planned) Reward weight off by 100× — episodes succeed but value-loss explodes. | Subtle | `g1_joystick_flat_terrain` | — |
 | `range-fixture-aloha-stale-sentinel`     | `/investigate` | (planned) Stale-sentinel branch in manipulation reward fn — emits NaN on tight grasps only. Seed-dependent. | Hard to find | `aloha_hand_over` | — |
 | `range-fixture-hydra-wandb-broken`       | `/wire wandb-hydra` | (planned) Hydra + W&B integration with the three canonical foot-guns (`start_method`, DictConfig serialization, sweep group key). | Polish | any scenario | — |

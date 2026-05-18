@@ -54,9 +54,13 @@ range/
 │   ├── dev_setup.md                # install + first-run guide
 │   ├── eli5*.md                    # robotics primers
 │   ├── playground_fixtures.md      # proof-harness catalog
-│   ├── posts/                      # per-fixture writeups
 │   ├── contributing/               # docs you're reading right now
 │   └── archive/                    # superseded / historical specs
+├── site/                           # Docusaurus brand + docs + blog site
+│   ├── blog/                       # fixture writeups and engineering notes
+│   ├── src/pages/index.tsx         # marketing landing page
+│   ├── docusaurus.config.ts        # site config, theme, nav, footer
+│   └── sidebars.ts                 # docs nav structure
 └── web/                            # the entire app
     ├── server/                     # Hono HTTP+WS server (Bun runtime)
     ├── src/                        # React frontend (Vite)

@@ -306,7 +306,7 @@ tool helps. Maps exactly onto the Codex investigation strength.
 
 **Success criterion:** Against a planted "NaN bug" in Yard's PD
 controller (a divide-by-zero path triggered by specific seeds),
-Codex finds it in <5 turns and proposes the correct fix.
+Codex finds it in under 5 turns and proposes the correct fix.
 
 **Rough effort:** 1–2 weeks. Mostly Codex prompt scaffolding +
 trajectory-inspection CLI plumbing. Reuses existing

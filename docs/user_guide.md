@@ -244,7 +244,7 @@ current catalog. The flow:
 - Codex reads the bug, finds the offending code path, proposes a
   fix.
 
-Range's P2 success criterion is **<5 Codex turns to root-cause** on
+Range's P2 success criterion is **under 5 Codex turns to root-cause** on
 these fixtures. The harness measures the time delta vs. raw Codex
 (no Range context) so the "Range adds value" claim is grounded in
 numbers, not vibes.
