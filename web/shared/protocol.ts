@@ -43,9 +43,14 @@ export interface Session {
   model: string | null;
   /** Reasoning effort hint forwarded to Codex's thread/start. */
   reasoningEffort: "low" | "medium" | "high" | null;
+  /** Which agent backend powers this session. Defaults to "codex"
+   *  for sessions created before the backend column existed. */
+  backend: AgentBackendName;
   createdAt: number;
   updatedAt: number;
 }
+
+export type AgentBackendName = "codex" | "opencode";
 
 export type ReasoningEffort = "low" | "medium" | "high";
 
@@ -635,6 +640,8 @@ export interface CreateSessionRequest {
   repo?: string | null;
   repoPath?: string | null;
   taskRef?: string | null;
+  /** Agent backend to use. Defaults to "codex" if unset. */
+  backend?: AgentBackendName;
 }
 
 export interface CreateSessionResponse {

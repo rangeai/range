@@ -241,6 +241,13 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE sessions ADD COLUMN reasoning_effort TEXT;
     `,
   },
+  {
+    id: 11,
+    name: "sessions_backend",
+    up: `
+      ALTER TABLE sessions ADD COLUMN backend TEXT NOT NULL DEFAULT 'codex';
+    `,
+  },
 ];
 
 function applyMigrations() {

@@ -41,6 +41,7 @@ interface SessionRow {
   allowed_commands: string;
   model: string | null;
   reasoning_effort: string | null;
+  backend: string;
   created_at: number;
   updated_at: number;
 }
@@ -78,6 +79,8 @@ function rowToSession(row: SessionRow): Session {
       row.reasoning_effort === "high"
         ? row.reasoning_effort
         : null,
+    backend:
+      row.backend === "opencode" ? "opencode" : "codex",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -106,8 +109,8 @@ function defaultTitle(kind: SessionKind, prompt: string | null): string {
 const insertStmt = db.prepare(`
   INSERT INTO sessions (
     id, kind, title, prompt, repo, repo_path, task_ref,
-    status, sandbox, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'workspace-write', ?, ?)
+    status, sandbox, backend, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'workspace-write', ?, ?, ?)
 `);
 
 const selectByIdStmt = db.prepare<SessionRow, [string]>(
@@ -185,6 +188,7 @@ export async function createSession(
     req.repo ?? null,
     req.repoPath ?? null,
     req.taskRef ?? null,
+    req.backend ?? "codex",
     now,
     now,
   );

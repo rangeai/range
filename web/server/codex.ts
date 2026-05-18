@@ -1247,3 +1247,52 @@ function teardown(cs: CodexSession, reason: string): void {
     reason,
   });
 }
+
+// ─── AgentBackend adapter ─────────────────────────────────────────────────
+//
+// The functions above existed before Range had a backend abstraction.
+// They stay (server/index.ts still imports them by name today) and we
+// also expose a `codexBackend` value that implements AgentBackend by
+// delegating into them. Once every caller routes through the agent
+// registry the free exports can be dropped — but for now they're a
+// thin compatibility shim.
+
+import type { AgentBackend } from "./agent.ts";
+import { registerBackend } from "./agent.ts";
+
+export const codexBackend: AgentBackend = {
+  name: "codex",
+  features: {
+    compact: true,
+    resume: true,
+    pushTokenUsage: true,
+    pushTurnDiff: true,
+    plans: true,
+  },
+  start(sessionId, options) {
+    return startAgent(sessionId, options ?? {});
+  },
+  stop(sessionId) {
+    return stopAgent(sessionId);
+  },
+  isRunning(sessionId) {
+    return isAgentRunning(sessionId);
+  },
+  sendMessage(sessionId, prompt) {
+    return sendUserMessage(sessionId, prompt);
+  },
+  respondToApproval(sessionId, requestId, decision) {
+    return respondToApproval(sessionId, requestId, decision);
+  },
+  compact(sessionId) {
+    return compactThread(sessionId);
+  },
+  shutdownAll() {
+    stopAllAgents();
+  },
+};
+
+// Register on module load so the first import wires the backend
+// into the registry. Side-effect-on-import is intentional here —
+// the registry is otherwise empty.
+registerBackend(codexBackend);

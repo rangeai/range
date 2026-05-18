@@ -89,18 +89,16 @@ import { getLatestResults } from "./verification.ts";
 import { draftPr, openPr } from "./pr.ts";
 import { listDirectory, homeDir } from "./fs_browse.ts";
 import { runScenario } from "./scenarios.ts";
+// codex.ts is imported for its side effect of registering codexBackend
+// in the agent registry. The free-function exports are no longer used
+// directly — every per-session agent call routes through backendFor().
+import "./codex.ts";
 import {
   archiveAgentHistory,
-  compactThread,
   composeBaseInstructions,
-  isAgentRunning,
   readAgentHistory,
-  respondToApproval,
-  sendUserMessage,
-  startAgent,
-  stopAgent,
-  stopAllAgents,
 } from "./codex.ts";
+import { backendFor, shutdownAllBackends } from "./agent.ts";
 import { broadcast, registerSender } from "./hub.ts";
 
 const VERSION = "0.1.0";
@@ -176,7 +174,7 @@ app.post("/api/sessions", async (c) => {
   // an idle horizon. If the session has an initial prompt, send it
   // now — that triggers the lazy-start and lands the first turn.
   if (session.prompt && session.prompt.trim().length > 0) {
-    void sendUserMessage(session.id, session.prompt).catch((err) => {
+    void backendFor(session.id).sendMessage(session.id, session.prompt).catch((err) => {
       log.warn("sessions", "initial prompt failed", {
         sessionId: session.id,
         err: String(err instanceof Error ? err.message : err),
@@ -279,9 +277,9 @@ app.post("/api/sessions/:id/sandbox", async (c) => {
   if (!session) return c.json({ error: "session not found" }, 404);
   broadcast({ type: "session_updated", session });
   // Restart Codex so the new sandbox takes effect.
-  if (isAgentRunning(id)) {
-    await stopAgent(id);
-    void startAgent(id).catch((err) => {
+  if (backendFor(id).isRunning(id)) {
+    await backendFor(id).stop(id);
+    void backendFor(id).start(id).catch((err) => {
       log.warn("sessions", "restart after sandbox change failed", {
         sessionId: id,
         err: String(err instanceof Error ? err.message : err),
@@ -306,9 +304,9 @@ app.post("/api/sessions/:id/model", async (c) => {
   const session = setSessionModel(id, model);
   if (!session) return c.json({ error: "session not found" }, 404);
   broadcast({ type: "session_updated", session });
-  if (isAgentRunning(id)) {
-    await stopAgent(id);
-    void startAgent(id).catch((err) => {
+  if (backendFor(id).isRunning(id)) {
+    await backendFor(id).stop(id);
+    void backendFor(id).start(id).catch((err) => {
       log.warn("sessions", "restart after model change failed", {
         sessionId: id,
         err: String(err instanceof Error ? err.message : err),
@@ -346,9 +344,9 @@ app.post("/api/sessions/:id/think", async (c) => {
   }
   if (!session) return c.json({ error: "session not found" }, 404);
   broadcast({ type: "session_updated", session });
-  if (isAgentRunning(id)) {
-    await stopAgent(id);
-    void startAgent(id).catch((err) => {
+  if (backendFor(id).isRunning(id)) {
+    await backendFor(id).stop(id);
+    void backendFor(id).start(id).catch((err) => {
       log.warn("sessions", "restart after think change failed", {
         sessionId: id,
         err: String(err instanceof Error ? err.message : err),
@@ -362,11 +360,11 @@ app.post("/api/sessions/:id/agent/restart", async (c) => {
   const sessionId = c.req.param("id");
   const session = getSession(sessionId);
   if (!session) return c.json({ error: "session not found" }, 404);
-  if (isAgentRunning(sessionId)) {
-    await stopAgent(sessionId);
+  if (backendFor(sessionId).isRunning(sessionId)) {
+    await backendFor(sessionId).stop(sessionId);
   }
   try {
-    const { threadId } = await startAgent(sessionId);
+    const { threadId } = await backendFor(sessionId).start(sessionId);
     return c.json({ threadId });
   } catch (err) {
     return c.json(
@@ -378,11 +376,18 @@ app.post("/api/sessions/:id/agent/restart", async (c) => {
 
 app.post("/api/sessions/:id/agent/compact", async (c) => {
   const sessionId = c.req.param("id");
-  if (!isAgentRunning(sessionId)) {
+  const backend = backendFor(sessionId);
+  if (!backend.isRunning(sessionId)) {
     return c.json({ error: "agent not running for this session" }, 400);
   }
+  if (!backend.features.compact || !backend.compact) {
+    return c.json(
+      { error: `backend "${backend.name}" does not support compact` },
+      400,
+    );
+  }
   try {
-    await compactThread(sessionId);
+    await backend.compact(sessionId);
     return c.json({ ok: true });
   } catch (err) {
     return c.json(
@@ -396,12 +401,12 @@ app.post("/api/sessions/:id/agent/clear", async (c) => {
   const sessionId = c.req.param("id");
   const session = getSession(sessionId);
   if (!session) return c.json({ error: "session not found" }, 404);
-  if (isAgentRunning(sessionId)) {
-    await stopAgent(sessionId);
+  if (backendFor(sessionId).isRunning(sessionId)) {
+    await backendFor(sessionId).stop(sessionId);
   }
   await archiveAgentHistory(sessionId);
   try {
-    const { threadId } = await startAgent(sessionId);
+    const { threadId } = await backendFor(sessionId).start(sessionId);
     return c.json({ threadId });
   } catch (err) {
     return c.json(
@@ -428,9 +433,9 @@ app.post("/api/sessions/:id/auto-approve", async (c) => {
   // Codex sets approval_policy at thread/start time. If the agent is
   // currently running, the policy is baked in for this thread; restart
   // so the new setting takes effect.
-  if (isAgentRunning(id)) {
-    await stopAgent(id);
-    void startAgent(id).catch((err) => {
+  if (backendFor(id).isRunning(id)) {
+    await backendFor(id).stop(id);
+    void backendFor(id).start(id).catch((err) => {
       log.warn("sessions", "restart after auto-approve toggle failed", {
         sessionId: id,
         err: String(err instanceof Error ? err.message : err),
@@ -444,8 +449,8 @@ app.delete("/api/sessions/:id", async (c) => {
   const id = c.req.param("id");
   const session = getSession(id);
   if (!session) return c.json({ error: "session not found" }, 404);
-  if (isAgentRunning(id)) {
-    await stopAgent(id);
+  if (backendFor(id).isRunning(id)) {
+    await backendFor(id).stop(id);
   }
   const ok = await deleteSession(id);
   if (!ok) return c.json({ error: "delete failed" }, 500);
@@ -471,9 +476,9 @@ app.post("/api/sessions/:id/attach-repo", async (c) => {
     // If Codex is running, restart it so the new cwd + baseInstructions
     // take effect immediately. Otherwise leave it asleep — next user
     // action will lazy-start with the new repo state.
-    if (isAgentRunning(sessionId)) {
-      await stopAgent(sessionId);
-      void startAgent(sessionId).catch((err) => {
+    if (backendFor(sessionId).isRunning(sessionId)) {
+      await backendFor(sessionId).stop(sessionId);
+      void backendFor(sessionId).start(sessionId).catch((err) => {
         log.warn("sessions", "restart after attach failed", {
           sessionId,
           err: String(err instanceof Error ? err.message : err),
@@ -1067,7 +1072,7 @@ app.get("/api/sessions/:id/agent/history", async (c) => {
   const { events } = await readAgentHistory(id);
   return c.json({
     events,
-    alive: isAgentRunning(id),
+    alive: backendFor(id).isRunning(id),
     threadId: session.codexThreadId,
   });
 });
@@ -1092,7 +1097,7 @@ app.post("/api/sessions/:id/agent/start", async (c) => {
     return c.json({ error: `invalid sandbox: ${body.sandbox}` }, 400);
   }
   try {
-    await startAgent(sessionId, { sandbox: body.sandbox });
+    await backendFor(sessionId).start(sessionId, { sandbox: body.sandbox });
     const fresh = getSession(sessionId);
     const response: StartAgentResponse = { session: fresh! };
     return c.json(response, 201);
@@ -1121,7 +1126,7 @@ app.post("/api/sessions/:id/agent/message", async (c) => {
   }
   try {
     // sendUserMessage handles lazy-start if Codex isn't running yet.
-    const { turnId } = await sendUserMessage(sessionId, body.prompt);
+    const { turnId } = await backendFor(sessionId).sendMessage(sessionId, body.prompt);
     const response: AgentMessageResponse = { turnId };
     return c.json(response, 201);
   } catch (err) {
@@ -1134,7 +1139,7 @@ app.post("/api/sessions/:id/agent/message", async (c) => {
 
 app.post("/api/sessions/:id/agent/stop", async (c) => {
   const sessionId = c.req.param("id");
-  const ok = await stopAgent(sessionId);
+  const ok = await backendFor(sessionId).stop(sessionId);
   if (!ok)
     return c.json({ error: "agent not running for this session" }, 404);
   return c.json({ ok: true });
@@ -1217,7 +1222,7 @@ app.get(
           log.debug("ws", "message", { type: msg.type });
           if (msg.type === "agent_approval_response") {
             const r = msg as unknown as ClientAgentApprovalResponse;
-            const ok = respondToApproval(
+            const ok = backendFor(r.sessionId).respondToApproval(
               r.sessionId,
               r.requestId,
               r.decision,
@@ -1285,13 +1290,14 @@ log.info(
 
 function shutdown(reason: string): never {
   log.info("server", `${reason} received, stopping`);
-  // Synchronously SIGKILL every spawned Codex child so we don't leak
+  // Synchronously SIGKILL every spawned agent child so we don't leak
   // processes on exit. Hot-reload (bun --hot) doesn't re-run module
-  // top-level, so the only reap path is here.
+  // top-level, so the only reap path is here. Calls every registered
+  // backend's shutdownAll.
   try {
-    stopAllAgents();
+    shutdownAllBackends();
   } catch (err) {
-    log.warn("server", "stopAllAgents failed during shutdown", {
+    log.warn("server", "shutdownAllBackends failed during shutdown", {
       err: String(err instanceof Error ? err.message : err),
     });
   }
