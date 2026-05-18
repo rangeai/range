@@ -13,6 +13,19 @@ This doc explains how the fork is laid out, how to keep it in sync
 with upstream, and how to use the planted-bug branches to reproduce
 the benchmark numbers Range cites.
 
+**Each fixture is a self-contained story.** The branch is the
+evidence; the comparison run is the data; and a blog post in
+[`docs/posts/`](posts/) ties them together. Pattern per fixture:
+
+  1. **Branch on the fork** with the planted bug as a one-commit diff.
+  2. **Two transcripts** — `/investigate` via Range, then the same
+     prompt against raw Codex CLI. Both saved verbatim.
+  3. **A post** at `docs/posts/fixture-NN-<slug>.md` with hook +
+     bug pattern + naive-debug path + Range path + the numbers.
+     Disclaimers up top so we never look like we're saying
+     "Google has a NaN bug."
+  4. **Optional video** of the Range flow, once the post is solid.
+
 ---
 
 ## Fork strategy: narrowly diverged
@@ -82,12 +95,12 @@ Done quarterly is fine; weekly is overkill.
 > v0.7. Each row below either points at a live branch (with a SHA)
 > or marks `planned` until the bug is committed to the fork.
 
-| branch | flow | what's planted | severity | scenario it surfaces in |
-|---|---|---|---|---|
-| `range-fixture-cartpole-nan`             | `/investigate` | (planned) Wrong sign in cartpole termination guard — observation goes NaN within ~50 steps. | Catastrophic | `cartpole_balance` |
-| `range-fixture-g1-reward-blowup`         | `/investigate` | (planned) Reward weight off by 100× — episodes succeed but value-loss explodes. | Subtle | `g1_joystick_flat_terrain` |
-| `range-fixture-aloha-stale-sentinel`     | `/investigate` | (planned) Stale-sentinel branch in manipulation reward fn — emits NaN on tight grasps only. Seed-dependent. | Hard to find | `aloha_hand_over` |
-| `range-fixture-hydra-wandb-broken`       | `/wire wandb-hydra` | (planned) Hydra + W&B integration with the three canonical foot-guns (`start_method`, DictConfig serialization, sweep group key). | Polish | any scenario |
+| branch | flow | what's planted | severity | scenario it surfaces in | post |
+|---|---|---|---|---|---|
+| [`range-fixture-cartpole-reward-nan`](https://github.com/rangeai/mujoco_playground/tree/range-fixture-cartpole-reward-nan) | `/investigate` | **(live)** `log(cos+1)` in `_dense_reward` → `log(0)=-inf` at pole-fully-down → NaN propagates into the value loss. | Subtle | `cartpole_balance` | [fixture-01](posts/fixture-01-cartpole-reward-nan.md) |
+| `range-fixture-g1-reward-blowup`         | `/investigate` | (planned) Reward weight off by 100× — episodes succeed but value-loss explodes. | Subtle | `g1_joystick_flat_terrain` | — |
+| `range-fixture-aloha-stale-sentinel`     | `/investigate` | (planned) Stale-sentinel branch in manipulation reward fn — emits NaN on tight grasps only. Seed-dependent. | Hard to find | `aloha_hand_over` | — |
+| `range-fixture-hydra-wandb-broken`       | `/wire wandb-hydra` | (planned) Hydra + W&B integration with the three canonical foot-guns (`start_method`, DictConfig serialization, sweep group key). | Polish | any scenario | — |
 
 ---
 
@@ -115,12 +128,13 @@ we ship v0.7's marketing.
 
 ## Open questions
 
-- Do we plant bugs as **branches** or as **commits gated behind an
-  env var** (the way Yard used to)? Branches keep the diff clean
-  but mean "to investigate bug N you must check out branch N."
-  Env-var gates let one workspace test many bugs but pollute the
-  patch history.
+- ~~Do we plant bugs as **branches** or as **commits gated behind an
+  env var**?~~ → **Resolved: branches.** Each fixture is a single
+  reviewable commit on its own branch. Easy to read, easy to
+  reproduce, no env-var bookkeeping at runtime. The cost (only one
+  fixture per checked-out workspace at a time) is worth it for
+  diff readability.
 - Do we publish the comparison numbers? Internal-only is safest
-  until we trust them; public is more credible long-term.
-
-Both pending decisions — track in the proof-harness rollout.
+  until we trust them; public is more credible long-term. Lean
+  is to publish per-post once we have ≥3 fixtures with consistent
+  shape.
