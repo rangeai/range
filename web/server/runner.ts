@@ -190,9 +190,23 @@ async function runInBackground(
     env.RANGE_SWEEP_VARIANT = JSON.stringify(initialRun.sweepVariant);
   }
 
+  // Template-expand `${VAR}` references in each arg from the env we
+  // just assembled. Lets a `range.yaml` author write something like:
+  //   args: ["python", "train.py", "--seed", "${RANGE_SEED}"]
+  // and have the sweep param land on argv. Unmatched names pass
+  // through unchanged so an unrelated `$VAR` literal won't be
+  // silently lost. Matches `${NAME}` only — not `$NAME` — to avoid
+  // collisions with shell-style refs the user might intend.
+  const expandedCommand = initialRun.command.map((arg) =>
+    arg.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (whole, name) => {
+      const v = env[name];
+      return v !== undefined ? v : whole;
+    }),
+  );
+
   let proc: Subprocess<"ignore", "pipe", "pipe"> | null = null;
   try {
-    proc = Bun.spawn(initialRun.command, {
+    proc = Bun.spawn(expandedCommand, {
       cwd: initialRun.cwd,
       stdin: "ignore",
       stdout: "pipe",

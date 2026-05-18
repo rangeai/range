@@ -559,16 +559,24 @@ app.post("/api/sessions/:id/scaffold/accept", async (c) => {
   const session = getSession(sessionId);
   if (!session) return c.json({ error: "session not found" }, 404);
   if (!session.repoPath) return c.json({ error: "session has no repo" }, 400);
-  let body: { proposalId?: string; yamlText?: string };
+  let body: {
+    proposalId?: string;
+    yamlText?: string;
+    shim?: { path: string; content: string } | null;
+  };
   try {
-    body = (await c.req.json()) as { proposalId?: string; yamlText?: string };
+    body = (await c.req.json()) as typeof body;
   } catch {
     return c.json({ error: "invalid JSON body" }, 400);
   }
   if (!body.proposalId || !body.yamlText) {
     return c.json({ error: "proposalId and yamlText required" }, 400);
   }
-  const result = await writeScaffold(session.repoPath, body.yamlText);
+  const result = await writeScaffold(
+    session.repoPath,
+    body.yamlText,
+    body.shim ?? undefined,
+  );
   if (!result.written) return c.json({ error: result.error }, 400);
 
   broadcast({
@@ -580,7 +588,11 @@ app.post("/api/sessions/:id/scaffold/accept", async (c) => {
   });
   // Nudge clients to re-read the profile.
   broadcast({ type: "session_updated", session });
-  return c.json({ ok: true, path: result.path });
+  return c.json({
+    ok: true,
+    paths: result.paths,
+    error: result.error,
+  });
 });
 
 app.post("/api/sessions/:id/wire/wandb-hydra/preview", async (c) => {

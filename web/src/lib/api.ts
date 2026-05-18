@@ -200,12 +200,13 @@ export function acceptScaffold(
   sessionId: string,
   proposalId: string,
   yamlText: string,
-): Promise<{ ok: boolean; path: string }> {
+  shim?: { path: string; content: string } | null,
+): Promise<{ ok: boolean; paths: string[]; error?: string }> {
   return jsonRequest(
     `/api/sessions/${encodeURIComponent(sessionId)}/scaffold/accept`,
     {
       method: "POST",
-      body: JSON.stringify({ proposalId, yamlText }),
+      body: JSON.stringify({ proposalId, yamlText, shim }),
     },
   );
 }

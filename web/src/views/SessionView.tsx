@@ -1238,8 +1238,14 @@ function InlineScaffoldProposal({
   errorMessage: string | null;
   sessionId: string;
 }) {
-  const [editing, setEditing] = useState(false);
   const [yamlDraft, setYamlDraft] = useState(editedYaml ?? proposal.yamlText);
+  const [shimDraft, setShimDraft] = useState(proposal.shim?.content ?? "");
+  // Which file is the user currently editing (vs previewing)? Default
+  // to preview-mode for both.
+  const [editingPath, setEditingPath] = useState<string | null>(null);
+  const [expandedPath, setExpandedPath] = useState<string | null>(
+    "range.yaml",
+  );
   const [busy, setBusy] = useState(false);
   const updateScaffold = useAppStore((s) => s.updateScaffoldEntry);
 
@@ -1250,11 +1256,27 @@ function InlineScaffoldProposal({
   const accept = async () => {
     setBusy(true);
     try {
-      await api.acceptScaffold(sessionId, proposal.proposalId, yamlDraft);
-      updateScaffold(sessionId, proposal.proposalId, {
-        status: "accepted",
-        editedYaml: yamlDraft !== proposal.yamlText ? yamlDraft : null,
-      });
+      const shimPayload = proposal.shim
+        ? { path: proposal.shim.path, content: shimDraft }
+        : null;
+      const res = await api.acceptScaffold(
+        sessionId,
+        proposal.proposalId,
+        yamlDraft,
+        shimPayload,
+      );
+      if (res.error) {
+        // Partial write — yaml landed but shim didn't, or vice versa.
+        updateScaffold(sessionId, proposal.proposalId, {
+          status: "error",
+          errorMessage: res.error,
+        });
+      } else {
+        updateScaffold(sessionId, proposal.proposalId, {
+          status: "accepted",
+          editedYaml: yamlDraft !== proposal.yamlText ? yamlDraft : null,
+        });
+      }
     } catch (e) {
       const msg = String(e instanceof Error ? e.message : e);
       updateScaffold(sessionId, proposal.proposalId, {
@@ -1284,6 +1306,39 @@ function InlineScaffoldProposal({
 
   const { commands, scenarios, rewardFunctions } = proposal.summary;
 
+  // Files in the proposal — yaml is always present, shim is optional.
+  type ProposedFile = {
+    path: string;
+    label: string;
+    content: string;
+    setContent: (s: string) => void;
+    description?: string;
+  };
+  const files: ProposedFile[] = [
+    {
+      path: "range.yaml",
+      label: "range.yaml",
+      content: yamlDraft,
+      setContent: setYamlDraft,
+      description: "Profile — commands, scenarios, reward functions, checkpoints",
+    },
+  ];
+  if (proposal.shim) {
+    files.push({
+      path: proposal.shim.path,
+      label: proposal.shim.path,
+      content: shimDraft,
+      setContent: setShimDraft,
+      description: proposal.shim.description,
+    });
+  }
+
+  const acceptLabel = busy
+    ? "writing…"
+    : files.length === 1
+      ? "accept · write range.yaml"
+      : `accept · write ${files.length} files`;
+
   return (
     <div className="flex gap-3">
       <AgentBadge label="yml" tone="tool" />
@@ -1298,6 +1353,7 @@ function InlineScaffoldProposal({
             </span>
             <span className="text-[10.5px] text-fg-3 font-mono">
               · {commands} cmd · {scenarios} scn · {rewardFunctions} reward fn
+              {proposal.shim ? " · +shim" : ""}
             </span>
             {isAccepted && (
               <span className="ml-auto text-[10.5px] text-[var(--ok)] font-mono">
@@ -1322,52 +1378,89 @@ function InlineScaffoldProposal({
             </ul>
           )}
 
-          {!isResolved && (
-            <>
-              {editing ? (
-                <textarea
-                  value={yamlDraft}
-                  onChange={(e) => setYamlDraft(e.target.value)}
-                  rows={18}
-                  spellCheck={false}
-                  className="w-full bg-transparent outline-none resize-y font-mono text-[12px] text-fg-1 leading-relaxed px-3 py-2"
-                />
-              ) : (
-                <pre className="px-3 py-2 font-mono text-[11.5px] text-fg-1 leading-relaxed overflow-x-auto max-h-72 overflow-y-auto whitespace-pre">
-                  {yamlDraft}
-                </pre>
-              )}
+          {!isResolved &&
+            files.map((f) => {
+              const isExpanded = expandedPath === f.path;
+              const isEditing = editingPath === f.path;
+              return (
+                <div
+                  key={f.path}
+                  className="border-b border-[var(--br-1)] last:border-b-0"
+                >
+                  <button
+                    onClick={() =>
+                      setExpandedPath(isExpanded ? null : f.path)
+                    }
+                    className="w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-[var(--bg-2)] transition"
+                  >
+                    <span className="text-fg-3 text-[10.5px]">
+                      {isExpanded ? "▾" : "▸"}
+                    </span>
+                    <span className="font-mono text-[11.5px] text-fg-1 flex-1 truncate">
+                      {f.label}
+                    </span>
+                    {f.description && (
+                      <span className="text-[10.5px] text-fg-3 truncate max-w-[60%]">
+                        {f.description}
+                      </span>
+                    )}
+                  </button>
+                  {isExpanded && (
+                    <div className="px-3 pb-2">
+                      {isEditing ? (
+                        <textarea
+                          value={f.content}
+                          onChange={(e) => f.setContent(e.target.value)}
+                          rows={18}
+                          spellCheck={false}
+                          className="w-full bg-[var(--bg)] outline-none resize-y font-mono text-[12px] text-fg-1 leading-relaxed p-2 rounded border border-[var(--br-1)]"
+                        />
+                      ) : (
+                        <pre className="font-mono text-[11.5px] text-fg-1 leading-relaxed bg-[var(--bg)] border border-[var(--br-1)] rounded p-2 max-h-72 overflow-auto whitespace-pre">
+                          {f.content}
+                        </pre>
+                      )}
+                      <div className="mt-1.5 flex justify-end">
+                        <button
+                          onClick={() =>
+                            setEditingPath(isEditing ? null : f.path)
+                          }
+                          disabled={busy}
+                          className="text-[10.5px] text-fg-2 hover:text-fg-1 px-2 py-0.5 rounded transition"
+                        >
+                          {isEditing ? "preview" : "edit"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
-              <div className="px-3 py-2 border-t border-[var(--br-1)] flex items-center gap-1.5 bg-[var(--bg)]">
-                <button
-                  onClick={accept}
-                  disabled={busy}
-                  className="text-[11.5px] font-medium text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded transition"
-                >
-                  {busy ? "writing…" : "accept · write range.yaml"}
-                </button>
-                <button
-                  onClick={() => setEditing((v) => !v)}
-                  disabled={busy}
-                  className="text-[11.5px] text-fg-1 hover:bg-[var(--bg-2)] px-2 py-1.5 rounded transition"
-                >
-                  {editing ? "preview" : "edit"}
-                </button>
-                <button
-                  onClick={dismiss}
-                  disabled={busy}
-                  className="text-[11.5px] text-fg-3 hover:text-fg-1 px-2 py-1.5 rounded transition ml-auto"
-                >
-                  dismiss
-                </button>
-              </div>
-            </>
+          {!isResolved && (
+            <div className="px-3 py-2 border-t border-[var(--br-1)] flex items-center gap-1.5 bg-[var(--bg)]">
+              <button
+                onClick={accept}
+                disabled={busy}
+                className="text-[11.5px] font-medium text-[var(--bg)] bg-[var(--accent)] hover:bg-[var(--accent-2)] disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 rounded transition"
+              >
+                {acceptLabel}
+              </button>
+              <button
+                onClick={dismiss}
+                disabled={busy}
+                className="text-[11.5px] text-fg-3 hover:text-fg-1 px-2 py-1.5 rounded transition ml-auto"
+              >
+                dismiss
+              </button>
+            </div>
           )}
 
           {isAccepted && (
             <div className="px-3 py-2 text-[11.5px] text-fg-3 italic">
-              range.yaml written. Scenarios + commands are now available in
-              the slash picker.
+              {proposal.shim
+                ? `range.yaml and ${proposal.shim.path} written. Scenarios + commands available in the slash picker.`
+                : "range.yaml written. Scenarios + commands are now available in the slash picker."}
             </div>
           )}
 

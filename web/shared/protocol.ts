@@ -523,6 +523,16 @@ export interface ScaffoldSummary {
   checkpoints: number;
 }
 
+export interface ScaffoldShim {
+  /** Path relative to the repo root where the shim will be written. */
+  path: string;
+  /** File contents — typically a small Python script that translates
+   *  `RANGE_*` env vars into the project's native CLI flags. */
+  content: string;
+  /** One-line summary for display in the proposal card. */
+  description: string;
+}
+
 export interface ScaffoldProposal {
   /** Stable id so the same proposal can be referenced by accept/dismiss. */
   proposalId: string;
@@ -531,6 +541,11 @@ export interface ScaffoldProposal {
   stackLabel: string;
   /** The proposed range.yaml contents. */
   yamlText: string;
+  /** Optional companion script that bridges Range's env-var contract
+   *  to the project's CLI. Generated per detected stack — most real
+   *  sim training scripts use argparse/absl flags rather than
+   *  reading RANGE_* env vars directly. */
+  shim?: ScaffoldShim;
   summary: ScaffoldSummary;
   /** Short bullets explaining what was detected and why. */
   notes: string[];
