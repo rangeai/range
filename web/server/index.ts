@@ -77,7 +77,7 @@ import {
   shutdownAllProfileWatchers,
   watchProfile,
 } from "./profile_watcher.ts";
-import { readRunArtifactText } from "./remote/registry.ts";
+import { getSessionRemote, readRunArtifactText } from "./remote/registry.ts";
 import { detectScaffold, writeScaffold } from "./scaffold.ts";
 import {
   applyWirePatches,
@@ -583,6 +583,41 @@ app.post("/api/sessions/:id/scaffold/accept", async (c) => {
     body.shim ?? undefined,
   );
   if (!result.written) return c.json({ error: result.error }, 400);
+
+  // If the session is configured for remote execution and an agent
+  // has already setup the remote workspace, push the freshly-written
+  // scaffold files up. Without this, remote scenarios spawned through
+  // the new range.yaml would 404 because their cwd wouldn't have the
+  // YAML / shim yet.
+  if (session.remoteConfig) {
+    const remote = getSessionRemote(sessionId);
+    if (remote) {
+      try {
+        for (const localPath of result.paths) {
+          const rel = localPath.startsWith(session.repoPath)
+            ? localPath.slice(session.repoPath.length + 1)
+            : null;
+          if (!rel) continue;
+          const remotePath = `${remote.env.remoteRepoPath}/${rel}`;
+          // Make sure parent dir exists on the remote side first.
+          const remoteDir = remotePath.slice(0, remotePath.lastIndexOf("/"));
+          const mk = remote.env.spawn(["mkdir", "-p", remoteDir]);
+          await mk.exited;
+          await remote.env.push(localPath, remotePath);
+        }
+        log.info("scaffold", "pushed accepted files to remote", {
+          sessionId,
+          host: remote.machine.id,
+          paths: result.paths,
+        });
+      } catch (err) {
+        log.warn("scaffold", "remote push failed (local accept already succeeded)", {
+          sessionId,
+          err: String(err instanceof Error ? err.message : err),
+        });
+      }
+    }
+  }
 
   broadcast({
     type: "scaffold_resolved",
