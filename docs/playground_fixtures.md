@@ -99,6 +99,7 @@ Done quarterly is fine; weekly is overkill.
 | branch | flow | what's planted | severity | scenario it surfaces in | post |
 |---|---|---|---|---|---|
 | [`range-fixture-cartpole-reward-nan`](https://github.com/rangeai/mujoco_playground/tree/range-fixture-cartpole-reward-nan) | `/investigate` | **(live)** `log(cos+1)` in `_dense_reward` → `log(0)=-inf` at pole-fully-down → NaN propagates into the value loss. | Subtle | `cartpole_balance` | [fixture-01](https://rangeai.github.io/range/blog/fixture-01-cartpole-reward-nan) |
+| [`range-fixture-cartpole-term-guard`](https://github.com/rangeai/mujoco_playground/tree/range-fixture-cartpole-term-guard) | `/investigate` | **(live)** Termination guard relaxed from `.any()` to `.all()` — single-element NaN slips past the guard and contaminates downstream rollouts. | Subtle | `cartpole_balance` | (post pending) |
 | `range-fixture-g1-reward-blowup`         | `/investigate` | (planned) Reward weight off by 100× — episodes succeed but value-loss explodes. | Subtle | `g1_joystick_flat_terrain` | — |
 | `range-fixture-aloha-stale-sentinel`     | `/investigate` | (planned) Stale-sentinel branch in manipulation reward fn — emits NaN on tight grasps only. Seed-dependent. | Hard to find | `aloha_hand_over` | — |
 | `range-fixture-hydra-wandb-broken`       | `/wire wandb-hydra` | (planned) Hydra + W&B integration with the three canonical foot-guns (`start_method`, DictConfig serialization, sweep group key). | Polish | any scenario | — |

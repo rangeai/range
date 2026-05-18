@@ -2426,8 +2426,8 @@ function MessageComposer({
       layer: "range",
       name: "investigate",
       description:
-        "kick off a NaN / instability investigation on the latest failed run",
-      argHint: "[run-id]  (defaults to latest failed)",
+        "kick off a NaN / instability investigation on the latest run (failed runs preferred)",
+      argHint: "[run-id]  (defaults to latest failed, or latest if no failure)",
     });
     items.push({
       kind: "builtin",
@@ -2760,22 +2760,24 @@ function MessageComposer({
         pushSystem(session.id, `Downloaded \`${filename}\` (${md.length} chars).`);
       } else if (item.kind === "builtin" && item.name === "investigate") {
         // Pick the target run: explicit arg, else the most-recent failed
-        // run for this session.
+        // run, else the most-recent run of any state (covers silent-NaN
+        // bugs where the script exits 0 but metrics are tainted).
         let targetRunId = slashArgs.trim() || null;
         if (!targetRunId) {
           const runs = useAppStore
             .getState()
             .runsBySession.get(session.id);
           if (runs) {
-            const failed = [...runs.values()]
-              .filter((r) => r.state === "failed")
-              .sort((a, b) => b.createdAt - a.createdAt);
-            targetRunId = failed[0]?.id ?? null;
+            const all = [...runs.values()].sort(
+              (a, b) => b.createdAt - a.createdAt,
+            );
+            const failed = all.filter((r) => r.state === "failed");
+            targetRunId = failed[0]?.id ?? all[0]?.id ?? null;
           }
         }
         if (!targetRunId) {
           throw new Error(
-            "no failed run found in this session — pass a run id explicitly: /investigate <run-id>",
+            "no runs in this session yet — start a scenario before invoking /investigate",
           );
         }
         pushSystem(session.id, `Inspecting trajectory for ${targetRunId}…`);
