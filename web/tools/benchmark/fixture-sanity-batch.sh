@@ -17,11 +17,20 @@ OUT="${OUT:-/tmp/range-fixture-sanity}"
 STEPS="${STEPS:-5000}"
 mkdir -p "$OUT"
 
-declare -A FIXTURE_ENV=(
-  [range-fixture-cartpole-reward-nan]=CartpoleBalance
-  [range-fixture-cartpole-term-guard]=CartpoleBalance
-  [range-fixture-g1-reward-blowup]=G1JoystickFlatTerrain
-  [range-fixture-aloha-stale-sentinel]=AlohaHandOver
+# Plain parallel arrays — bash associative arrays parse hyphens in
+# unquoted keys as arithmetic minus, and quoting `[ ... ]=val` is
+# version-sensitive. Two arrays in lockstep are boring but reliable.
+FIXTURE_BRANCHES=(
+  "range-fixture-cartpole-reward-nan"
+  "range-fixture-cartpole-term-guard"
+  "range-fixture-g1-reward-blowup"
+  "range-fixture-aloha-stale-sentinel"
+)
+FIXTURE_ENVS=(
+  "CartpoleBalance"
+  "CartpoleBalance"
+  "G1JoystickFlatTerrain"
+  "AlohaHandOver"
 )
 
 cd "$FORK"
@@ -33,8 +42,9 @@ ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 PASSED=0
 FAILED=0
 
-for branch in "${!FIXTURE_ENV[@]}"; do
-  env_name="${FIXTURE_ENV[$branch]}"
+for i in "${!FIXTURE_BRANCHES[@]}"; do
+  branch="${FIXTURE_BRANCHES[$i]}"
+  env_name="${FIXTURE_ENVS[$i]}"
   log="$OUT/$branch.log"
   echo "=== $branch ($env_name) ==="
   git checkout "$branch" 2>&1 | tail -1
