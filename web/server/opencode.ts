@@ -988,6 +988,154 @@ export const openCodeBackend: AgentBackend = {
       sharedServer = null;
     }
   },
+
+  // OpenCode's session API has several command-shaped POST endpoints
+  // beyond what Range models as cross-backend slash items. We surface
+  // them with the `opencode` layer so they're obviously backend-
+  // specific in the UI.
+  nativeCommands: [
+    {
+      name: "init",
+      description:
+        "scan the repo and generate the AGENTS.md context file OpenCode uses for grounding",
+    },
+    {
+      name: "undo",
+      description: "revert the last assistant action / file edit",
+    },
+    {
+      name: "redo",
+      description: "redo the last reverted action",
+    },
+    {
+      name: "share",
+      description: "create a shareable URL for this session",
+    },
+    {
+      name: "unshare",
+      description: "remove the public share for this session",
+    },
+    {
+      name: "shell",
+      description:
+        "run a shell command directly in the session worktree (no LLM)",
+      argHint: "<command>",
+    },
+    {
+      name: "fork",
+      description:
+        "fork this session — a child session inheriting the current conversation",
+    },
+  ],
+
+  async runNativeCommand(rangeSessionId, name, args) {
+    const state = sessions.get(rangeSessionId);
+    if (!state) {
+      // Lazy-start so the user can run any command without sending
+      // a message first.
+      const session = getSession(rangeSessionId);
+      if (!session) throw new Error(`session not found: ${rangeSessionId}`);
+      await ensureSession(rangeSessionId, session.sandbox);
+    }
+    const live = sessions.get(rangeSessionId);
+    if (!live) throw new Error("failed to start opencode session");
+    const sid = live.openCodeSessionId;
+    const dir = `?directory=${encodeURIComponent(live.workspace)}`;
+
+    switch (name) {
+      case "init":
+        // Init kicks off a (potentially long) LLM-driven init flow.
+        // Pass the configured model just like prompt_async does.
+        await apiPost(`/session/${sid}/init${dir}`, {
+          model: await defaultModel(rangeSessionId),
+        });
+        return {
+          message:
+            "OpenCode `/init` started — repo analysis will run as a background turn; watch the conversation for results.",
+        };
+      case "undo": {
+        // OpenCode's revert is "revert TO this messageID", so we
+        // find the most recent assistant message and target it.
+        type Msg = { info: { id: string; role: string } };
+        const msgs = await apiGet<Msg[]>(
+          `/session/${sid}/message${dir}`,
+        );
+        const lastAssistant = [...msgs]
+          .reverse()
+          .find((m) => m.info.role === "assistant");
+        if (!lastAssistant) {
+          return { message: "Nothing to revert — no assistant message yet." };
+        }
+        await apiPost(`/session/${sid}/revert${dir}`, {
+          messageID: lastAssistant.info.id,
+        });
+        return {
+          message: `Reverted to message ${lastAssistant.info.id}.`,
+        };
+      }
+      case "redo": {
+        const r = (await apiPost<{ messageID?: string }>(
+          `/session/${sid}/unrevert${dir}`,
+          {},
+        )) ?? {};
+        return {
+          message: r.messageID
+            ? `Redo applied (messageID=${r.messageID}).`
+            : "Nothing to redo.",
+        };
+      }
+      case "share": {
+        const r = (await apiPost<{ url?: string }>(
+          `/session/${sid}/share${dir}`,
+          {},
+        )) ?? {};
+        return {
+          message: r.url
+            ? `Share URL: ${r.url}`
+            : "Session shared (no URL returned).",
+        };
+      }
+      case "unshare":
+        await fetch(
+          `${(await getServer()).baseUrl}/session/${sid}/share${dir}`,
+          {
+            method: "DELETE",
+            headers: envelopeAuth((await getServer()).password),
+          },
+        );
+        return { message: "Session unshared." };
+      case "shell": {
+        if (!args || args.trim().length === 0) {
+          throw new Error("usage: /shell <command>");
+        }
+        // OpenCode's shell tool runs under an agent (so its output
+        // can be captured into the conversation). "build" is the
+        // standard interactive agent. We also pass the model so the
+        // session has context for any follow-up reasoning.
+        await apiPost(`/session/${sid}/shell${dir}`, {
+          agent: "build",
+          model: await defaultModel(rangeSessionId),
+          command: args.trim(),
+        });
+        return {
+          message: `Shell command queued: \`${args.trim()}\` — output streams as part of the next message.`,
+        };
+      }
+      case "fork": {
+        const r = (await apiPost<{ id?: string }>(
+          `/session/${sid}/fork${dir}`,
+          {},
+        )) ?? {};
+        return {
+          message: r.id
+            ? `Forked into new OpenCode session ${r.id}. Range session unchanged; create a fresh Range session pointing at the same repo to use the fork.`
+            : "Fork failed.",
+        };
+      }
+      default:
+        throw new Error(`unknown OpenCode native command: ${name}`);
+    }
+  },
 };
 
 registerBackend(openCodeBackend);

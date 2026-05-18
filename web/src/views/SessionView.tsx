@@ -2112,6 +2112,26 @@ function MessageComposer({
   const [repoPickerOpen, setRepoPickerOpen] = useState(false);
   const [slashIdx, setSlashIdx] = useState(0);
   const [slashErr, setSlashErr] = useState<string | null>(null);
+  // Per-backend native commands. Fetched once on mount; refetch if
+  // the active backend changes (rare). Empty by default so the
+  // picker doesn't block waiting for the network round-trip.
+  const [nativeCommands, setNativeCommands] = useState<
+    Array<{ name: string; description: string; argHint?: string }>
+  >([]);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listBackendCommands(session.id)
+      .then((res) => {
+        if (!cancelled) setNativeCommands(res.commands);
+      })
+      .catch((err) =>
+        console.error("listBackendCommands failed", err),
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [session.id, session.backend]);
   const pushUserMessage = useAppStore((s) => s.pushUserMessage);
   const upsertSession = useAppStore((s) => s.upsertSession);
   const patch = useAppStore((s) => s.patchConversation);
@@ -2138,6 +2158,13 @@ function MessageComposer({
     | {
         kind: "builtin";
         layer: "range" | "codex";
+        name: string;
+        description: string;
+        argHint?: string;
+      }
+    | {
+        kind: "agent_native";
+        layer: "opencode";
         name: string;
         description: string;
         argHint?: string;
@@ -2272,6 +2299,21 @@ function MessageComposer({
       description: "show the current turn's aggregated unified diff",
     });
 
+    // Backend-native commands. The list is fetched from the active
+    // backend on mount — the layer matches the backend name so the
+    // badge shows e.g. "opencode" in its own color.
+    if (session.backend === "opencode") {
+      for (const c of nativeCommands) {
+        items.push({
+          kind: "agent_native",
+          layer: "opencode",
+          name: c.name,
+          description: c.description,
+          argHint: c.argHint,
+        });
+      }
+    }
+
     const p = profile?.profile;
     if (p) {
       for (const s of p.scenarios) {
@@ -2356,6 +2398,17 @@ function MessageComposer({
           command: item.args,
           kind: "shell",
         });
+      } else if (item.kind === "agent_native") {
+        // Native command from the active backend. We proxy to the
+        // backend's runNativeCommand via the REST endpoint; the
+        // result may include a human-readable message we surface
+        // as a system entry.
+        const res = await api.runBackendCommand(
+          session.id,
+          item.name,
+          slashArgs.trim() || undefined,
+        );
+        if (res.message) pushSystem(session.id, res.message);
       } else if (item.kind === "builtin" && item.name === "pr") {
         const draft = await api.draftPr(session.id);
         const draftId = `pr_${Date.now().toString(36)}_${Math.random()
@@ -2750,6 +2803,13 @@ type SlashItem =
       name: string;
       description: string;
       argHint?: string;
+    }
+  | {
+      kind: "agent_native";
+      layer: "opencode";
+      name: string;
+      description: string;
+      argHint?: string;
     };
 
 const LAYER_STYLE: Record<
@@ -2765,6 +2825,11 @@ const LAYER_STYLE: Record<
     label: "codex",
     color: "var(--accent)",
     bg: "color-mix(in oklch, var(--accent) 12%, var(--bg))",
+  },
+  opencode: {
+    label: "opencode",
+    color: "var(--ok)",
+    bg: "color-mix(in oklch, var(--ok) 12%, var(--bg))",
   },
   scenario: {
     label: "scenario",

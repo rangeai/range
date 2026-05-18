@@ -351,6 +351,30 @@ badges:
 | `/reward show <name>` | Surfaces the source code of a declared reward function inline (name comes from the `reward_functions:` block of `range.yaml`). |
 | `/obs <run-id> <step>` | Dumps the observation vector at a specific tick of a run as a JSON block. |
 
+### Agent-native commands
+
+Each backend can expose its own slash commands. They appear in the
+picker with a backend-named badge (e.g., green `opencode`).
+
+**OpenCode** (badge: `opencode`):
+
+| command | what it does |
+|---|---|
+| `/init` | OpenCode scans the repo and generates an `AGENTS.md` context file it uses for grounding on every turn. |
+| `/undo` | Reverts the last assistant action (finds the most recent assistant message and reverts to it). |
+| `/redo` | Re-applies the last reverted action. |
+| `/share` | Creates a publicly-shareable URL for this session (requires OpenCode sharing service auth). |
+| `/unshare` | Removes the session's public share. |
+| `/shell <command>` | Runs a shell command directly in the session worktree, no LLM needed. Output streams into the next message. |
+| `/fork` | Forks this session into a new OpenCode session inheriting the conversation. |
+
+**Codex** doesn't currently expose its TUI slash commands via the
+`app-server` JSON-RPC schema. The Codex slash items shown above
+(`/model`, `/compact`, etc.) are Range-managed, cross-backend
+shortcuts that talk to Codex's existing thread/turn APIs. When
+Codex's app-server adds a command catalog endpoint, Range will
+surface those automatically.
+
 ### Codex builtins
 
 | command | what it does |

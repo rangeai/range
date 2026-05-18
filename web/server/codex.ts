@@ -1290,6 +1290,12 @@ export const codexBackend: AgentBackend = {
   shutdownAll() {
     stopAllAgents();
   },
+  // Codex's CLI exposes slash commands like `/init`, `/agents`,
+  // `/tools` — but those are TUI-side, not in the app-server
+  // JSON-RPC schema. No native API surface to bridge yet; we
+  // populate this list once Codex's app-server exposes a command
+  // catalog.
+  nativeCommands: [],
 };
 
 // Register on module load so the first import wires the backend

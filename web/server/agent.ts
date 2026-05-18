@@ -53,6 +53,26 @@ export interface AgentStartOptions {
 }
 
 /**
+ * A slash command the backend itself owns (vs. Range-managed
+ * cross-backend ones like /model, /compact). Surfaced in Range's
+ * slash picker with a backend-named badge. Picking one calls
+ * `backend.runNativeCommand(sessionId, name, args)`.
+ */
+export interface BackendCommand {
+  name: string;
+  description: string;
+  /** Display hint shown next to the command name, e.g. "<path>". */
+  argHint?: string;
+}
+
+export interface BackendCommandResult {
+  /** Optional message to display inline in the conversation as a
+   *  system entry. Useful for commands whose effect isn't already
+   *  visible elsewhere (e.g. /share returns a URL). */
+  message?: string;
+}
+
+/**
  * Every agent backend implements this contract. Backends own
  * their own internal state (a Map keyed by sessionId is the usual
  * pattern). The registry holds one instance per backend kind.
@@ -107,6 +127,20 @@ export interface AgentBackend {
    *  Called from SIGINT/SIGTERM. Backends should kill child
    *  processes here; the process is about to exit. */
   shutdownAll(): void;
+
+  /** Slash commands the backend itself owns. Surfaced in Range's
+   *  slash picker; selecting one calls runNativeCommand. Static
+   *  per-backend — does not depend on session state. */
+  nativeCommands: BackendCommand[];
+
+  /** Execute a named native command on a session. Throws if the
+   *  name isn't in `nativeCommands` or if the backend doesn't
+   *  recognize it. */
+  runNativeCommand?(
+    sessionId: string,
+    name: string,
+    args: string,
+  ): Promise<BackendCommandResult>;
 }
 
 export type AgentBackendName = "codex" | "opencode";

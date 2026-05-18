@@ -117,6 +117,39 @@ export function setModel(
   );
 }
 
+export interface BackendCommand {
+  name: string;
+  description: string;
+  argHint?: string;
+}
+
+export interface BackendCommandsResponse {
+  backend: string;
+  commands: BackendCommand[];
+}
+
+export function listBackendCommands(
+  sessionId: string,
+): Promise<BackendCommandsResponse> {
+  return jsonRequest<BackendCommandsResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/backend/commands`,
+  );
+}
+
+export function runBackendCommand(
+  sessionId: string,
+  name: string,
+  args?: string,
+): Promise<{ ok: boolean; message?: string }> {
+  return jsonRequest(
+    `/api/sessions/${encodeURIComponent(sessionId)}/backend/command`,
+    {
+      method: "POST",
+      body: JSON.stringify({ name, args: args ?? "" }),
+    },
+  );
+}
+
 export function setReasoning(
   sessionId: string,
   effort: "low" | "medium" | "high" | null,

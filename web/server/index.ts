@@ -685,6 +685,51 @@ app.post("/api/sessions/:id/scaffold/dismiss", async (c) => {
   return c.json({ ok: true });
 });
 
+app.get("/api/sessions/:id/backend/commands", (c) => {
+  const id = c.req.param("id");
+  const session = getSession(id);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  const backend = backendFor(id);
+  return c.json({
+    backend: backend.name,
+    commands: backend.nativeCommands,
+  });
+});
+
+app.post("/api/sessions/:id/backend/command", async (c) => {
+  const id = c.req.param("id");
+  const session = getSession(id);
+  if (!session) return c.json({ error: "session not found" }, 404);
+  let body: { name?: string; args?: string };
+  try {
+    body = (await c.req.json()) as typeof body;
+  } catch {
+    return c.json({ error: "invalid JSON body" }, 400);
+  }
+  const name = typeof body.name === "string" ? body.name : "";
+  if (!name) return c.json({ error: "name is required" }, 400);
+  const backend = backendFor(id);
+  if (!backend.runNativeCommand) {
+    return c.json(
+      { error: `backend "${backend.name}" has no native commands` },
+      400,
+    );
+  }
+  try {
+    const result = await backend.runNativeCommand(
+      id,
+      name,
+      typeof body.args === "string" ? body.args : "",
+    );
+    return c.json({ ok: true, ...result });
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      400,
+    );
+  }
+});
+
 app.get("/api/sessions/:id/verification", (c) => {
   const id = c.req.param("id");
   const session = getSession(id);
