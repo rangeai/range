@@ -82,9 +82,9 @@ canonical SB3 training framework. Range finds `train.py`, picks up
 `hyperparams/`, and emits a starter scenario you edit to add `--algo`
 and `--env`.
 
-<video src="docs/media/sb3-zoo.mp4" controls width="100%"></video>
+![SB3-zoo import demo](docs/media/sb3-zoo.gif)
 
-📹 [`docs/media/sb3-zoo.mp4`](docs/media/sb3-zoo.mp4)
+📹 Full quality: [`docs/media/sb3-zoo.mp4`](docs/media/sb3-zoo.mp4)
 
 </td>
 <td width="50%">
@@ -94,9 +94,9 @@ implementations. Range walks the package directory, finds 12
 runnable algorithms (`ppo_atari`, `rainbow_atari`, `c51`, …),
 detects `uv` from `pyproject`, and turns each into a scenario.
 
-<video src="docs/media/cleanrl.mp4" controls width="100%"></video>
+![CleanRL import demo](docs/media/cleanrl.gif)
 
-📹 [`docs/media/cleanrl.mp4`](docs/media/cleanrl.mp4)
+📹 Full quality: [`docs/media/cleanrl.mp4`](docs/media/cleanrl.mp4)
 
 </td>
 </tr>

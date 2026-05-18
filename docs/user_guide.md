@@ -16,12 +16,13 @@ alone; jump around freely.
 - [4. Concepts you'll trip over (ELI5)](#4-concepts-youll-trip-over-eli5)
 - [5. Getting set up](#5-getting-set-up)
 - [6. The first-time tour (10 minutes)](#6-the-first-time-tour-10-minutes)
-- [7. Scenario catalog — what you can run](#7-scenario-catalog--what-you-can-run)
-- [8. Slash command reference](#8-slash-command-reference)
-- [9. Investigation flows](#9-investigation-flows)
-- [10. Where things live (file map)](#10-where-things-live-file-map)
-- [11. Glossary](#11-glossary)
-- [12. Pointers for further reading](#12-pointers-for-further-reading)
+- [7. Walkthroughs: any Python repo (SB3-zoo)](#7-walkthroughs-any-python-repo-sb3-zoo)
+- [8. Scenario catalog — what you can run](#8-scenario-catalog--what-you-can-run)
+- [9. Slash command reference](#9-slash-command-reference)
+- [10. Investigation flows](#10-investigation-flows)
+- [11. Where things live (file map)](#11-where-things-live-file-map)
+- [12. Glossary](#12-glossary)
+- [13. Pointers for further reading](#13-pointers-for-further-reading)
 
 ---
 
@@ -262,7 +263,137 @@ Once you've cloned Playground:
 
 ---
 
-## 7. Scenario catalog — what you can run
+## 7. Walkthroughs: any Python repo (SB3-zoo)
+
+The Yard walkthrough above shows Range working on its dogfood sim.
+These walkthroughs use **`DLR-RM/rl-baselines3-zoo`** — a real,
+public Stable-Baselines3 training framework — to prove the same
+loop works on arbitrary Python projects with zero Range-specific
+prep.
+
+**Prep (one time):**
+
+```bash
+git clone https://github.com/DLR-RM/rl-baselines3-zoo /tmp/range-test-projects/rl-baselines3-zoo
+cd /tmp/range-test-projects/rl-baselines3-zoo
+python3 -m venv .venv
+.venv/bin/pip install -U pip
+.venv/bin/pip install "stable-baselines3[extra]" sb3-contrib rl_zoo3 gymnasium
+```
+
+Each walkthrough below has:
+1. **What you'll see** — the headline.
+2. **Steps** — exact actions in Range.
+3. **Video** — recorded end-to-end (inline GIF + full-quality mp4).
+
+---
+
+### 7.1 Cold import → auto-scaffold → first scenario
+
+**What you'll see:** Range detects rl-baselines3-zoo as a generic
+Python project, finds `train.py` at the root, surfaces `hyperparams/`,
+and proposes a `range.yaml` with one starter scenario. The whole
+thing — clone, detect, accept, scenarios visible — takes under 30
+seconds.
+
+**Steps:**
+
+1. Click **new session** in the left nav.
+2. Repo path: `/tmp/range-test-projects/rl-baselines3-zoo`.
+3. Leave the prompt blank (or type whatever — it doesn't matter
+   for the scaffold detection, which runs server-side on session
+   create).
+4. Press **Enter** to create the session.
+5. Within ~2 seconds, a **scaffold proposal** card appears in the
+   conversation:
+   `yml · scaffold proposal · Generic Python · 3 cmd · 1 scn`
+6. Click **accept · write range.yaml**. The card flips to
+   `accepted ✓`.
+7. Click into the composer, type `/` — the slash picker now lists
+   `/train` (the auto-detected scenario) alongside `/install`,
+   `/test`, and `/smoke`.
+
+You're set up. The scaffolded YAML calls `python train.py` with
+no extra arguments — that's intentional. Range doesn't pretend to
+know what `--algo` or `--env` you want. You edit those in the next
+walkthrough.
+
+![SB3-zoo cold import → scaffold → scenarios](media/sb3-zoo.gif)
+
+📹 Full quality: [`docs/media/sb3-zoo.mp4`](media/sb3-zoo.mp4)
+
+---
+
+### 7.2 First training run — CartPole PPO
+
+**What you'll see:** A scenario that actually calls SB3 with real
+`--algo ppo --env CartPole-v1 -n 30000` arguments. `/train` fires
+the run, you watch the SB3 output stream into Range's run panel
+live — rollout tables, `ep_rew_mean` ticking up from ~20 to ~200,
+the success badge flipping at the end.
+
+**Setup:**
+
+After accepting the scaffold from §7.1, replace the `train`
+scenario in `range.yaml` so it actually does something useful:
+
+```yaml
+scenarios:
+  - name: train
+    description: PPO + CartPole-v1, 30k steps
+    args: [
+      "/tmp/range-test-projects/rl-baselines3-zoo/.venv/bin/python",
+      "train.py", "--algo", "ppo", "--env", "CartPole-v1",
+      "-n", "30000",
+      "--log-folder", "/tmp/range-sb3-logs"
+    ]
+    env:
+      RANGE_RUN_DIR: "\${RANGE_RUN_DIR}"
+```
+
+> **Note:** we point at `.venv/bin/python` directly so the run uses
+> the project's installed dependencies. Range's runner spawns the
+> process; no shell activation needed.
+
+**Steps:**
+
+1. Save `range.yaml` (Range picks up the new args next time `/train`
+   fires — runs always read the on-disk profile fresh).
+2. Type `/train` in the composer, press **Enter**.
+3. A run card appears in the conversation, state `running`.
+4. Within a couple seconds, SB3's iteration tables start streaming
+   into the run's output panel:
+   ```
+   | rollout/                |              |
+   |    ep_len_mean          |     19.4     |
+   |    ep_rew_mean          |     19.4     |
+   ```
+5. After ~5 seconds of training (30k steps at ~5.6k FPS),
+   `ep_rew_mean` is in the 180–200 range and the run state flips
+   to `succeeded`.
+
+![SB3-zoo: /train → CartPole PPO output streaming](media/sb3-train.gif)
+
+📹 Full quality: [`docs/media/sb3-train.mp4`](media/sb3-train.mp4)
+
+---
+
+### 7.3 Failing run → fix → re-run (coming soon)
+
+The third walkthrough — point `/train` at an invalid gym env
+(`CartPole-v9`), watch it fail, ask the agent to read the error
+and patch `range.yaml`, then re-run — is in the queue but has a
+client-side bug pinning it back. After the agent successfully
+patches the YAML on disk, the next `/train` doesn't always render
+in the conversation because the client caches the profile from
+session start and doesn't refresh on file edits. See open task
+**Profile-cache-stale fix**. Until then, the manual loop works
+fine: stop the failed run, edit the env name in `range.yaml`,
+type `/train` again.
+
+---
+
+## 8. Scenario catalog — what you can run
 
 Scenarios live in each repo's `range.yaml`. Below is everything
 shipped with the substrates Range knows about today.
@@ -328,7 +459,7 @@ remote execution lands.
 
 ---
 
-## 8. Slash command reference
+## 9. Slash command reference
 
 All slash commands appear in the picker (`/` in composer). Layer
 badges:
@@ -394,7 +525,7 @@ scenario or command badge respectively. Pick one and it runs.
 
 ---
 
-## 9. Investigation flows
+## 10. Investigation flows
 
 ### 9.1 NaN / instability investigation (P2)
 
@@ -523,7 +654,7 @@ into your `range.yaml`. You can add more entries by hand — point
 
 ---
 
-## 10. Where things live (file map)
+## 11. Where things live (file map)
 
 ```
 ~/personal/range/
@@ -579,7 +710,7 @@ into your `range.yaml`. You can add more entries by hand — point
 
 ---
 
-## 11. Glossary
+## 12. Glossary
 
 | term | meaning |
 |---|---|
@@ -595,7 +726,7 @@ into your `range.yaml`. You can add more entries by hand — point
 
 ---
 
-## 12. Pointers for further reading
+## 13. Pointers for further reading
 
 **Inside the repo:**
 
