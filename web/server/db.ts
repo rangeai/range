@@ -255,6 +255,13 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE sessions ADD COLUMN model_provider TEXT;
     `,
   },
+  {
+    id: 13,
+    name: "sessions_remote_config",
+    up: `
+      ALTER TABLE sessions ADD COLUMN remote_config TEXT;
+    `,
+  },
 ];
 
 function applyMigrations() {

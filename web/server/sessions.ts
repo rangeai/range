@@ -44,6 +44,7 @@ interface SessionRow {
   reasoning_effort: string | null;
   backend: string;
   model_provider: string | null;
+  remote_config: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -84,9 +85,28 @@ function rowToSession(row: SessionRow): Session {
     backend:
       row.backend === "opencode" ? "opencode" : "codex",
     modelProvider: row.model_provider,
+    remoteConfig: parseRemoteConfig(row.remote_config),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function parseRemoteConfig(raw: string | null): Session["remoteConfig"] {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      parsed.provider === "ssh-static" &&
+      typeof parsed.host === "string"
+    ) {
+      return parsed as Session["remoteConfig"];
+    }
+  } catch {
+    // ignore — null is the safe fallback
+  }
+  return null;
 }
 
 function newSessionId(): string {
@@ -112,8 +132,8 @@ function defaultTitle(kind: SessionKind, prompt: string | null): string {
 const insertStmt = db.prepare(`
   INSERT INTO sessions (
     id, kind, title, prompt, repo, repo_path, task_ref,
-    status, sandbox, backend, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'workspace-write', ?, ?, ?)
+    status, sandbox, backend, remote_config, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'workspace-write', ?, ?, ?, ?)
 `);
 
 const selectByIdStmt = db.prepare<SessionRow, [string]>(
@@ -194,6 +214,7 @@ export async function createSession(
     req.repoPath ?? null,
     req.taskRef ?? null,
     req.backend ?? "codex",
+    req.remoteConfig ? JSON.stringify(req.remoteConfig) : null,
     now,
     now,
   );

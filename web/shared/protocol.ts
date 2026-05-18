@@ -52,9 +52,27 @@ export interface Session {
   /** Which agent backend powers this session. Defaults to "codex"
    *  for sessions created before the backend column existed. */
   backend: AgentBackendName;
+  /** Remote execution config. When set, Range provisions a remote
+   *  environment per the named provider (e.g., "ssh-static") and
+   *  runs the agent + scenarios over there instead of locally. Null
+   *  means everything runs on the local machine. */
+  remoteConfig: RemoteConfig | null;
   createdAt: number;
   updatedAt: number;
 }
+
+/** Discriminated-union of every supported remote provider's config.
+ *  `provider` is the discriminant; the rest is provider-specific. */
+export type RemoteConfig = {
+  provider: "ssh-static";
+  /** SSH host alias resolvable via `~/.ssh/config`. */
+  host: string;
+  /** Optional explicit identity file. Falls back to ssh defaults. */
+  identityFile?: string;
+  /** Where Range materializes session workspaces on the remote.
+   *  Defaults to `~/range-workspaces`. */
+  remoteWorkspaceRoot?: string;
+};
 
 export type AgentBackendName = "codex" | "opencode";
 
@@ -676,6 +694,10 @@ export interface CreateSessionRequest {
   taskRef?: string | null;
   /** Agent backend to use. Defaults to "codex" if unset. */
   backend?: AgentBackendName;
+  /** Remote execution config. When set, Range provisions a remote
+   *  environment and runs the agent + scenarios there instead of
+   *  locally. Null/omit for local execution. */
+  remoteConfig?: RemoteConfig | null;
 }
 
 export interface CreateSessionResponse {

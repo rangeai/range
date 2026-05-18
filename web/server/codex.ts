@@ -24,6 +24,12 @@ import { log } from "./log.ts";
 import { broadcast } from "./hub.ts";
 import { getSession, setSessionCodexThreadId } from "./sessions.ts";
 import { loadProfile } from "./profile.ts";
+import { SshStaticProvider } from "./remote/ssh_static.ts";
+import type {
+  EnvironmentHandle,
+  Machine,
+  RemoteProvider,
+} from "./remote/provider.ts";
 import type {
   AgentItem,
   AgentItemState,
@@ -54,6 +60,14 @@ interface CodexSession {
    *  notification, outgoing turn). Used by the idle sweeper to decide
    *  when to shut a session down. */
   lastActivityAt: number;
+  /** If this session is running codex on a remote provider, the
+   *  handle is stashed here so shutdown() can call standDown(). Null
+   *  for local sessions. */
+  remote: {
+    provider: RemoteProvider;
+    machine: Machine;
+    env: EnvironmentHandle;
+  } | null;
 }
 
 const sessions = new Map<string, CodexSession>();
@@ -322,17 +336,60 @@ export async function startAgent(
   };
 
   let proc: Subprocess<"pipe", "pipe", "pipe">;
-  try {
-    proc = Bun.spawn(["codex", "app-server"], {
-      cwd,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-      env,
-    });
-  } catch (err) {
-    eventFile.end();
-    throw new Error(`failed to spawn codex app-server: ${err}`);
+  let remoteHandle: {
+    provider: RemoteProvider;
+    machine: Machine;
+    env: EnvironmentHandle;
+  } | null = null;
+
+  if (session.remoteConfig) {
+    // Coordinator mode: provision/setup a remote, then spawn codex
+    // app-server over the SSH transport. The stdio pair lives across
+    // the tunnel — JSON-RPC framing is byte-identical to local.
+    try {
+      const provider = new SshStaticProvider({
+        host: session.remoteConfig.host,
+        identityFile: session.remoteConfig.identityFile,
+        remoteWorkspaceRoot: session.remoteConfig.remoteWorkspaceRoot,
+      });
+      const machine = await provider.provision({});
+      const envHandle = await provider.setup(machine, {
+        sessionId,
+        repoPath: session.repoPath ?? cwd,
+        agentKind: "codex",
+        // Remote codex doesn't reach back to a local Range URL — the
+        // range CLI shim isn't on the remote PATH and shouldn't be
+        // needed for the agent's stdio JSON-RPC. Drop those.
+        remoteEnv: {},
+      });
+      remoteHandle = { provider, machine, env: envHandle };
+      proc = envHandle.spawn(["codex", "app-server"], {
+        cwd: envHandle.remoteRepoPath,
+      });
+      log.info("codex", "spawned remotely", {
+        sessionId,
+        host: session.remoteConfig.host,
+        remoteRepoPath: envHandle.remoteRepoPath,
+      });
+    } catch (err) {
+      eventFile.end();
+      throw new Error(
+        `failed to spawn codex app-server on remote: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  } else {
+    try {
+      proc = Bun.spawn(["codex", "app-server"], {
+        cwd,
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+        env,
+      });
+    } catch (err) {
+      eventFile.end();
+      throw new Error(`failed to spawn codex app-server: ${err}`);
+    }
   }
 
   const cs: CodexSession = {
@@ -346,6 +403,7 @@ export async function startAgent(
     itemMeta: new Map(),
     eventFile,
     lastActivityAt: Date.now(),
+    remote: remoteHandle,
   };
   sessions.set(sessionId, cs);
   ensureIdleSweeper();
@@ -1231,6 +1289,18 @@ function teardown(cs: CodexSession, reason: string): void {
     cs.eventFile.end();
   } catch {
     // already closed
+  }
+  if (cs.remote) {
+    // Best-effort standDown — log but don't block teardown on a
+    // misbehaving provider.
+    void cs.remote.provider
+      .standDown(cs.remote.machine)
+      .catch((err) =>
+        log.warn("codex", "remote standDown failed", {
+          sessionId: cs.sessionId,
+          err: String(err instanceof Error ? err.message : err),
+        }),
+      );
   }
   // Keep codex_thread_id persisted across teardown so the next
   // start can `thread/resume` into the same conversation. Only
