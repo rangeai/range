@@ -67,15 +67,60 @@ through wandb. No digging through `events.jsonl` by hand.
 
 ---
 
+## See it on any Python repo
+
+Two real GitHub projects, dropped into Range cold — no `range.yaml`,
+no Range-specific structure, no Yard. From `git clone` to a working
+session in about thirty seconds:
+
+<table>
+<tr>
+<td width="50%">
+
+[**rl-baselines3-zoo**](https://github.com/DLR-RM/rl-baselines3-zoo) — the
+canonical SB3 training framework. Range finds `train.py`, picks up
+`hyperparams/`, and emits a starter scenario you edit to add `--algo`
+and `--env`.
+
+<video src="docs/media/sb3-zoo.mp4" controls width="100%"></video>
+
+📹 [`docs/media/sb3-zoo.mp4`](docs/media/sb3-zoo.mp4)
+
+</td>
+<td width="50%">
+
+[**CleanRL**](https://github.com/vwxyzjn/cleanrl) — single-file RL
+implementations. Range walks the package directory, finds 12
+runnable algorithms (`ppo_atari`, `rainbow_atari`, `c51`, …),
+detects `uv` from `pyproject`, and turns each into a scenario.
+
+<video src="docs/media/cleanrl.mp4" controls width="100%"></video>
+
+📹 [`docs/media/cleanrl.mp4`](docs/media/cleanrl.mp4)
+
+</td>
+</tr>
+</table>
+
+> The same generic detector handles PureJaxRL, custom training repos,
+> and even non-RL Python libraries (it scaffolds something sensible
+> and gets out of your way). Framework-specific shortcuts kick in
+> automatically when Range recognizes Playground or Isaac Lab.
+
+---
+
 ## What's actually shipped
 
 ### 🪄 Auto-scaffold on attach
 
 Drop in a repo with no `range.yaml`. Range detects the stack
-(Playground, Isaac Lab, generic Python coming) and proposes a
-complete profile: commands, scenarios, reward function pointers,
-checkpoint patterns. You accept, edit, or dismiss. Five-second
-onboarding instead of an hour of YAML.
+(MuJoCo Playground, Isaac Lab, or generic Python — anything with a
+`pyproject.toml`, `setup.py`, `requirements.txt`, or just `.py`
+files) and proposes a complete profile: commands, scenarios, reward
+function pointers, checkpoint patterns. For Playground, it also
+auto-writes a `tools/range_shim.py` so sweep variables flow through
+without code changes upstream. You accept, edit, or dismiss.
+Five-second onboarding instead of an hour of YAML.
 
 ### 🩻 NaN / instability investigation
 
