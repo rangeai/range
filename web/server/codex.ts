@@ -363,9 +363,16 @@ export async function startAgent(
         remoteEnv: {},
       });
       remoteHandle = { provider, machine, env: envHandle };
-      proc = envHandle.spawn(["codex", "app-server"], {
-        cwd: envHandle.remoteRepoPath,
-      });
+      // Disable the `unified_exec` codex feature on the remote — its
+      // Linux sandbox implementation hits "Failed to create unified
+      // exec process: No such file or directory (os error 2)" on
+      // boxes we've tested (kernel 5.15). The older shell_tool path
+      // works fine. Flip back on once codex's Linux unified-exec is
+      // settled upstream.
+      proc = envHandle.spawn(
+        ["codex", "app-server", "--disable", "unified_exec"],
+        { cwd: envHandle.remoteRepoPath },
+      );
       log.info("codex", "spawned remotely", {
         sessionId,
         host: session.remoteConfig.host,
