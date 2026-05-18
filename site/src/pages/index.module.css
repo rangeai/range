@@ -1,20 +1,10 @@
-/* Range brand vars — same amber across both themes, but text-on-amber
- * differs (dark text on amber bg in light mode, dark text in dark mode
- * since amber is bright either way). */
+/* Page-local fallback: --range-text-on-accent (dark text on amber CTA).
+ * Same in both themes since amber is light enough to read dark text on.
+ * --range-accent, --range-accent-soft, --range-link, --range-hero-glow,
+ * --range-title-em live in custom.css and swap per theme. */
 
 :root {
-  --range-accent: oklch(0.9 0.18 110);
-  --range-accent-hover: oklch(0.78 0.18 110);
-  --range-accent-soft: oklch(0.9 0.18 110 / 0.13);
-  --range-accent-border: oklch(0.9 0.18 110 / 0.35);
   --range-text-on-accent: oklch(0.165 0.006 70);
-  --range-hero-glow: oklch(0.9 0.18 110 / 0.06);
-  --range-title-em: var(--ifm-color-emphasis-700);
-}
-
-[data-theme="dark"] {
-  --range-hero-glow: oklch(0.9 0.18 110 / 0.09);
-  --range-title-em: oklch(0.8 0.005 80);
 }
 
 /* Hero */
@@ -151,7 +141,7 @@
   font-size: 0.7rem;
   letter-spacing: 0.12em;
   text-transform: lowercase;
-  color: var(--range-accent);
+  color: var(--range-link);
   background: var(--range-accent-soft);
   border: 1px solid var(--range-accent-border);
   padding: 0.15rem 0.55rem;
@@ -179,12 +169,12 @@
 .cardLink {
   font-size: 0.88rem;
   font-weight: 500;
-  color: var(--range-accent);
+  color: var(--range-link);
   text-decoration: none;
 }
 
 .cardLink:hover {
-  color: var(--range-accent-hover);
+  color: var(--range-link-hover);
   text-decoration: none;
 }
 
@@ -207,7 +197,7 @@
   font-size: 0.7rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--range-accent);
+  color: var(--range-link);
   margin-bottom: 1rem;
 }
 
@@ -223,7 +213,7 @@
 }
 
 .inlineLink {
-  color: var(--range-accent);
+  color: var(--range-link);
   font-family: var(--ifm-font-family-monospace);
   font-size: 0.92em;
   text-decoration: none;
@@ -237,12 +227,12 @@
   display: inline-block;
   font-size: 0.95rem;
   font-weight: 500;
-  color: var(--range-accent);
+  color: var(--range-link);
   text-decoration: none;
 }
 
 .proofLink:hover {
-  color: var(--range-accent-hover);
+  color: var(--range-link-hover);
   text-decoration: none;
 }
 

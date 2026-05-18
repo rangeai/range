@@ -1,16 +1,77 @@
 /**
- * Range theme — dark by default. The palette mirrors the in-app
- * Range UI: warm-dark backgrounds, amber accent, monospace-leaning
- * typography. Light mode is supported via the toggle but tuned for
- * the dark experience.
+ * Range theme. Dark by default, but every value also has an explicit
+ * light-mode counterpart so the toggle is a real toggle, not a "dark
+ * mode with Docusaurus defaults underneath."
+ *
+ * Palette layering:
+ *   - --ifm-*    : Docusaurus's Infima vars. Used for everything
+ *                  structural (backgrounds, borders, text, code, table
+ *                  headers). Auto-swap on theme toggle.
+ *   - --range-*  : Brand-level extras (amber accent, link tint, hero
+ *                  glow, blockquote tint). Same source of truth, but
+ *                  some tuned per theme for legibility.
  */
 
 @import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Geist:wght@100..900&family=JetBrains+Mono:wght@300..700&display=swap");
 
-/* ─── Dark theme (default) ─────────────────────────────────────── */
+/* ─── Light theme (deliberate, not just Infima defaults) ─────────── */
+
+:root {
+  /* Surfaces — slightly warm off-white, not pure #fff */
+  --ifm-background-color: oklch(0.985 0.005 80);
+  --ifm-background-surface-color: oklch(0.97 0.005 80);
+  --ifm-color-emphasis-100: oklch(0.945 0.005 80);
+  --ifm-color-emphasis-200: oklch(0.915 0.005 80);
+  --ifm-color-emphasis-300: oklch(0.88 0.005 80);
+  --ifm-color-emphasis-400: oklch(0.78 0.005 80);
+  --ifm-color-emphasis-500: oklch(0.62 0.005 80);
+
+  /* Foreground */
+  --ifm-font-color-base: oklch(0.18 0.006 70);
+  --ifm-font-color-secondary: oklch(0.34 0.006 70);
+  --ifm-color-content-secondary: oklch(0.46 0.006 70);
+
+  /* Code (Infima native vars; the .prism-code rule reads these) */
+  --ifm-code-background: oklch(0.945 0.005 80);
+  --ifm-pre-background: oklch(0.97 0.005 80);
+  --docusaurus-highlighted-code-line-bg: oklch(0.6 0.18 110 / 0.12);
+
+  /* Borders / shadows */
+  --ifm-toc-border-color: oklch(0.88 0.005 80);
+
+  /* Accent — darker amber works against off-white */
+  --ifm-color-primary: #7a6e0c;
+  --ifm-color-primary-dark: #6d6306;
+  --ifm-color-primary-darker: #5f5605;
+  --ifm-color-primary-darkest: #4a4304;
+  --ifm-color-primary-light: #8c7e11;
+  --ifm-color-primary-lighter: #9a8b17;
+  --ifm-color-primary-lightest: #b39e1a;
+
+  /* Links use the primary scale so they swap cleanly */
+  --ifm-link-color: var(--ifm-color-primary);
+  --ifm-link-hover-color: var(--ifm-color-primary-dark);
+
+  /* Range-brand extras */
+  --range-accent: oklch(0.9 0.18 110); /* same amber both themes */
+  --range-accent-hover: oklch(0.78 0.18 110);
+  --range-accent-soft: oklch(0.7 0.18 110 / 0.16);
+  --range-accent-border: oklch(0.7 0.18 110 / 0.45);
+  --range-link: #7a6e0c; /* readable amber on off-white */
+  --range-link-hover: #5f5605;
+
+  /* Blockquote tint */
+  --range-blockquote-bg: oklch(0.82 0.14 70 / 0.1);
+  --range-blockquote-border: oklch(0.62 0.14 70 / 0.7);
+  --range-blockquote-text: oklch(0.32 0.006 70);
+
+  --range-hero-glow: oklch(0.9 0.18 110 / 0.07);
+  --range-title-em: var(--ifm-color-emphasis-500);
+}
+
+/* ─── Dark theme ─────────────────────────────────────────────────── */
 
 [data-theme="dark"] {
-  /* Backgrounds */
   --ifm-background-color: oklch(0.165 0.006 70);
   --ifm-background-surface-color: oklch(0.195 0.006 70);
   --ifm-color-emphasis-100: oklch(0.225 0.006 70);
@@ -19,16 +80,16 @@
   --ifm-color-emphasis-400: oklch(0.36 0.006 70);
   --ifm-color-emphasis-500: oklch(0.46 0.006 70);
 
-  /* Borders */
   --ifm-toc-border-color: oklch(0.28 0.006 70);
-  --ifm-color-secondary: oklch(0.36 0.006 70);
 
-  /* Foreground / text */
   --ifm-font-color-base: oklch(0.96 0.005 80);
   --ifm-font-color-secondary: oklch(0.8 0.005 80);
   --ifm-color-content-secondary: oklch(0.62 0.005 80);
 
-  /* Accent — amber */
+  --ifm-code-background: oklch(0.225 0.006 70);
+  --ifm-pre-background: oklch(0.195 0.006 70);
+  --docusaurus-highlighted-code-line-bg: oklch(0.28 0.006 70 / 0.6);
+
   --ifm-color-primary: #d4c33d;
   --ifm-color-primary-dark: #c0ad2a;
   --ifm-color-primary-darker: #b39e1a;
@@ -37,41 +98,28 @@
   --ifm-color-primary-lighter: #e3da72;
   --ifm-color-primary-lightest: #efe9a4;
 
-  /* Code blocks */
-  --ifm-code-background: oklch(0.225 0.006 70);
-  --ifm-pre-background: oklch(0.195 0.006 70);
-  --docusaurus-highlighted-code-line-bg: oklch(0.28 0.006 70 / 0.6);
-
-  /* Links */
   --ifm-link-color: var(--ifm-color-primary-light);
   --ifm-link-hover-color: var(--ifm-color-primary);
 
-  /* Navbar */
   --ifm-navbar-background-color: oklch(0.195 0.006 70);
   --ifm-navbar-shadow: 0 1px 0 oklch(0.28 0.006 70);
 
-  /* Range-specific accent semantics, exposed for custom MDX */
   --range-accent: oklch(0.9 0.18 110);
+  --range-accent-hover: oklch(0.78 0.18 110);
   --range-accent-soft: oklch(0.9 0.18 110 / 0.13);
-  --range-ok: oklch(0.78 0.13 155);
-  --range-warn: oklch(0.82 0.14 70);
-  --range-err: oklch(0.72 0.18 25);
+  --range-accent-border: oklch(0.9 0.18 110 / 0.35);
+  --range-link: oklch(0.9 0.18 110);
+  --range-link-hover: oklch(0.78 0.18 110);
+
+  --range-blockquote-bg: oklch(0.82 0.14 70 / 0.06);
+  --range-blockquote-border: oklch(0.82 0.14 70 / 0.6);
+  --range-blockquote-text: oklch(0.86 0.005 80);
+
+  --range-hero-glow: oklch(0.9 0.18 110 / 0.09);
+  --range-title-em: oklch(0.8 0.005 80);
 }
 
-/* ─── Light theme (also tuned, but a clear second-class citizen) ── */
-
-:root {
-  --ifm-color-primary: #8c7b0e;
-  --ifm-color-primary-dark: #7e6e0c;
-  --ifm-color-primary-darker: #76680b;
-  --ifm-color-primary-darkest: #61560a;
-  --ifm-color-primary-light: #9a890f;
-  --ifm-color-primary-lighter: #a18f10;
-  --ifm-color-primary-lightest: #b8a317;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.08);
-}
-
-/* ─── Typography ───────────────────────────────────────────────── */
+/* ─── Typography (theme-neutral) ─────────────────────────────────── */
 
 :root {
   --ifm-font-family-base:
@@ -98,7 +146,7 @@ h1 {
   font-weight: 300;
 }
 
-/* Hairline-light navbar title — matches the in-app header */
+/* Navbar wordmark — same hairline weight as the in-app header */
 .navbar__title {
   font-family: var(--ifm-heading-font-family);
   font-weight: 300;
@@ -106,35 +154,40 @@ h1 {
   font-size: 1.1rem;
 }
 
-/* Inline code: tighter than default, more visible against dark bg */
-[data-theme="dark"] code {
-  background: oklch(0.225 0.006 70);
-  border: 1px solid oklch(0.28 0.006 70);
+/* ─── Inline code (both themes) ──────────────────────────────────── */
+
+code {
+  background: var(--ifm-code-background);
+  border: 1px solid var(--ifm-color-emphasis-200);
   border-radius: 4px;
   padding: 0.1em 0.35em;
   font-size: 0.88em;
 }
 
-/* Code blocks: warmer dark, less stark than default */
-[data-theme="dark"] .prism-code,
-[data-theme="dark"] pre {
-  background: oklch(0.195 0.006 70) !important;
-  border: 1px solid oklch(0.28 0.006 70);
+/* ─── Code blocks (both themes) ──────────────────────────────────── */
+
+.prism-code,
+pre {
+  background: var(--ifm-pre-background) !important;
+  border: 1px solid var(--ifm-color-emphasis-200);
 }
 
-/* Sidebar polish */
+/* ─── Sidebar polish ─────────────────────────────────────────────── */
+
 .menu__link {
   font-size: 0.92rem;
 }
+
 .menu__link--active {
   font-weight: 500;
 }
 
-/* Tables — denser, more terminal-ish. Uses an Infima emphasis var
- * for the heading row so it tracks the active theme. */
+/* ─── Tables ─────────────────────────────────────────────────────── */
+
 .markdown table {
   font-size: 0.9rem;
 }
+
 .markdown table th {
   background: var(--ifm-color-emphasis-100);
   color: var(--ifm-font-color-base);
@@ -144,19 +197,21 @@ h1 {
   font-size: 0.75rem;
 }
 
-/* Blockquotes — match the in-app warn-callout style */
-[data-theme="dark"] .markdown blockquote {
-  background: oklch(0.82 0.14 70 / 0.06);
-  border-left: 2px solid oklch(0.82 0.14 70 / 0.6);
-  color: oklch(0.86 0.005 80);
+/* ─── Blockquotes (both themes; warmth comes from --range-blockquote-*) */
+
+.markdown blockquote {
+  background: var(--range-blockquote-bg);
+  border-left: 2px solid var(--range-blockquote-border);
+  color: var(--range-blockquote-text);
 }
 
-/* Hero / landing tweaks */
+/* ─── Hero gradient (used by landing page only, but global for safety) */
+
 .hero {
   background:
     radial-gradient(
       ellipse 60% 50% at 50% 0%,
-      oklch(0.9 0.18 110 / 0.08),
+      var(--range-hero-glow),
       transparent 65%
     ),
     var(--ifm-background-color);
