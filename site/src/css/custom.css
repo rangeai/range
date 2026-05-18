@@ -130,12 +130,14 @@ h1 {
   font-weight: 500;
 }
 
-/* Tables — denser, more terminal-ish */
+/* Tables — denser, more terminal-ish. Uses an Infima emphasis var
+ * for the heading row so it tracks the active theme. */
 .markdown table {
   font-size: 0.9rem;
 }
 .markdown table th {
-  background: oklch(0.225 0.006 70);
+  background: var(--ifm-color-emphasis-100);
+  color: var(--ifm-font-color-base);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.04em;
