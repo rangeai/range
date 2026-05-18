@@ -70,8 +70,8 @@ through wandb. No digging through `events.jsonl` by hand.
 ## See it on any Python repo
 
 Two real GitHub projects, dropped into Range cold — no `range.yaml`,
-no Range-specific structure, no Yard. From `git clone` to a working
-session in about thirty seconds:
+no Range-specific structure, no special prep. From `git clone` to a
+working session in about thirty seconds:
 
 <table>
 <tr>
@@ -134,7 +134,8 @@ across seeds takes a day. Range's `/investigate`:
 - Hands Codex a structured report with investigation directives
 
 Codex finishes the investigation. We've reproducibly hit
-&lt;5 turns to root-cause + fix proposal on Yard's planted bugs.
+&lt;5 turns to root-cause + fix proposal on planted-bug fixtures in
+the Playground fork (see [`docs/playground_fixtures.md`](docs/playground_fixtures.md)).
 
 ### 🪛 `/wire wandb-hydra` — patch the canonical foot-guns
 
@@ -227,18 +228,18 @@ npm install -g @openai/codex && codex login
 git clone git@github.com:rangeai/range.git ~/personal/range
 cd ~/personal/range/web && bun install
 
-# 3. Optional: clone Yard, our tiny dogfood sim
-git clone git@github.com:rangeai/yard.git ~/personal/yard
-(cd ~/personal/yard && uv sync)
+# 3. Optional: clone MuJoCo Playground for a real RL substrate
+git clone https://github.com/google-deepmind/mujoco_playground.git ~/personal/mujoco_playground
 
 # 4. Run
 bun run dev
 open http://localhost:5173/
 ```
 
-In the UI: **new session → attach `~/personal/yard` → type
-`/warehouse_a` and hit enter.** First run end-to-end inside 30
-seconds.
+In the UI: **new session → attach `~/personal/mujoco_playground` →
+accept the scaffold proposal → run `/install` then
+`/cartpole_balance`.** First run end-to-end inside a few minutes
+(the first `/install` pulls the venv).
 
 Full walkthrough: [`docs/user_guide.md`](docs/user_guide.md).
 Full install reference: [`docs/dev_setup.md`](docs/dev_setup.md).
@@ -298,22 +299,18 @@ deferred behind specific customer signals).
 
 ---
 
-## Pair-built with Yard
+## Proof harness — Playground fork
 
-[**Yard**](https://github.com/rangeai/yard) is a deliberately tiny
-~1,400-LOC MuJoCo sim built to dogfood Range. Every Yard pain
-becomes a Range feature requirement. Every Range feature gets
-validated against a Yard scenario.
+Range's depth claims (`/investigate` finds bugs faster than raw
+Codex, `/wire` patches the canonical foot-guns, etc.) are measured
+against a **narrowly-diverged fork of MuJoCo Playground**:
+[`rangeai/mujoco_playground`](https://github.com/rangeai/mujoco_playground).
 
-Three planted bugs ship with Yard so you can live the investigation
-flows end-to-end:
-
-- `YARD_BUG_HEADING_DRIFT` — heading-wrap bug, surfaces only on
-  long episodes
-- `YARD_BUG_DEPTH_CLIP` — engine clips depth, bot doesn't see
-  walls
-- `YARD_BUG_PROXIMITY_NAN` — stale sentinel emits NaN wheel
-  commands in narrow aisles
+The fork's `main` tracks upstream; each planted-bug fixture lives
+on its own `range-fixture-*` branch so we can rebase cleanly against
+new Playground releases. Comparison runs (Range vs. raw Codex) on
+those fixtures drive the benchmark numbers in
+[`docs/playground_fixtures.md`](docs/playground_fixtures.md).
 
 ---
 

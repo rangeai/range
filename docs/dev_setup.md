@@ -1,4 +1,4 @@
-# Dev Setup — Range + Yard
+# Dev Setup — Range + MuJoCo Playground
 
 **For:** Software engineers setting up Range for the first time on a Mac.
 **Time:** 10–20 minutes if you don't have the prerequisites, 5 minutes if you do.
@@ -39,7 +39,8 @@ bun --version    # >= 1.3 expected
 
 ### 1.3 uv
 
-Python package manager (used by Yard and Playground). Drop-in
+Python package manager (used by Playground and most modern Python
+projects you'll attach). Drop-in
 replacement for pip + venv, much faster.
 
 ```bash
@@ -138,7 +139,7 @@ gh auth login
 
 `gh` is optional; Range's `/pr` builtin uses it to push + open PRs.
 
-### 1.6 Python 3.13 (for Yard + Playground)
+### 1.6 Python 3.13 (for Playground + most JAX-based stacks)
 
 uv can fetch this for you on demand, so you may not need to do this
 explicitly. If you want it system-wide:
@@ -159,19 +160,17 @@ cd ~/personal
 git clone git@github.com:rangeai/range.git
 # (or whatever the actual remote is — see your invite email)
 
-# Yard — the tiny dogfood sim
-git clone git@github.com:rangeai/yard.git
+# MuJoCo Playground — the canonical substrate the user guide walks you through
+git clone https://github.com/google-deepmind/mujoco_playground.git
 ```
 
-If you want Playground or Isaac Lab for testing scaffolds:
+If you also want Isaac Lab for testing scaffolds (detection-only on Mac):
 
 ```bash
-git clone --depth 1 https://github.com/google-deepmind/mujoco_playground.git ~/personal/range-fixtures/mujoco_playground
 git clone --depth 1 https://github.com/isaac-sim/IsaacLab.git ~/personal/range-fixtures/IsaacLab
 ```
 
-These aren't required, but they're the substrates Range's user
-guide walks you through. Total disk cost: ~500 MB.
+Not required. Total disk cost: ~500 MB.
 
 ---
 
@@ -187,26 +186,20 @@ fast; should finish in under 30 seconds.
 
 ---
 
-## 4. Install Yard's deps
+## 4. Install Playground's deps
 
-```bash
-cd ~/personal/yard
-uv sync
-```
+Don't run `uv sync` directly. The Range workflow is:
 
-This creates `.venv` inside Yard with Python 3.13 and pulls in
-mujoco, numpy, imageio, etc. ~1 minute.
+1. Start the dev server (next step), open Range.
+2. Attach the Playground repo as a new session.
+3. Range proposes a scaffold; accept it (writes `range.yaml` + a
+   small `tools/range_shim.py`).
+4. Run `/install` from the slash picker — that's the
+   `uv sync --python 3.13` invocation. ~1–3 minutes the first time,
+   pinned to Python 3.13 because jaxlib has no cp314 wheels yet.
 
-You shouldn't need to activate the venv — Yard's commands use `uv
-run yard ...` which picks up the venv automatically.
-
-Quick check:
-
-```bash
-uv run yard run --scenario warehouse_a --seed 42
-```
-
-Expect: ~5 seconds of compute, then a JSON success summary.
+You don't need to activate the venv — every scenario runs through
+`uv run python` which picks it up automatically.
 
 ---
 
@@ -234,11 +227,14 @@ composer).
 In the UI:
 
 1. Click **New session** (or just type a prompt — that creates one).
-2. Title: `setup test`. Repo path: pick `~/personal/yard`. Click create.
-3. The session opens. Codex starts in the background (lazy-start —
-   only spawns once you actually need it).
-4. Type `/warehouse_a` and press enter.
-5. A run card appears. ~5s later it finishes with `success: true`.
+2. Title: `setup test`. Repo path: pick `~/personal/mujoco_playground`. Click create.
+3. The session opens. A scaffold proposal card appears in the
+   conversation within ~2 seconds. Codex starts in the background
+   (lazy-start — only spawns once you actually need it).
+4. Click **accept · write 2 files** on the proposal card.
+5. Type `/install` and press enter. ~1–3 min on a cold machine.
+6. Then `/cartpole_balance`. A run card appears, JAX compiles
+   (~30s), then ticks start landing.
 
 If you got that far, the install works.
 
@@ -258,13 +254,14 @@ You have Python 3.14 as your default. uv picks 3.14 by default if
 it sees nothing else available. Fix:
 
 ```bash
-cd ~/personal/yard
+cd ~/personal/mujoco_playground
 uv python pin 3.13
 uv sync
 ```
 
-For new Range-attached repos, the auto-scaffold emits `uv sync
---python 3.13` so this is taken care of.
+For Range-attached Playground repos, the auto-scaffold emits
+`uv sync --python 3.13` so this is taken care of as long as you
+use `/install` from the slash picker.
 
 ### Worktree creation fails
 

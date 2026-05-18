@@ -3423,7 +3423,7 @@ function TrajectoryPreview({
   }
 
   // Pick 1D fields, excluding `t` (used as x-axis). Sort so the
-  // typical Yard field set lands in a sensible order.
+  // typical sim-RL metric set lands in a sensible order.
   const fieldNames = Object.keys(data.fields).filter((k) => {
     const f = data.fields[k]!;
     return f.shape.length === 1 && f.shape[0] > 1;

@@ -12,7 +12,7 @@ alone; jump around freely.
 
 - [1. What is Range, in one paragraph](#1-what-is-range-in-one-paragraph)
 - [2. The 60-second context dump (zero robotics needed)](#2-the-60-second-context-dump-zero-robotics-needed)
-- [3. The cast: Range, Yard, Playground, Isaac Lab](#3-the-cast-range-yard-playground-isaac-lab)
+- [3. The cast: Range, Playground, Isaac Lab](#3-the-cast-range-playground-isaac-lab)
 - [4. Concepts you'll trip over (ELI5)](#4-concepts-youll-trip-over-eli5)
 - [5. Getting set up](#5-getting-set-up)
 - [6. The first-time tour (10 minutes)](#6-the-first-time-tour-10-minutes)
@@ -101,37 +101,39 @@ conversation context; instead, create a new session.
 
 ---
 
-## 3. The cast: Range, Yard, Playground, Isaac Lab
+## 3. The cast: Range, Playground, Isaac Lab
 
-Range plays nice with anything; in practice it ships with three
-example substrates you can poke at right out of the gate.
+Range plays nice with anything, but its depth-features (rich
+scaffolds, reward-fn entities, `/investigate` against known patterns)
+are tuned for two concrete substrates today:
 
 | name | what it is | runs on Mac? | what it's for |
 |---|---|---|---|
 | **Range** | this tool | yes | the harness itself |
-| **Yard** | a tiny ~1,400-LOC MuJoCo robot sim that ships planted bugs | yes | the smallest possible end-to-end loop to learn Range on |
-| **MuJoCo Playground** | DeepMind's JAX/MJX environment library (50+ envs across locomotion, manipulation, dm_control) | yes | the realistic substrate most ML researchers actually use |
-| **Isaac Lab** | NVIDIA's full-stack sim framework, 170+ tasks | **no** (needs RTX GPU) | scaffold/detection testing only — you can't *run* anything but Range can plan the integration |
+| **MuJoCo Playground** | DeepMind's JAX/MJX environment library (50+ envs across locomotion, manipulation, dm_control) | yes | Range's headline substrate — every value prop has a concrete home here |
+| **Isaac Lab** | NVIDIA's full-stack sim framework, 170+ tasks | **no** (needs RTX GPU) | scaffold/detection works; running scenarios needs a remote box for now |
 
-**Recommended path:** start with **Yard** (no extra deps), graduate to
-**Playground** once you want a real audience-shaped substrate.
+For any other Python project (SB3, CleanRL, PureJaxRL, your own
+custom training loop), Range still imports and runs you in seconds
+— see §7 for the SB3 walkthroughs. The depth-features just have
+less to grab onto when there's no recognized stack signature.
 
 ---
 
 ## 4. Concepts you'll trip over (ELI5)
 
-Just enough so the rest of the doc doesn't lose you. The Yard repo
-has deeper reads:
+Just enough so the rest of the doc doesn't lose you. Deeper reads
+live next door:
 
-- `yard/ELI5_FOUNDATIONS.md` — math, physics, neural nets, sensors.
+- [`eli5_foundations.md`](eli5_foundations.md) — math, physics, neural nets, sensors.
   1,300 lines of plain-English ramp-up.
-- `yard/ELI5.md` — what robot-sim engineers actually do all day.
+- [`eli5.md`](eli5.md) — what robot-sim engineers actually do all day.
 
 Quick definitions for *this* doc:
 
 - **Simulator (sim):** a program that fakes a robot inside a fake
-  world. Physics, sensors, contact, the works. We use MuJoCo most
-  of the time; Yard and Playground both run on it.
+  world. Physics, sensors, contact, the works. Playground runs on
+  MuJoCo's JAX backend (MJX); Isaac Lab runs on PhysX.
 - **Episode:** one trial. Reset the world, let the policy run for
   N steps, record what happened, restart.
 - **Policy:** the neural network being trained. Takes
@@ -171,101 +173,94 @@ open http://localhost:5173/
 
 Server runs on `:3457`, web UI on `:5173`.
 
-If you also want Yard ready to attach:
+To have Playground ready to attach as a real substrate:
 
 ```bash
-git clone git@github.com:rangeai/yard.git ~/personal/yard
-cd ~/personal/yard && uv sync
+git clone https://github.com/google-deepmind/mujoco_playground.git ~/personal/mujoco_playground
 ```
 
-(Range itself doesn't need Yard cloned to function. It just helps
-to have a working substrate.)
+(Range itself doesn't need Playground cloned to function. It just
+helps to have a working substrate. The `uv sync` happens inside
+Range once you `/install` from the scaffolded `range.yaml`.)
 
 ---
 
 ## 6. The first-time tour (10 minutes)
 
 Stand up the dev server (`bun run dev` from `web/`), open
-`http://localhost:5173/`, then:
+`http://localhost:5173/`, then run this end-to-end tour against
+**MuJoCo Playground** — Range's headline substrate.
 
-### 6.1 Attach Yard
+### 6.1 Attach Playground
 
 - Click **New session** on the home screen.
-- Title: whatever.
-- Repo path: pick `/Users/<you>/personal/yard` (or wherever you
-  cloned it).
-- Click create.
+- Repo path: `/Users/<you>/personal/mujoco_playground` (or wherever
+  you cloned it).
+- Leave the prompt blank — scaffold detection runs server-side on
+  session create, no agent turn needed.
+- Press **Enter**.
 
 What you should see, within a second or two:
 
 - A new session opens.
-- Codex spawns in the background. (You'll see "Codex thread started"
-  in the timeline.)
-- **No scaffold proposal appears** — because Yard already has a
-  hand-written `range.yaml`. Range only proposes scaffolds when one
-  isn't already present.
+- Codex spawns in the background. ("Codex thread started" lands in
+  the timeline.)
+- **A scaffold proposal appears** in the conversation:
+  `yml · scaffold proposal · MuJoCo Playground · 2 cmd · 3 scn · 53 reward fn · +shim`.
+- Click **accept · write 2 files**. Range writes `range.yaml` plus
+  a small `tools/range_shim.py` that bridges Range's `RANGE_*` env
+  vars to Playground's absl flags. The card flips to `accepted ✓`.
 
-### 6.2 Run a scenario from the slash picker
+### 6.2 Install + first run
 
 - Type `/` in the composer. The slash picker opens with everything
-  available: builtins (range layer + codex layer), commands, and
-  scenarios.
-- Scroll to **`warehouse_a`**. Click it.
+  available: builtins, commands (`install`, `smoke`), and the three
+  picked scenarios (`cartpole_balance`, `g1_joystick_flat_terrain`,
+  `aloha_hand_over`).
+- Run `/install` first — creates the venv on Python 3.13 + syncs
+  deps via `uv`. Takes 1–3 minutes on a cold machine.
+- Then `/cartpole_balance`. ~30s of JAX compile, then ticks land:
+  reward streams in, episode counter climbs, FPS surfaces.
 
-What happens:
+That's the full Range loop on a real RL substrate: scaffold, accept,
+run, watch metrics. No hand-rolled launch scripts. No ad-hoc
+W&B project setup. No reading the Playground docs first.
 
-- A new "run card" appears in the conversation: `▶ warehouse_a · …
-  running …`
-- Inside ~5 seconds, the run finishes. Metrics appear (success,
-  ttg_s, collisions). Artifacts appear (replay.mp4, trajectory.npz,
-  depth_frames/).
+### 6.3 Try `/investigate` against a planted-bug fixture
 
-That's a full Range loop: ask for a scenario, watch the run, see
-the artifacts.
+The proof-harness work plants realistic NaN/instability bugs on
+named branches of [`rangeai/mujoco_playground`](https://github.com/rangeai/mujoco_playground).
+See [`docs/playground_fixtures.md`](playground_fixtures.md) for the
+current catalog. The flow:
 
-### 6.3 Run a scenario with the planted bug
+- Check out a fixture branch in your local Playground clone
+  (e.g., `git checkout range-fixture-cartpole-nan`).
+- Run the affected scenario from Range. It fails within a few
+  seconds.
+- Type `/investigate` (no arguments) and run. Range picks the latest
+  failed run, walks `events.jsonl`, identifies the first NaN tick
+  and affected fields, and hands Codex a structured report with the
+  last 5 clean ticks + first 5 contaminated ticks as anchor context.
+- Codex reads the bug, finds the offending code path, proposes a
+  fix.
 
-- Type `/warehouse_b_proximity_bug` and run it.
-- The run finishes in ~10s, **state: failed**.
+Range's P2 success criterion is **<5 Codex turns to root-cause** on
+these fixtures. The harness measures the time delta vs. raw Codex
+(no Range context) so the "Range adds value" claim is grounded in
+numbers, not vibes.
 
-This is the canonical "NaN bug" Yard ships for testing Range's
-investigation flow.
+### 6.4 Sweep over seeds
 
-### 6.4 Investigate it
-
-- Type `/investigate` (no arguments) and run.
-- Range automatically picks the latest failed run.
-- A system message appears: "Inspecting trajectory…"
-- A new Codex turn fires with a full trajectory report attached:
-  total ticks, first-NaN tick, affected fields, last 5 clean ticks
-  + first 5 contaminated ticks for context.
-- Codex reads the bug, opens `yard/apps/controllers/pd_to_goal.py`,
-  finds the stale-sentinel block, and proposes a fix.
-
-Whether Codex finds it in <5 turns is the actual P2 success
-criterion — try it and see.
-
-### 6.5 Attach MuJoCo Playground (optional)
-
-Once you've cloned Playground:
-
-- New session, repo path: `/path/to/mujoco_playground`.
-- This time, a scaffold proposal card appears in the conversation:
-  **`yml · scaffold proposal · MuJoCo Playground · 2 cmd · 3 scn · 53 reward fn`**.
-- Click **accept**. Range writes `range.yaml` into the repo.
-- Open the slash picker — you'll see the three picked scenarios
-  (`g1_joystick_flat_terrain`, `aloha_hand_over`, `cartpole_balance`)
-  and two commands (`install`, `smoke`).
-- Run `/install` first (creates the .venv with Python 3.13 + syncs
-  deps; takes 1–3 min the first time).
-- Then `/cartpole_balance` — a real RL training run starts. (~30s
-  of JAX compile then ticks start landing.)
+- Type `/sweep cartpole_balance seed=1..3` and run.
+- Three runs land as one sweep card in the conversation, reward
+  curves side-by-side. Each is a full training run; sweeps just
+  parallelize the launch + grouping.
 
 ---
 
 ## 7. Walkthroughs: any Python repo (SB3-zoo)
 
-The Yard walkthrough above shows Range working on its dogfood sim.
+The Playground tour above shows Range on its headline substrate.
 These walkthroughs use **`DLR-RM/rl-baselines3-zoo`** — a real,
 public Stable-Baselines3 training framework — to prove the same
 loop works on arbitrary Python projects with zero Range-specific
@@ -403,38 +398,7 @@ shipped with the substrates Range knows about today.
 > language). yaml says "what to run + what env vars to set"; the
 > repo says "what those runs actually do."
 
-### 7.1 Yard scenarios (`~/personal/yard/range.yaml`)
-
-All warehouse scenarios drive the same diff-drive bot to a goal
-across the same generic floor plan. The difference is layout +
-length.
-
-| scenario | what it does | typical time |
-|---|---|---|
-| `warehouse_a` | Open floor, scattered boxes. 1 seed = 1 run. | ~5s |
-| `warehouse_b` | Narrow aisles. Tighter clearance. | ~5s |
-| `warehouse_c` | Long path. Surfaces long-episode bugs (heading-wrap). | ~25s |
-| `warehouse_a_5seeds` | warehouse_a × 5 seeds — quick statistical check. | ~25s |
-| `warehouse_b_10seeds` | warehouse_b × 10 seeds — Priya's flow. | ~50s |
-| `warehouse_c_10seeds` | warehouse_c × 10 seeds — long episodes. | ~4 min |
-| `regress_default` | All 3 scenarios × 10 seeds = 30 runs. Run before merging. | ~5 min |
-| `warehouse_b_proximity_bug` | **Bug scenario.** Sets `YARD_BUG_PROXIMITY_NAN=1`. Wheel commands go NaN within a few ticks. Used to test `/investigate`. | ~10s |
-
-#### Yard's planted bugs
-
-Yard ships three deliberately-broken code paths, gated behind env
-vars (all off by default). Toggle them via `range.yaml` scenarios
-or by setting the env var before launching `yard run`.
-
-| env var | what it breaks | scenario you should investigate it from |
-|---|---|---|
-| `YARD_BUG_HEADING_DRIFT=1` | Skips angle-normalization in `pd_to_goal`. Mild signal — surfaces on long episodes. | `warehouse_c_10seeds` |
-| `YARD_BUG_DEPTH_CLIP=1` | Engine clips depth at 0.45m instead of 0.05m. Bot doesn't see close walls. | `warehouse_b_10seeds` |
-| `YARD_BUG_PROXIMITY_NAN=1` | "Stale sentinel" emits NaN wheel commands in narrow aisles. | `warehouse_b_proximity_bug` |
-
-Full bug docs: `yard/HACKING.md`.
-
-### 7.2 MuJoCo Playground scenarios (after Range scaffolds the yaml)
+### 8.1 MuJoCo Playground scenarios (after Range scaffolds the yaml)
 
 The Playground scaffold picks 3 representative envs out of the 54
 available, biased toward the most-iterated starter tasks:
@@ -448,7 +412,7 @@ available, biased toward the most-iterated starter tasks:
 You can add more by editing the generated `range.yaml`. The full
 env list lives in `mujoco_playground/_src/{locomotion,manipulation,dm_control_suite}/__init__.py`.
 
-### 7.3 Isaac Lab — detection only
+### 8.2 Isaac Lab — detection only
 
 Range's Isaac Lab detector finds 170+ registered tasks. It scaffolds
 3 starter scenarios (`cartpole_direct`, `velocity_flat_anymal_d`,
@@ -689,17 +653,14 @@ into your `range.yaml`. You can add more entries by hand — point
     ├── direction_2026_05_14.md
     └── ... (other specs)
 
-~/personal/yard/
-├── yard/                   # the actual sim
-│   ├── engine/             # MuJoCo wrapper, sensors, recorder
-│   ├── apps/               # scenarios, controllers, eval, regression
-│   └── cli.py
-├── tools/range_shim.py     # forwards Range env vars into yard CLI
-├── range.yaml              # what Range orchestrates
-├── HACKING.md              # planted bug catalog
-├── ELI5.md                 # what robot-sim engineering looks like
-├── ELI5_FOUNDATIONS.md     # math + physics + neural nets refresher
-└── README.md
+~/personal/mujoco_playground/
+├── mujoco_playground/      # the envs (locomotion, manipulation, dm_control_suite)
+│   └── _src/
+├── learning/               # Brax-based PPO training scripts
+│   └── train_jax_ppo.py
+├── tools/range_shim.py     # written by Range's scaffold — bridges RANGE_* env vars to absl flags
+├── range.yaml              # written by Range's scaffold
+└── pyproject.toml
 
 ~/.range/                   # runtime state, gitignored
 ├── range.db                # sessions, runs, attempts
@@ -734,15 +695,16 @@ into your `range.yaml`. You can add more entries by hand — point
   full v0.5 product spec, audience analysis, prioritized roadmap.
 - `docs/range_positioning_v0_1.md` — Range's NVIDIA-independent
   positioning rules.
-- `yard/ELI5.md` — long-form "what is robotics simulation"
+- [`eli5.md`](eli5.md) — long-form "what is robotics simulation"
   introduction.
-- `yard/ELI5_FOUNDATIONS.md` — math/physics/neural-net refresher.
-- `yard/HACKING.md` — planted bug catalog with investigation flows.
+- [`eli5_foundations.md`](eli5_foundations.md) — math/physics/neural-net refresher.
+- [`playground_fixtures.md`](playground_fixtures.md) — the
+  Playground-fork proof harness.
 
 **Outside the repo:**
 
 - [MuJoCo docs](https://mujoco.readthedocs.io/) — the physics
-  engine Yard and Playground both use.
+  engine Playground runs on (and Isaac Lab can be configured to use).
 - [MuJoCo Playground tech report (Jan 2025)](https://arxiv.org/abs/2502.08844)
   — what it covers and why it exists.
 - [Isaac Lab docs](https://isaac-sim.github.io/IsaacLab/) — NVIDIA's
