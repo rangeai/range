@@ -647,11 +647,12 @@ into your `range.yaml`. You can add more entries by hand — point
 │   └── package.json
 └── docs/
     ├── user_guide.md            ← you are here
-    ├── dev_setup.md
-    ├── range_product_spec_v0_5_sim_engineer_workflow.md
-    ├── direction_2026_05_15.md
-    ├── direction_2026_05_14.md
-    └── ... (other specs)
+    ├── dev_setup.md             # install + first run
+    ├── eli5.md, eli5_foundations.md  # robotics primer
+    ├── playground_fixtures.md   # proof harness catalog
+    ├── posts/                   # per-fixture writeups
+    ├── contributing/            # for people hacking on Range
+    └── archive/                 # superseded specs
 
 ~/personal/mujoco_playground/
 ├── mujoco_playground/      # the envs (locomotion, manipulation, dm_control_suite)
@@ -691,15 +692,22 @@ into your `range.yaml`. You can add more entries by hand — point
 
 **Inside the repo:**
 
-- `docs/range_product_spec_v0_5_sim_engineer_workflow.md` — the
-  full v0.5 product spec, audience analysis, prioritized roadmap.
-- `docs/range_positioning_v0_1.md` — Range's NVIDIA-independent
-  positioning rules.
 - [`eli5.md`](eli5.md) — long-form "what is robotics simulation"
   introduction.
 - [`eli5_foundations.md`](eli5_foundations.md) — math/physics/neural-net refresher.
 - [`playground_fixtures.md`](playground_fixtures.md) — the
   Playground-fork proof harness.
+
+**For people hacking on Range:**
+
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — the contributor
+  on-ramp.
+- [`contributing/architecture.md`](contributing/architecture.md) —
+  codebase tour.
+- [`contributing/product_spec.md`](contributing/product_spec.md) —
+  full v0.5 spec + roadmap.
+- [`contributing/positioning.md`](contributing/positioning.md) —
+  Range's NVIDIA-independent positioning rules.
 
 **Outside the repo:**
 

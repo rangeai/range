@@ -264,10 +264,10 @@ record:
   team's pipeline is a hand-rolled island
 
 Range targets those workflows directly. The v0.5 product spec
-([read it here](docs/range_product_spec_v0_5_sim_engineer_workflow.md))
-walks through the audience research, the cited pain points, the
-prioritized roadmap, and the things we explicitly *aren't* building
-yet (3D scene viewer, hyperparameter search, remote compute — all
+([read it here](docs/contributing/product_spec.md)) walks through
+the audience research, the cited pain points, the prioritized
+roadmap, and the things we explicitly *aren't* building yet (3D
+scene viewer, hyperparameter search, remote compute — all
 deferred behind specific customer signals).
 
 ---
@@ -311,6 +311,25 @@ on its own `range-fixture-*` branch so we can rebase cleanly against
 new Playground releases. Comparison runs (Range vs. raw Codex) on
 those fixtures drive the benchmark numbers in
 [`docs/playground_fixtures.md`](docs/playground_fixtures.md).
+
+---
+
+## Contributing
+
+We're opening Range to outside contributors. Start here:
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to get your dev
+  environment up, how we work, conventions, open priorities.
+- [`docs/contributing/architecture.md`](docs/contributing/architecture.md)
+  — 15-minute codebase tour. Server modules, frontend layout, the
+  data flow for one scenario run.
+- [`docs/contributing/`](docs/contributing/) — product spec,
+  positioning rules, historical strategy notes.
+
+A few things on the open-priorities list right now: a real test
+suite, more stack-specific scaffold detectors (rl_games, PufferLib,
+ManiSkill), and argparse/click/Hydra schema inference for the
+generic Python scaffolder.
 
 ---
 

@@ -4,10 +4,10 @@
 **Status:** Active — supersedes v0.4 for direction; v0.4 still authoritative on the agent/sim-streaming architecture
 **Date:** 2026-05-16
 **Builds on:**
-- `range_product_spec_v0_4_codex_sim_streaming.md` (the Codex + sim streaming architecture)
-- `range_positioning_v0_1.md` (NVIDIA-independent, public-repo-only positioning)
-- `direction_2026_05_14.md` (the dogfood-vs-product question)
-- `direction_2026_05_15.md` (agentic-only commitment, target audience)
+- [`../archive/range_product_spec_v0_4_codex_sim_streaming.md`](../archive/range_product_spec_v0_4_codex_sim_streaming.md) (the Codex + sim streaming architecture)
+- [`positioning.md`](positioning.md) (NVIDIA-independent, public-repo-only positioning)
+- [`direction/2026_05_14.md`](direction/2026_05_14.md) (the dogfood-vs-product question)
+- [`direction/2026_05_15.md`](direction/2026_05_15.md) (agentic-only commitment, target audience)
 
 This doc consolidates everything we've learned since direction_2026_05_15
 — particularly the May 2026 web-research pass into what sim engineers
