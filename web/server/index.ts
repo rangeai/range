@@ -73,6 +73,10 @@ import {
   startRun,
 } from "./runner.ts";
 import { loadProfile } from "./profile.ts";
+import {
+  shutdownAllProfileWatchers,
+  watchProfile,
+} from "./profile_watcher.ts";
 import { detectScaffold, writeScaffold } from "./scaffold.ts";
 import {
   applyWirePatches,
@@ -1356,6 +1360,13 @@ log.info(
   `range listening on http://${server.hostname}:${server.port}`,
 );
 
+// Re-attach profile watchers for sessions that already have a repoPath.
+// Watchers don't persist across server restarts (they're fs.watch fds),
+// so on every boot we rebuild them from the DB.
+for (const s of listSessions(500)) {
+  if (s.repoPath) watchProfile(s.id, s.repoPath);
+}
+
 function shutdown(reason: string): never {
   log.info("server", `${reason} received, stopping`);
   // Synchronously SIGKILL every spawned agent child so we don't leak
@@ -1366,6 +1377,13 @@ function shutdown(reason: string): never {
     shutdownAllBackends();
   } catch (err) {
     log.warn("server", "shutdownAllBackends failed during shutdown", {
+      err: String(err instanceof Error ? err.message : err),
+    });
+  }
+  try {
+    shutdownAllProfileWatchers();
+  } catch (err) {
+    log.warn("server", "shutdownAllProfileWatchers failed during shutdown", {
       err: String(err instanceof Error ? err.message : err),
     });
   }

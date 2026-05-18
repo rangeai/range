@@ -566,6 +566,18 @@ export interface ServerScaffoldResolved {
   t: number;
 }
 
+/**
+ * Broadcast when `<repoPath>/range.yaml` changes on disk — covers
+ * scaffold-accept, agent apply_patch, and manual user edits. Clients
+ * should re-fetch `/api/sessions/:id/profile` on this event so the
+ * slash picker + scenario list stay in sync.
+ */
+export interface ServerProfileChanged {
+  type: "profile_changed";
+  sessionId: string;
+  t: number;
+}
+
 // ─── Wire proposal (P3: /wire wandb-hydra) ────────────────────────────────
 
 export type WireKind = "wandb-hydra";
@@ -633,6 +645,7 @@ export type ServerMessage =
   | ServerAgentPlanUpdated
   | ServerScaffoldProposed
   | ServerScaffoldResolved
+  | ServerProfileChanged
   | ServerWireProposed
   | ServerWireResolved;
 

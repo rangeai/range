@@ -16,6 +16,7 @@
 import { db } from "./db.ts";
 import { log } from "./log.ts";
 import { isGitRepo, createWorktree, removeWorktree } from "./worktree.ts";
+import { watchProfile, unwatchProfile } from "./profile_watcher.ts";
 import type {
   CreateSessionRequest,
   Sandbox,
@@ -170,6 +171,8 @@ export async function attachRepo(
   });
   setWorktreeStmt.run(wt.path, wt.branch, wt.baseSha, Date.now(), sessionId);
 
+  watchProfile(sessionId, repoPath);
+
   const fresh = getSession(sessionId);
   if (!fresh) throw new Error("session disappeared after attach");
   return fresh;
@@ -213,6 +216,9 @@ export async function createSession(
         err: String(err instanceof Error ? err.message : err),
       });
     }
+    // Watch range.yaml for changes from any source — scaffold accept,
+    // agent apply_patch, or a direct user edit. See profile_watcher.ts.
+    watchProfile(id, req.repoPath);
   }
 
   const row = selectByIdStmt.get(id);
@@ -354,6 +360,8 @@ export async function deleteSession(id: string): Promise<boolean> {
       });
     }
   }
+
+  unwatchProfile(id);
 
   deleteStmt.run(id);
   log.info("sessions", "deleted", { id });

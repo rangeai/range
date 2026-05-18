@@ -72,13 +72,11 @@ await runDemo({
     },
 
     // Wait for Codex's turn to finish before continuing — the agent
-    // read+edit typically takes 60-180 seconds.
+    // read+edit typically takes 60-180 seconds. The profile_changed
+    // broadcast (P1 fix) auto-refreshes the slash picker on the
+    // client when the YAML hits disk, so no reload needed anymore.
     { kind: "awaitComposerReady", timeoutMs: 300_000 },
     { kind: "pause", ms: 2_000 },
-
-    // Reload so the client picks up the patched range.yaml — profile
-    // is cached client-side and won't auto-refresh on file edits.
-    { kind: "reload" },
 
     // Step 3: re-run /train against the fixed yaml.
     { kind: "send", text: "/train" },

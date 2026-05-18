@@ -3,6 +3,7 @@ import type {
   ServerMessage,
   ClientMessage,
 } from "@shared/protocol";
+import * as api from "./api";
 import { useAppStore } from "./store";
 
 type ConnectionState =
@@ -287,6 +288,19 @@ export function applyServerMessage(msg: ServerMessage): void {
         .updateScaffoldEntry(msg.sessionId, msg.proposalId, {
           status: msg.decision,
         });
+      break;
+    case "profile_changed":
+      // range.yaml changed on disk (scaffold accept, agent apply_patch,
+      // or a direct user edit). Re-fetch the profile so the slash
+      // picker + scenario list stay in sync.
+      api
+        .getProfile(msg.sessionId)
+        .then((res) =>
+          useAppStore.getState().setProfile(msg.sessionId, res.result),
+        )
+        .catch((err) =>
+          console.error("profile refresh after profile_changed failed", err),
+        );
       break;
     case "wire_proposed":
       useAppStore.getState().pushWireProposal(msg.sessionId, msg.proposal);
