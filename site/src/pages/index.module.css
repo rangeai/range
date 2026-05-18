@@ -1,3 +1,22 @@
+/* Range brand vars — same amber across both themes, but text-on-amber
+ * differs (dark text on amber bg in light mode, dark text in dark mode
+ * since amber is bright either way). */
+
+:root {
+  --range-accent: oklch(0.9 0.18 110);
+  --range-accent-hover: oklch(0.78 0.18 110);
+  --range-accent-soft: oklch(0.9 0.18 110 / 0.13);
+  --range-accent-border: oklch(0.9 0.18 110 / 0.35);
+  --range-text-on-accent: oklch(0.165 0.006 70);
+  --range-hero-glow: oklch(0.9 0.18 110 / 0.06);
+  --range-title-em: var(--ifm-color-emphasis-700);
+}
+
+[data-theme="dark"] {
+  --range-hero-glow: oklch(0.9 0.18 110 / 0.09);
+  --range-title-em: oklch(0.8 0.005 80);
+}
+
 /* Hero */
 
 .hero {
@@ -7,11 +26,11 @@
   background:
     radial-gradient(
       ellipse 60% 50% at 50% 0%,
-      oklch(0.9 0.18 110 / 0.09),
+      var(--range-hero-glow),
       transparent 65%
     ),
     var(--ifm-background-color);
-  border-bottom: 1px solid oklch(0.28 0.006 70);
+  border-bottom: 1px solid var(--ifm-color-emphasis-300);
 }
 
 .heroInner {
@@ -41,14 +60,14 @@
 
 .titleEm {
   font-style: italic;
-  color: oklch(0.8 0.005 80);
+  color: var(--range-title-em);
 }
 
 .subtitle {
   font-size: 1.05rem;
   line-height: 1.6;
   max-width: 640px;
-  color: var(--ifm-font-color-secondary);
+  color: var(--ifm-color-content-secondary);
   margin: 0 0 2rem;
 }
 
@@ -77,27 +96,27 @@
 }
 
 .cta {
-  background: oklch(0.9 0.18 110);
-  color: oklch(0.165 0.006 70);
+  background: var(--range-accent);
+  color: var(--range-text-on-accent);
 }
 
 .cta:hover {
-  background: oklch(0.78 0.18 110);
-  color: oklch(0.165 0.006 70);
+  background: var(--range-accent-hover);
+  color: var(--range-text-on-accent);
   text-decoration: none;
 }
 
 .ctaSecondary {
   background: transparent;
   color: var(--ifm-font-color-base);
-  border-color: oklch(0.36 0.006 70);
+  border-color: var(--ifm-color-emphasis-400);
 }
 
 .ctaSecondary:hover {
-  background: oklch(0.225 0.006 70);
+  background: var(--ifm-color-emphasis-100);
   color: var(--ifm-font-color-base);
   text-decoration: none;
-  border-color: oklch(0.46 0.006 70);
+  border-color: var(--ifm-color-emphasis-500);
 }
 
 /* Features grid */
@@ -115,15 +134,15 @@
 }
 
 .card {
-  background: oklch(0.195 0.006 70);
-  border: 1px solid oklch(0.28 0.006 70);
+  background: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-color-emphasis-300);
   border-radius: 12px;
   padding: 1.5rem;
   transition: border-color 160ms ease, transform 160ms ease;
 }
 
 .card:hover {
-  border-color: oklch(0.36 0.006 70);
+  border-color: var(--ifm-color-emphasis-400);
 }
 
 .cardBadge {
@@ -132,9 +151,9 @@
   font-size: 0.7rem;
   letter-spacing: 0.12em;
   text-transform: lowercase;
-  color: oklch(0.9 0.18 110);
-  background: oklch(0.9 0.18 110 / 0.1);
-  border: 1px solid oklch(0.9 0.18 110 / 0.3);
+  color: var(--range-accent);
+  background: var(--range-accent-soft);
+  border: 1px solid var(--range-accent-border);
   padding: 0.15rem 0.55rem;
   border-radius: 4px;
   margin-bottom: 1rem;
@@ -153,19 +172,19 @@
 .cardBody {
   font-size: 0.92rem;
   line-height: 1.55;
-  color: var(--ifm-font-color-secondary);
+  color: var(--ifm-color-content-secondary);
   margin: 0 0 1rem;
 }
 
 .cardLink {
   font-size: 0.88rem;
   font-weight: 500;
-  color: oklch(0.9 0.18 110);
+  color: var(--range-accent);
   text-decoration: none;
 }
 
 .cardLink:hover {
-  color: oklch(0.78 0.18 110);
+  color: var(--range-accent-hover);
   text-decoration: none;
 }
 
@@ -173,8 +192,8 @@
 
 .proof {
   padding: 4rem 1.5rem 5.5rem;
-  border-top: 1px solid oklch(0.28 0.006 70);
-  background: oklch(0.165 0.006 70);
+  border-top: 1px solid var(--ifm-color-emphasis-300);
+  background: var(--ifm-background-color);
 }
 
 .proofInner {
@@ -188,14 +207,14 @@
   font-size: 0.7rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: oklch(0.9 0.18 110);
+  color: var(--range-accent);
   margin-bottom: 1rem;
 }
 
 .proofBody {
   font-size: 1rem;
   line-height: 1.65;
-  color: var(--ifm-font-color-secondary);
+  color: var(--ifm-color-content-secondary);
   margin: 0 0 1.5rem;
 }
 
@@ -204,7 +223,7 @@
 }
 
 .inlineLink {
-  color: oklch(0.9 0.18 110);
+  color: var(--range-accent);
   font-family: var(--ifm-font-family-monospace);
   font-size: 0.92em;
   text-decoration: none;
@@ -218,12 +237,12 @@
   display: inline-block;
   font-size: 0.95rem;
   font-weight: 500;
-  color: oklch(0.9 0.18 110);
+  color: var(--range-accent);
   text-decoration: none;
 }
 
 .proofLink:hover {
-  color: oklch(0.78 0.18 110);
+  color: var(--range-accent-hover);
   text-decoration: none;
 }
 
