@@ -42,6 +42,7 @@ interface SessionRow {
   model: string | null;
   reasoning_effort: string | null;
   backend: string;
+  model_provider: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -81,6 +82,7 @@ function rowToSession(row: SessionRow): Session {
         : null,
     backend:
       row.backend === "opencode" ? "opencode" : "codex",
+    modelProvider: row.model_provider,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -263,7 +265,7 @@ export function setSessionSandbox(
 }
 
 const setModelStmt = db.prepare(
-  "UPDATE sessions SET model = ?, updated_at = ? WHERE id = ?",
+  "UPDATE sessions SET model = ?, model_provider = ?, updated_at = ? WHERE id = ?",
 );
 const setReasoningStmt = db.prepare(
   "UPDATE sessions SET reasoning_effort = ?, updated_at = ? WHERE id = ?",
@@ -272,9 +274,11 @@ const setReasoningStmt = db.prepare(
 export function setSessionModel(
   id: string,
   model: string | null,
+  provider?: string | null,
 ): Session | null {
-  const value = model && model.trim().length > 0 ? model.trim() : null;
-  setModelStmt.run(value, Date.now(), id);
+  const m = model && model.trim().length > 0 ? model.trim() : null;
+  const p = provider && provider.trim().length > 0 ? provider.trim() : null;
+  setModelStmt.run(m, p, Date.now(), id);
   return getSession(id);
 }
 

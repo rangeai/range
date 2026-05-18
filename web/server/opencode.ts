@@ -326,24 +326,34 @@ function rulesetForSandbox(sandbox: Sandbox): { permission: PermRule[] } {
 }
 
 /**
- * Pick a default (providerID, modelID). Override via env:
+ * Pick the (providerID, modelID) to use for an OpenCode turn.
+ * Resolution order:
  *
- *   RANGE_OPENCODE_PROVIDER=nvidia-inference-gateway
- *   RANGE_OPENCODE_MODEL=openai/openai/gpt-5.5
+ *   1. Per-session: session.modelProvider + session.model (set via
+ *      `/model <provider>/<model>` slash builtin or via the
+ *      POST /api/sessions/:id/model endpoint).
+ *   2. Env override: RANGE_OPENCODE_PROVIDER + RANGE_OPENCODE_MODEL.
+ *      Useful for testing without per-session config.
+ *   3. First (providerID, modelID) reported by OpenCode at
+ *      `/config/providers`.
  *
- * Otherwise: walk `/config/providers` and pick the first
- * provider/model pair. Throws if nothing is configured.
- *
- * (Long-term, this should be a per-session knob threaded through
- * Range's `model` column instead of a global default. Today the
- * column is a single string — fine for Codex, ambiguous for
- * OpenCode's `{providerID, modelID}` shape. Defer the schema
- * cleanup until we have a real signal.)
+ * Throws if nothing resolves — that means the user hasn't run
+ * `opencode auth login` against any provider yet.
  */
-async function defaultModel(): Promise<{
+async function defaultModel(rangeSessionId?: string): Promise<{
   providerID: string;
   modelID: string;
 }> {
+  if (rangeSessionId) {
+    const session = getSession(rangeSessionId);
+    if (session?.modelProvider && session?.model) {
+      return {
+        providerID: session.modelProvider,
+        modelID: session.model,
+      };
+    }
+  }
+
   const envProvider = process.env.RANGE_OPENCODE_PROVIDER;
   const envModel = process.env.RANGE_OPENCODE_MODEL;
   if (envProvider && envModel) {
@@ -878,7 +888,7 @@ export const openCodeBackend: AgentBackend = {
       prompt,
     });
 
-    const model = await defaultModel();
+    const model = await defaultModel(rangeSessionId);
     const cwd = session.worktreePath ?? session.repoPath ?? homedir();
     log.info("opencode", "prompt_async outgoing", {
       sessionId: state.openCodeSessionId,
@@ -952,7 +962,7 @@ export const openCodeBackend: AgentBackend = {
     // OpenCode's summarize endpoint requires a model — it runs an
     // LLM pass to summarize the prior conversation. Use whichever
     // model the rest of the session is using.
-    const model = await defaultModel();
+    const model = await defaultModel(rangeSessionId);
     await apiPost(
       `/session/${state.openCodeSessionId}/summarize?directory=${encodeURIComponent(state.workspace)}`,
       { providerID: model.providerID, modelID: model.modelID },

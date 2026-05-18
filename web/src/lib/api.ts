@@ -106,10 +106,14 @@ export function setSandbox(
 export function setModel(
   sessionId: string,
   model: string | null,
+  provider?: string | null,
 ): Promise<GetSessionResponse> {
   return jsonRequest<GetSessionResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/model`,
-    { method: "POST", body: JSON.stringify({ model }) },
+    {
+      method: "POST",
+      body: JSON.stringify({ model, provider }),
+    },
   );
 }
 

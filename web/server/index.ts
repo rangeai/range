@@ -293,9 +293,12 @@ app.post("/api/sessions/:id/sandbox", async (c) => {
 
 app.post("/api/sessions/:id/model", async (c) => {
   const id = c.req.param("id");
-  let body: { model?: string | null };
+  let body: { model?: string | null; provider?: string | null };
   try {
-    body = (await c.req.json()) as { model?: string | null };
+    body = (await c.req.json()) as {
+      model?: string | null;
+      provider?: string | null;
+    };
   } catch {
     return c.json({ error: "invalid JSON body" }, 400);
   }
@@ -303,7 +306,13 @@ app.post("/api/sessions/:id/model", async (c) => {
   if (model !== null && model.length === 0) {
     return c.json({ error: "model must be a non-empty string or null" }, 400);
   }
-  const session = setSessionModel(id, model);
+  const provider =
+    body.provider === null
+      ? null
+      : body.provider === undefined
+        ? undefined
+        : body.provider.trim() || null;
+  const session = setSessionModel(id, model, provider);
   if (!session) return c.json({ error: "session not found" }, 404);
   broadcast({ type: "session_updated", session });
   if (backendFor(id).isRunning(id)) {

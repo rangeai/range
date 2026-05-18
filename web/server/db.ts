@@ -248,6 +248,13 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE sessions ADD COLUMN backend TEXT NOT NULL DEFAULT 'codex';
     `,
   },
+  {
+    id: 12,
+    name: "sessions_model_provider",
+    up: `
+      ALTER TABLE sessions ADD COLUMN model_provider TEXT;
+    `,
+  },
 ];
 
 function applyMigrations() {

@@ -104,18 +104,30 @@ opencode auth login
 You don't need to start `opencode serve` manually — Range spawns
 its own shared instance when a session uses the `opencode` backend.
 
-**Picking a model for OpenCode sessions.** Range's default model
-selector picks the first provider/model OpenCode reports, which
-isn't always what you want. To pin a specific combination, set
-two env vars before starting Range:
+**Picking a model for OpenCode sessions.** From inside Range, use
+the `/model` slash builtin — same shape as Codex but with the
+provider in front. The first `/` separates provider from model:
+
+```
+/model nvidia-inference-gateway/openai/openai/gpt-5.5
+/model anthropic/claude-sonnet-4-5
+/model ollama/llama3.1:70b
+```
+
+Anything OpenCode lists at `/config/providers` is valid. The
+choice persists on the session row (in `model` + `model_provider`)
+and is reused for every turn including `/compact`.
+
+For provider-wide overrides at server boot (handy for development),
+two env vars short-circuit the lookup:
 
 ```bash
 export RANGE_OPENCODE_PROVIDER=nvidia-inference-gateway
 export RANGE_OPENCODE_MODEL=openai/openai/gpt-5.5
 ```
 
-Anything OpenCode lists at `/config/providers` is valid. The
-env-pinned combo applies to every OpenCode session.
+Per-session `/model` always wins over env vars; env vars win over
+OpenCode's first-provider default.
 
 ### 1.5 git, gh (for PR drafting)
 

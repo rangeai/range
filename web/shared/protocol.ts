@@ -38,9 +38,15 @@ export interface Session {
   /** Binaries (first non-shell token) whose commands auto-approve in this
    *  session. e.g. ["git", "ls", "find"]. */
   allowedCommands: string[];
-  /** Underlying LLM Codex should use (e.g., "gpt-5", "claude-sonnet-4.5").
-   *  Null means use Codex's default. Applied at thread/start. */
+  /** Underlying LLM the active agent backend should use.
+   *  For Codex: a model id like "gpt-5" or "claude-sonnet-4.5".
+   *  For OpenCode: the model id portion of `{providerID, modelID}`
+   *  — the provider lives in `modelProvider`.
+   *  Null means use the backend's default. */
   model: string | null;
+  /** Optional provider id when `model` alone is ambiguous (OpenCode
+   *  needs both). Null for Codex sessions. */
+  modelProvider: string | null;
   /** Reasoning effort hint forwarded to Codex's thread/start. */
   reasoningEffort: "low" | "medium" | "high" | null;
   /** Which agent backend powers this session. Defaults to "codex"

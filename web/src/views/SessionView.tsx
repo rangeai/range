@@ -2210,14 +2210,25 @@ function MessageComposer({
     // universal (compact, tokens, diff, sandbox via permission
     // ruleset). For OpenCode sessions we hide the Codex-only ones.
     const isCodex = session.backend === "codex";
+    // /model works on both backends but accepts different shapes:
+    //   Codex:    /model <model>            (e.g., gpt-5)
+    //   OpenCode: /model <provider>/<model> (e.g., nvidia-inference-gateway/openai/openai/gpt-5.5)
+    // The first `/` separates provider from model id on OpenCode.
+    const modelCurrent = isCodex
+      ? session.model ?? "default"
+      : session.modelProvider && session.model
+        ? `${session.modelProvider}/${session.model}`
+        : "default";
+    items.push({
+      kind: "builtin",
+      layer: "codex",
+      name: "model",
+      description: `switch the LLM (current: ${modelCurrent})`,
+      argHint: isCodex
+        ? "<name>  e.g. gpt-5, claude-sonnet-4.5"
+        : "<provider>/<model>  e.g. nvidia-inference-gateway/openai/openai/gpt-5.5",
+    });
     if (isCodex) {
-      items.push({
-        kind: "builtin",
-        layer: "codex",
-        name: "model",
-        description: `switch the LLM (current: ${session.model ?? "default"})`,
-        argHint: "<name>  e.g. gpt-5, claude-sonnet-4.5",
-      });
       items.push({
         kind: "builtin",
         layer: "codex",
@@ -2478,10 +2489,40 @@ function MessageComposer({
           await api.sendAgentMessage(session.id, prompt);
         }
       } else if (item.kind === "builtin" && item.name === "model") {
-        if (!slashArgs) throw new Error("usage: /model <name>");
-        const res = await api.setModel(session.id, slashArgs);
+        const raw = slashArgs.trim();
+        if (!raw) {
+          throw new Error(
+            session.backend === "opencode"
+              ? "usage: /model <provider>/<model>"
+              : "usage: /model <name>",
+          );
+        }
+        let model: string;
+        let provider: string | null = null;
+        if (session.backend === "opencode") {
+          // First "/" separates provider from model id. The model id
+          // itself can contain further "/"-separated components
+          // (e.g. nvidia-inference-gateway/openai/openai/gpt-5.5).
+          const slashIdx = raw.indexOf("/");
+          if (slashIdx <= 0) {
+            throw new Error(
+              "OpenCode /model needs `<provider>/<model>` — got: " + raw,
+            );
+          }
+          provider = raw.slice(0, slashIdx);
+          model = raw.slice(slashIdx + 1);
+          if (!model) {
+            throw new Error("model id missing after `/`");
+          }
+        } else {
+          model = raw;
+        }
+        const res = await api.setModel(session.id, model, provider);
         useAppStore.getState().upsertSession(res.session);
-        pushSystem(session.id, `model → ${slashArgs}`);
+        pushSystem(
+          session.id,
+          provider ? `model → ${provider}/${model}` : `model → ${model}`,
+        );
       } else if (item.kind === "builtin" && item.name === "think") {
         const eff = slashArgs.toLowerCase();
         if (!["low", "medium", "high"].includes(eff)) {
