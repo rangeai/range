@@ -27,7 +27,7 @@ that Codex can't get on its own.
 ## The bug
 
 [Branch on the fork →](https://github.com/rangeai/mujoco_playground/tree/range-fixture-cartpole-reward-nan)
-[Commit diff →](https://github.com/rangeai/mujoco_playground/commit/6b3ef4b)
+[Commit diff →](https://github.com/rangeai/mujoco_playground/commit/db275e4)
 
 ```diff
    pole_angle_cos = data.xmat[2, 2, 2]
