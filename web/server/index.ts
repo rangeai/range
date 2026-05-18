@@ -77,6 +77,7 @@ import {
   shutdownAllProfileWatchers,
   watchProfile,
 } from "./profile_watcher.ts";
+import { readRunArtifactText } from "./remote/registry.ts";
 import { detectScaffold, writeScaffold } from "./scaffold.ts";
 import {
   applyWirePatches,
@@ -1072,12 +1073,20 @@ app.get("/api/runs/:id/observation", async (c) => {
   if (!Number.isFinite(step) || step < 0) {
     return c.json({ error: "step must be a non-negative integer" }, 400);
   }
-  const eventsPath = `${run.runDir}/events.jsonl`;
-  const file = Bun.file(eventsPath);
-  if (!(await file.exists())) {
-    return c.json({ error: `no events.jsonl at ${eventsPath}` }, 404);
+  let text: string;
+  try {
+    text = await readRunArtifactText({
+      sessionId: run.sessionId,
+      runId: id,
+      filename: "events.jsonl",
+      localPath: `${run.runDir}/events.jsonl`,
+    });
+  } catch (err) {
+    return c.json(
+      { error: String(err instanceof Error ? err.message : err) },
+      404,
+    );
   }
-  const text = await file.text();
   const lines = text.split("\n").filter((l) => l.length > 0);
   // Walk trajectory ticks (skip Range's own run_log events) and pick
   // the Nth one. Same heuristic the trajectory inspector uses.

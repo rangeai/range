@@ -9,8 +9,8 @@
  */
 
 import { join } from "node:path";
-import { readFile, access } from "node:fs/promises";
 import { getRun } from "./runs.ts";
+import { readRunArtifactText } from "./remote/registry.ts";
 
 const SPECIAL_RE = /\b(NaN|-Infinity|Infinity)\b/g;
 const SPECIAL_MARKER_RE = /"__SPECIAL_(NaN|-Infinity|Infinity)__"/g;
@@ -71,13 +71,23 @@ export async function inspectTrajectory(
 ): Promise<TrajectoryInspectReport> {
   const run = getRun(runId);
   if (!run) throw new Error(`run not found: ${runId}`);
-  const path = join(run.runDir, "events.jsonl");
+  const localPath = join(run.runDir, "events.jsonl");
+  // Local sessions: reads from local FS. Remote sessions: cats the
+  // file off the remote box via the session's EnvironmentHandle —
+  // the scenario wrote there, not to the local run dir.
+  let text: string;
   try {
-    await access(path);
-  } catch {
-    throw new Error(`no events.jsonl at ${path}`);
+    text = await readRunArtifactText({
+      sessionId: run.sessionId,
+      runId,
+      filename: "events.jsonl",
+      localPath,
+    });
+  } catch (err) {
+    throw new Error(
+      `failed to read events.jsonl for run ${runId}: ${err instanceof Error ? err.message : err}`,
+    );
   }
-  const text = await readFile(path, "utf8");
   const lines = text.split("\n").filter((l) => l.length > 0);
 
   let firstHit: TrajectoryInspectReport["firstHit"] = null;
