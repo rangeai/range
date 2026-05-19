@@ -23,7 +23,11 @@ import {
   setRunState,
 } from "./runs.ts";
 import { getSession } from "./sessions.ts";
-import { getSessionRemote } from "./remote/registry.ts";
+import {
+  getSessionRemote,
+  setSessionRemote,
+} from "./remote/registry.ts";
+import { SshStaticProvider } from "./remote/ssh_static.ts";
 import { evaluateGatesForRun } from "./verification.ts";
 import { readdir, stat } from "node:fs/promises";
 import type {
@@ -191,10 +195,44 @@ async function runInBackground(
   // (where the GPU is) and its artifacts live on the remote disk.
   // Range still writes its own per-run events.jsonl locally so the UI
   // can stream run_log entries.
-  const remote = getSessionRemote(initialRun.sessionId);
+  //
+  // The registry is in-memory; it can be empty even for a remote-
+  // configured session — after a server restart, or before the agent
+  // backend has been started. In those cases we lazy-provision here
+  // so scenarios still dispatch to the right place.
+  let remote = getSessionRemote(initialRun.sessionId);
+  const session = getSession(initialRun.sessionId);
+  if (!remote && session?.remoteConfig) {
+    try {
+      const provider = new SshStaticProvider({
+        host: session.remoteConfig.host,
+        identityFile: session.remoteConfig.identityFile,
+        remoteWorkspaceRoot: session.remoteConfig.remoteWorkspaceRoot,
+      });
+      const machine = await provider.provision({});
+      const env = await provider.setup(machine, {
+        sessionId: initialRun.sessionId,
+        repoPath: session.repoPath ?? initialRun.cwd,
+        agentKind: "codex",
+        remoteEnv: {},
+      });
+      remote = { provider, machine, env };
+      setSessionRemote(initialRun.sessionId, remote);
+      log.info("runner", "lazy-provisioned remote for scenario run", {
+        sessionId: initialRun.sessionId,
+        host: session.remoteConfig.host,
+      });
+    } catch (err) {
+      log.warn("runner", "lazy-provision failed, falling back to local", {
+        sessionId: initialRun.sessionId,
+        err: String(err instanceof Error ? err.message : err),
+      });
+      // remote stays null — falls through to local spawn
+    }
+  }
   const isRemote = remote !== null;
-  const effectiveCwd = isRemote ? remote.env.remoteRepoPath : initialRun.cwd;
-  const remoteRunDir = isRemote
+  const effectiveCwd = remote ? remote.env.remoteRepoPath : initialRun.cwd;
+  const remoteRunDir = remote
     ? `${remote.env.remoteRepoPath}/.range-runs/${runId}`
     : null;
   const scenarioRunDir = isRemote ? remoteRunDir! : initialRun.runDir;

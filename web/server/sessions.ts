@@ -17,6 +17,10 @@ import { db } from "./db.ts";
 import { log } from "./log.ts";
 import { isGitRepo, createWorktree, removeWorktree } from "./worktree.ts";
 import { watchProfile, unwatchProfile } from "./profile_watcher.ts";
+import {
+  clearSessionRemote,
+  getSessionRemote,
+} from "./remote/registry.ts";
 import type {
   CreateSessionRequest,
   Sandbox,
@@ -383,6 +387,21 @@ export async function deleteSession(id: string): Promise<boolean> {
   }
 
   unwatchProfile(id);
+
+  // If the session was using a remote provider, give the machine back
+  // (no-op for ssh-static; releases the lease for cloud providers).
+  const remote = getSessionRemote(id);
+  if (remote) {
+    clearSessionRemote(id);
+    try {
+      await remote.provider.standDown(remote.machine);
+    } catch (err) {
+      log.warn("sessions", "remote standDown failed during delete", {
+        id,
+        err: String(err instanceof Error ? err.message : err),
+      });
+    }
+  }
 
   deleteStmt.run(id);
   log.info("sessions", "deleted", { id });

@@ -30,10 +30,7 @@ import type {
   Machine,
   RemoteProvider,
 } from "./remote/provider.ts";
-import {
-  clearSessionRemote,
-  setSessionRemote,
-} from "./remote/registry.ts";
+import { setSessionRemote } from "./remote/registry.ts";
 import type {
   AgentItem,
   AgentItemState,
@@ -1302,19 +1299,13 @@ function teardown(cs: CodexSession, reason: string): void {
   } catch {
     // already closed
   }
-  if (cs.remote) {
-    clearSessionRemote(cs.sessionId);
-    // Best-effort standDown — log but don't block teardown on a
-    // misbehaving provider.
-    void cs.remote.provider
-      .standDown(cs.remote.machine)
-      .catch((err) =>
-        log.warn("codex", "remote standDown failed", {
-          sessionId: cs.sessionId,
-          err: String(err instanceof Error ? err.message : err),
-        }),
-      );
-  }
+  // Note: we intentionally do NOT clear the remote registry or call
+  // provider.standDown() here. The EnvironmentHandle should outlive
+  // codex's idle-shutdown/respawn cycle — scenario runs can still fire
+  // while codex is asleep, and they need the same handle to spawn on
+  // the remote. Provider.standDown is reserved for session deletion
+  // (the moment when we truly stop caring about the machine), which
+  // is handled in sessions.ts.
   // Keep codex_thread_id persisted across teardown so the next
   // start can `thread/resume` into the same conversation. Only
   // archiveAgentHistory (`/clear`) clears it deliberately.
