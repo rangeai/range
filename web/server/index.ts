@@ -86,7 +86,9 @@ import {
 import { readFile, access } from "node:fs/promises";
 import { join as pathJoin } from "node:path";
 import {
+  formatLogReportForCodex,
   formatReportForCodex,
+  inspectRunLogs,
   inspectTrajectory,
 } from "./trajectory.ts";
 import { readNpz } from "./npz.ts";
@@ -1152,10 +1154,29 @@ app.get("/api/runs/:id/trajectory/inspect", async (c) => {
   const id = c.req.param("id");
   const run = getRun(id);
   if (!run) return c.json({ error: "run not found" }, 404);
+
+  // Prefer the structured trajectory walker; fall back to log-based
+  // inspection when the scenario didn't emit events.jsonl (Brax/
+  // Playground, SB3, CleanRL — most frameworks don't).
   try {
     const report = await inspectTrajectory(id);
-    const promptBlock = formatReportForCodex(report, run.scenarioName ?? null);
-    return c.json({ report, promptBlock });
+    if (report.totalTicks > 0) {
+      const promptBlock = formatReportForCodex(report, run.scenarioName ?? null);
+      return c.json({ mode: "trajectory", report, promptBlock });
+    }
+    // events.jsonl exists but has no trajectory ticks — fall through.
+  } catch {
+    // events.jsonl missing or unreadable — fall through.
+  }
+
+  try {
+    const session = getSession(run.sessionId);
+    const logReport = await inspectRunLogs(id);
+    const promptBlock = formatLogReportForCodex(
+      logReport,
+      session?.repoPath ?? null,
+    );
+    return c.json({ mode: "log", report: logReport, promptBlock });
   } catch (err) {
     return c.json(
       { error: String(err instanceof Error ? err.message : err) },
